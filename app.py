@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
-import itertools
-import json
-import os
+from datetime import datetime, timedelta
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+import itertools
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
-from werkzeug.security import check_password_hash, generate_password_hash
+import json
+from urllib.error import URLError, HTTPError
+from urllib.request import urlopen
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
-
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
 
 
 @dataclass
@@ -24,18 +18,13 @@ class CarpoolEntry:
     id: int
     first_name: str
     last_initial: str
-    phone: str
-    flight_code: str
-    airport_code: str
+    flight_number: str
+    flight_time: str
+    flight_date: str
     airport_name: str
     airport_location: str
-    flight_time_utc: str
-    flight_date_utc: str
     seats_available: int
     notes: str
-    fetched_from: str
-    status: str
-    expires_at: str
     created_at: str
 
 
@@ -43,220 +32,230 @@ ENTRY_COUNTER = itertools.count(1)
 ENTRIES: list[CarpoolEntry] = []
 
 
-AIRPORT_CODE_MAP = {
-    "SFO": {"name": "San Francisco International Airport", "location": "San Francisco, CA"},
-    "ONT": {"name": "Ontario International Airport", "location": "Ontario, CA"},
-    "LAX": {"name": "Los Angeles International Airport", "location": "Los Angeles, CA"},
-    "JFK": {"name": "John F. Kennedy International Airport", "location": "New York, NY"},
-    "EWR": {"name": "Newark Liberty International Airport", "location": "Newark, NJ"},
-}
+def _seed_demo_entries() -> None:
+    if ENTRIES:
+        return
 
-
-def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _clean_flight_code(code: str) -> str:
-    return "".join(code.upper().strip().split())
-
-
-def _cleanup_expired_entries() -> None:
-    now = _now_utc()
-    ENTRIES[:] = [e for e in ENTRIES if datetime.fromisoformat(e.expires_at) > now]
-
-
-def _fetch_flight_live(flight_code: str) -> dict[str, Any]:
-    """Best-effort live flight fetch via OpenSky states feed by callsign."""
-    try:
-        with urlopen("https://opensky-network.org/api/states/all", timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
-        return {"status": "unknown", "source": "opensky_unavailable"}
-
-    states = payload.get("states") or []
-    for state in states:
-        callsign = (state[1] or "").strip().upper()
-        if callsign == flight_code:
-            observed = datetime.fromtimestamp(payload.get("time", 0), tz=timezone.utc) if payload.get("time") else _now_utc()
-            # Heuristic: assume flight lands within 6 hours from observation.
-            expires_at = observed + timedelta(hours=6)
-            return {
-                "status": "airborne" if not state[8] else "on_ground",
-                "source": "opensky",
-                "flight_time_utc": observed.strftime("%H:%M"),
-                "flight_date_utc": observed.strftime("%Y-%m-%d"),
-                "expires_at": expires_at.isoformat(),
-                "origin_country": state[2],
-            }
-
-    return {"status": "not_found_live", "source": "opensky"}
-
-
-def _resolve_airport(code: str) -> tuple[str, str]:
-    airport = AIRPORT_CODE_MAP.get(code)
-    if airport:
-        return airport["name"], airport["location"]
-    return f"Airport {code}", "Unknown location"
-
-
-def _build_entry(data: dict[str, str]) -> CarpoolEntry:
-    flight_code = _clean_flight_code(data.get("flight_code", ""))
-    airport_code = data.get("airport_code", "").upper().strip()
-
-    flight_info = _fetch_flight_live(flight_code)
-    airport_name, airport_location = _resolve_airport(airport_code)
-
-    created_at = _now_utc()
-    expires_at = flight_info.get("expires_at") or (created_at + timedelta(hours=12)).isoformat()
-
-    return CarpoolEntry(
-        id=next(ENTRY_COUNTER),
-        first_name=data["first_name"].strip().title(),
-        last_initial=data["last_initial"].strip()[:1].upper(),
-        phone=data["phone"].strip(),
-        flight_code=flight_code,
-        airport_code=airport_code,
-        airport_name=airport_name,
-        airport_location=airport_location,
-        flight_time_utc=flight_info.get("flight_time_utc", "Unknown"),
-        flight_date_utc=flight_info.get("flight_date_utc", "Unknown"),
-        seats_available=int(data.get("seats_available", 3) or 3),
-        notes=str(data.get("notes", "")).strip(),
-        fetched_from=flight_info.get("source", "fallback"),
-        status=flight_info.get("status", "unknown"),
-        expires_at=expires_at,
-        created_at=created_at.isoformat(),
+    seed_time = datetime.utcnow() + timedelta(hours=2)
+    ENTRIES.append(
+        CarpoolEntry(
+            id=next(ENTRY_COUNTER),
+            first_name="Mia",
+            last_initial="K",
+            flight_number="AA274",
+            flight_time=seed_time.strftime("%H:%M"),
+            flight_date=seed_time.strftime("%Y-%m-%d"),
+            airport_name="John F. Kennedy International Airport",
+            airport_location="New York, NY",
+            seats_available=2,
+            notes="Can share ride from campus north gate.",
+            created_at=datetime.utcnow().isoformat() + "Z",
+        )
     )
 
 
-def _require_admin() -> bool:
-    return bool(session.get("admin_authed"))
+def _normalize(value: str) -> str:
+    return " ".join(value.strip().split()).lower()
+
+
+def _parse_datetime(date_str: str, time_str: str) -> datetime | None:
+    try:
+        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+def _score_match(entry: CarpoolEntry, filters: dict[str, str]) -> tuple[int, list[str]]:
+    reasons: list[str] = []
+    score = 0
+
+    entry_airport = _normalize(entry.airport_name)
+    filter_airport = _normalize(filters.get("airport_name", ""))
+    if filter_airport and filter_airport in entry_airport:
+        score += 40
+        reasons.append("Same airport name")
+
+    entry_location = _normalize(entry.airport_location)
+    filter_location = _normalize(filters.get("airport_location", ""))
+    if filter_location and filter_location in entry_location:
+        score += 20
+        reasons.append("Similar airport location")
+
+    entry_flight = _normalize(entry.flight_number)
+    filter_flight = _normalize(filters.get("flight_number", ""))
+    if filter_flight and filter_flight == entry_flight:
+        score += 40
+        reasons.append("Exact flight match")
+
+    requested_dt = _parse_datetime(filters.get("flight_date", ""), filters.get("flight_time", ""))
+    entry_dt = _parse_datetime(entry.flight_date, entry.flight_time)
+
+    if requested_dt and entry_dt:
+        delta_minutes = abs((entry_dt - requested_dt).total_seconds()) / 60
+        time_window = int(filters.get("time_window_minutes", 120) or 120)
+        if delta_minutes <= time_window:
+            closeness = max(0, 1 - (delta_minutes / max(time_window, 1)))
+            score += int(30 * closeness)
+            reasons.append(f"Flight time within {int(delta_minutes)} minutes")
+
+    return score, reasons
 
 
 @app.get("/")
-def landing() -> Any:
-    return render_template("landing.html")
-
-
-@app.get("/join")
-def join_page() -> Any:
-    return render_template("join.html")
-
-
-@app.get("/search")
-def search_page() -> Any:
-    return render_template("search.html")
+def home() -> Any:
+    return render_template("index.html")
 
 
 @app.post("/api/carpools")
 def create_carpool() -> Any:
-    _cleanup_expired_entries()
     data = request.get_json(silent=True) or request.form.to_dict()
-
-    required = ["first_name", "last_initial", "phone", "flight_code", "airport_code"]
-    missing = [k for k in required if not str(data.get(k, "")).strip()]
+    required_fields = [
+        "first_name",
+        "last_initial",
+        "flight_number",
+        "flight_time",
+        "flight_date",
+        "airport_name",
+        "airport_location",
+    ]
+    missing = [field for field in required_fields if not str(data.get(field, "")).strip()]
     if missing:
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-    if len(data["last_initial"].strip()) != 1:
-        return jsonify({"error": "last_initial must be exactly 1 character"}), 400
-
-    if len(data["airport_code"].strip()) != 3:
-        return jsonify({"error": "airport_code must be a 3-letter airport code"}), 400
-
-    entry = _build_entry(data)
+    entry = CarpoolEntry(
+        id=next(ENTRY_COUNTER),
+        first_name=data["first_name"].strip().title(),
+        last_initial=data["last_initial"].strip()[:1].upper(),
+        flight_number=data["flight_number"].strip().upper(),
+        flight_time=data["flight_time"].strip(),
+        flight_date=data["flight_date"].strip(),
+        airport_name=data["airport_name"].strip(),
+        airport_location=data["airport_location"].strip(),
+        seats_available=int(data.get("seats_available", 3) or 3),
+        notes=str(data.get("notes", "")).strip(),
+        created_at=datetime.utcnow().isoformat() + "Z",
+    )
     ENTRIES.append(entry)
-    payload = asdict(entry)
-    payload.pop("phone")
-    return jsonify({"message": "Added to carpool database", "entry": payload}), 201
+    return jsonify({"message": "Carpool entry created", "entry": asdict(entry)}), 201
 
 
 @app.get("/api/carpools/search")
 def search_carpools() -> Any:
-    _cleanup_expired_entries()
-    flight_code = _clean_flight_code(request.args.get("flight_code", ""))
-    airport_code = request.args.get("airport_code", "").upper().strip()
+    filters = request.args.to_dict()
+    include_all = request.args.get("include_all", "false").lower() == "true"
 
-    results = []
+    matches = []
     for entry in ENTRIES:
-        score = 0
-        reasons = []
-        if flight_code and entry.flight_code == flight_code:
-            score += 70
-            reasons.append("Exact flight code match")
-        if airport_code and entry.airport_code == airport_code:
-            score += 30
-            reasons.append("Same airport code")
-        if score > 0 or (not flight_code and not airport_code):
-            row = asdict(entry)
-            row.pop("phone")
-            row["match_score"] = score
-            row["match_reasons"] = reasons
-            results.append(row)
+        score, reasons = _score_match(entry, filters)
+        if include_all or score > 0:
+            payload = asdict(entry)
+            payload["match_score"] = score
+            payload["match_reasons"] = reasons
+            matches.append(payload)
 
-    results.sort(key=lambda r: r["match_score"], reverse=True)
-    return jsonify({"count": len(results), "results": results})
+    matches.sort(key=lambda row: row["match_score"], reverse=True)
+    return jsonify(
+        {
+            "count": len(matches),
+            "filters": filters,
+            "results": matches,
+        }
+    )
 
 
-@app.get("/api/carpools/<int:entry_id>")
-def carpool_details(entry_id: int) -> Any:
-    _cleanup_expired_entries()
-    entry = next((e for e in ENTRIES if e.id == entry_id), None)
-    if not entry:
-        return jsonify({"error": "Not found"}), 404
-    return jsonify({"entry": asdict(entry)})
+@app.get("/api/flight-status")
+def flight_status() -> Any:
+    """Best-effort OpenSky lookup by callsign (e.g., 'UAL123')."""
+    flight_number = request.args.get("flight_number", "").strip().upper()
+    if not flight_number:
+        return jsonify({"error": "flight_number query parameter is required"}), 400
+
+    try:
+        with urlopen("https://opensky-network.org/api/states/all", timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
+        return (
+            jsonify(
+                {
+                    "flight_number": flight_number,
+                    "status": "unknown",
+                    "message": "OpenSky unavailable right now. Consider adding a paid flight-status API for reliability.",
+                }
+            ),
+            503,
+        )
+
+    states = payload.get("states") or []
+    for state in states:
+        callsign = (state[1] or "").strip().upper()
+        if callsign == flight_number:
+            updated_at = datetime.utcfromtimestamp(payload.get("time", 0)) if payload.get("time") else None
+            return jsonify(
+                {
+                    "flight_number": flight_number,
+                    "status": "airborne",
+                    "source": "OpenSky",
+                    "last_seen_utc": updated_at.isoformat() + "Z" if updated_at else None,
+                    "position": {"longitude": state[5], "latitude": state[6], "altitude_m": state[7]},
+                    "velocity_mps": state[9],
+                    "origin_country": state[2],
+                }
+            )
+
+    return jsonify(
+        {
+            "flight_number": flight_number,
+            "status": "not_found_live",
+            "message": "No live OpenSky match for this callsign right now.",
+        }
+    )
 
 
-@app.post("/admin/login")
-def admin_login() -> Any:
-    username = request.form.get("username", "")
-    password = request.form.get("password", "")
+@app.get("/api/llm-guide")
+def llm_guide() -> Any:
+    return jsonify(
+        {
+            "description": "LLM-friendly endpoints for University Carpool Matchmaking App",
+            "endpoints": [
+                {
+                    "method": "POST",
+                    "path": "/api/carpools",
+                    "purpose": "Create a rider/carpool listing",
+                    "required_fields": [
+                        "first_name",
+                        "last_initial",
+                        "flight_number",
+                        "flight_time",
+                        "flight_date",
+                        "airport_name",
+                        "airport_location",
+                    ],
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/carpools/search",
+                    "purpose": "Find matches by flight metadata",
+                    "recommended_query": [
+                        "flight_number",
+                        "flight_time",
+                        "flight_date",
+                        "airport_name",
+                        "airport_location",
+                        "time_window_minutes",
+                    ],
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/flight-status",
+                    "purpose": "Live status lookup via OpenSky callsign match",
+                    "required_query": ["flight_number"],
+                },
+            ],
+        }
+    )
 
-    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
-        session["admin_authed"] = True
-        return redirect(url_for("admin_panel"))
-    return redirect(url_for("landing"))
 
-
-@app.get("/admin")
-def admin_panel() -> Any:
-    if not _require_admin():
-        return redirect(url_for("landing"))
-    _cleanup_expired_entries()
-    return render_template("admin.html", entries=[asdict(e) for e in ENTRIES])
-
-
-@app.post("/admin/delete-all")
-def admin_delete_all() -> Any:
-    if not _require_admin():
-        return jsonify({"error": "Unauthorized"}), 401
-    ENTRIES.clear()
-    return redirect(url_for("admin_panel"))
-
-
-@app.post("/admin/delete/<int:entry_id>")
-def admin_delete_entry(entry_id: int) -> Any:
-    if not _require_admin():
-        return jsonify({"error": "Unauthorized"}), 401
-    ENTRIES[:] = [e for e in ENTRIES if e.id != entry_id]
-    return redirect(url_for("admin_panel"))
-
-
-@app.post("/admin/edit/<int:entry_id>")
-def admin_edit_entry(entry_id: int) -> Any:
-    if not _require_admin():
-        return jsonify({"error": "Unauthorized"}), 401
-
-    entry = next((e for e in ENTRIES if e.id == entry_id), None)
-    if not entry:
-        return jsonify({"error": "Not found"}), 404
-
-    entry.first_name = request.form.get("first_name", entry.first_name).strip().title()
-    li = request.form.get("last_initial", entry.last_initial).strip().upper()
-    entry.last_initial = li[:1] if li else entry.last_initial
-    entry.phone = request.form.get("phone", entry.phone).strip()
-    entry.notes = request.form.get("notes", entry.notes).strip()
-    return redirect(url_for("admin_panel"))
+_seed_demo_entries()
 
 
 if __name__ == "__main__":
