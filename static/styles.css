@@ -1,0 +1,20 @@
+:root { --bg:#0d1326; --card:#17213f; --text:#f2f5ff; --accent:#64e4d1; --danger:#ff6f7d; }
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:radial-gradient(circle at top,#253870,var(--bg) 60%);color:var(--text)}
+.container,.landing{max-width:980px;margin:0 auto;padding:1.2rem}
+.topbar{display:flex;justify-content:flex-end;padding:0.8rem 1rem}
+.admin-login{display:flex;gap:.4rem;align-items:center}
+input,textarea,button{font:inherit;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(5,8,16,.75);color:#fff;padding:.55rem .7rem}
+button,.button-link{background:linear-gradient(90deg,#73d7ff,var(--accent));color:#032426;border:none;cursor:pointer;font-weight:700;text-decoration:none;padding:.6rem .9rem;border-radius:10px;display:inline-block}
+.landing{text-align:center;padding-top:3rem}
+.tagline{opacity:.95}
+.scroll-cta{margin:2rem 0 2.5rem;font-size:1.05rem;opacity:.9}
+.card{background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.15);padding:1rem;border-radius:16px}
+.actions .button-row{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem}
+label{display:grid;gap:.35rem;font-size:.9rem}
+.back{color:#b7f8ea;text-decoration:none}
+.result{margin-top:.8rem;padding:.8rem;border:1px solid rgba(100,228,209,.45);border-radius:12px}
+.disclaimer{font-size:.9rem;opacity:.9}
+.compact{margin-top:.5rem}
+.danger{background:linear-gradient(90deg,#ff8e9b,var(--danger));color:#35060d}

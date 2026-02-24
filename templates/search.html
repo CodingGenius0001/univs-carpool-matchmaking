@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Search Carpools</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <a href="/" class="back">← Home</a>
+      <section class="card">
+        <h2>Search for a Carpool</h2>
+        <form id="search-form">
+          <div class="grid">
+            <label>Flight Code <input name="flight_code" placeholder="UA 2363" /></label>
+            <label>Airport Code (3 letters) <input name="airport_code" maxlength="3" placeholder="SFO" /></label>
+          </div>
+          <button type="submit">Search</button>
+        </form>
+        <div id="results"></div>
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='search.js') }}"></script>
+  </body>
+</html>

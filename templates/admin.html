@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <a href="/" class="back">← Home</a>
+      <section class="card">
+        <h2>Admin Control Panel</h2>
+        <form method="post" action="/admin/delete-all">
+          <button type="submit" class="danger">Delete Entire Database</button>
+        </form>
+
+        {% for entry in entries %}
+        <article class="result">
+          <strong>#{{ entry.id }} {{ entry.first_name }} {{ entry.last_initial }}.</strong>
+          <div>{{ entry.flight_code }} → {{ entry.airport_code }} | {{ entry.flight_date_utc }} {{ entry.flight_time_utc }} UTC</div>
+          <div>Phone: {{ entry.phone }}</div>
+          <form method="post" action="/admin/edit/{{ entry.id }}" class="grid compact">
+            <input name="first_name" value="{{ entry.first_name }}" />
+            <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" />
+            <input name="phone" value="{{ entry.phone }}" />
+            <input name="notes" value="{{ entry.notes }}" />
+            <button type="submit">Save Edit</button>
+          </form>
+          <form method="post" action="/admin/delete/{{ entry.id }}">
+            <button type="submit" class="danger">Delete Entry</button>
+          </form>
+        </article>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>
