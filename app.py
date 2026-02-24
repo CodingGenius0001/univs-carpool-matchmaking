@@ -32,6 +32,28 @@ ENTRY_COUNTER = itertools.count(1)
 ENTRIES: list[CarpoolEntry] = []
 
 
+def _seed_demo_entries() -> None:
+    if ENTRIES:
+        return
+
+    seed_time = datetime.utcnow() + timedelta(hours=2)
+    ENTRIES.append(
+        CarpoolEntry(
+            id=next(ENTRY_COUNTER),
+            first_name="Mia",
+            last_initial="K",
+            flight_number="AA274",
+            flight_time=seed_time.strftime("%H:%M"),
+            flight_date=seed_time.strftime("%Y-%m-%d"),
+            airport_name="John F. Kennedy International Airport",
+            airport_location="New York, NY",
+            seats_available=2,
+            notes="Can share ride from campus north gate.",
+            created_at=datetime.utcnow().isoformat() + "Z",
+        )
+    )
+
+
 def _normalize(value: str) -> str:
     return " ".join(value.strip().split()).lower()
 
@@ -233,23 +255,8 @@ def llm_guide() -> Any:
     )
 
 
+_seed_demo_entries()
+
+
 if __name__ == "__main__":
-    seed_time = datetime.utcnow() + timedelta(hours=2)
-    ENTRIES.extend(
-        [
-            CarpoolEntry(
-                id=next(ENTRY_COUNTER),
-                first_name="Mia",
-                last_initial="K",
-                flight_number="AA274",
-                flight_time=seed_time.strftime("%H:%M"),
-                flight_date=seed_time.strftime("%Y-%m-%d"),
-                airport_name="John F. Kennedy International Airport",
-                airport_location="New York, NY",
-                seats_available=2,
-                notes="Can share ride from campus north gate.",
-                created_at=datetime.utcnow().isoformat() + "Z",
-            )
-        ]
-    )
     app.run(host="0.0.0.0", port=8000, debug=True)

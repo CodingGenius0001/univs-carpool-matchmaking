@@ -29,5 +29,20 @@ Then open http://localhost:8000.
 - `GET /api/flight-status?flight_number=UAL123` attempt live status lookup.
 - `GET /api/llm-guide` machine-readable endpoint guide.
 
-## Hosting
-You can deploy this on Render, Railway, Fly.io, or any VPS that supports Python/Flask.
+## Deploy on Vercel
+This repository is preconfigured for Vercel Python serverless deployment via:
+- `api/index.py` (entrypoint)
+- `vercel.json` (routing/build config)
+
+### Steps
+1. Push this repo to GitHub.
+2. In Vercel, click **Add New Project** and import the repository.
+3. Keep framework preset as **Other**.
+4. Deploy (no special build command needed).
+
+### Notes for production
+- The current app stores carpool entries in memory. On Vercel, serverless instances are ephemeral, so data may reset between cold starts.
+- For persistent production data, connect a DB like Supabase/Postgres or Firebase.
+
+## Other hosting options
+You can also deploy this on Render, Railway, Fly.io, or any VPS that supports Python/Flask.
