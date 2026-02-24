@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>University Carpool Matchmaking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <h1>University Carpool Matchmaking</h1>
+        <p>Match with students on similar flights and split rides to the airport.</p>
+      </header>
+
+      <section class="card">
+        <h2>Add Your Flight Details</h2>
+        <form id="carpool-form">
+          <div class="grid">
+            <label>First Name <input name="first_name" required /></label>
+            <label>Last Initial <input name="last_initial" maxlength="1" required /></label>
+            <label>Flight Number <input name="flight_number" placeholder="AA274" required /></label>
+            <label>Flight Date <input type="date" name="flight_date" required /></label>
+            <label>Flight Time <input type="time" name="flight_time" required /></label>
+            <label>Airport Name <input name="airport_name" required /></label>
+            <label>Airport Location <input name="airport_location" placeholder="City, State" required /></label>
+            <label>Seats Available <input type="number" name="seats_available" min="1" max="7" value="3" /></label>
+          </div>
+          <label>Notes <textarea name="notes" rows="3" placeholder="Pickup point, luggage size, etc."></textarea></label>
+          <button type="submit">Save My Listing</button>
+        </form>
+        <p id="form-message"></p>
+      </section>
+
+      <section class="card">
+        <h2>Search Available Carpools</h2>
+        <form id="search-form">
+          <div class="grid">
+            <label>Flight Number <input name="flight_number" placeholder="Optional" /></label>
+            <label>Flight Date <input type="date" name="flight_date" /></label>
+            <label>Flight Time <input type="time" name="flight_time" /></label>
+            <label>Airport Name <input name="airport_name" /></label>
+            <label>Airport Location <input name="airport_location" /></label>
+            <label>Time Window (minutes) <input type="number" name="time_window_minutes" min="30" value="120" /></label>
+          </div>
+          <button type="submit">Find Best Matches</button>
+        </form>
+
+        <div id="results"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
