@@ -21,8 +21,8 @@ ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 
-RAPIDAPI_HOST = os.getenv("RAPIDAPI_HOST", "aerodatabox.p.rapidapi.com")
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
+SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
 
 
 def _resolve_database_path() -> str:
@@ -175,58 +175,43 @@ def _clean_flight_code(code: str) -> str:
     return "".join(code.upper().strip().split())
 
 
-def _rapidapi_headers() -> dict[str, str]:
-    return {
-        "x-rapidapi-host": RAPIDAPI_HOST,
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "accept": "application/json",
-    }
+def _serpapi_search_google_flights(query: str) -> dict[str, Any]:
+    if not SERPAPI_API_KEY:
+        return {}
 
-
-def _rapidapi_flights_by_number(flight_code: str, target_date: datetime) -> list[dict[str, Any]]:
-    if not RAPIDAPI_KEY:
-        return []
-
-    date_str = target_date.strftime("%Y-%m-%d")
-    endpoint = f"https://{RAPIDAPI_HOST}/flights/number/{quote(flight_code)}/{date_str}?withAircraftImage=false&withLocation=false"
-    req = Request(endpoint, headers=_rapidapi_headers())
+    encoded = quote(query)
+    endpoint = (
+        f"{SERPAPI_ENDPOINT}?engine=google_flights&hl=en&gl=us&type=2"
+        f"&q={encoded}&api_key={quote(SERPAPI_API_KEY)}"
+    )
+    req = Request(endpoint, headers={"accept": "application/json"})
 
     try:
         with urlopen(req, timeout=12) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
-        return []
+        return {}
 
-    flights: list[dict[str, Any]] = []
-    if isinstance(payload, list):
-        flights = payload
-    elif isinstance(payload, dict):
-        for key in ("departures", "arrivals", "data", "flights"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                flights.extend(value)
-
-    return [f for f in flights if isinstance(f, dict)]
+    return payload if isinstance(payload, dict) else {}
 
 
-def _normalize_rapidapi_flight(flight_code: str, raw: dict[str, Any]) -> dict[str, str]:
-    departure = raw.get("departure") or {}
-    arrival = raw.get("arrival") or {}
+def _normalize_serpapi_itinerary(query_flight_code: str, itinerary: dict[str, Any]) -> dict[str, str] | None:
+    flights = itinerary.get("flights") or []
+    if not isinstance(flights, list) or not flights:
+        return None
 
-    departure_airport = departure.get("airport") or {}
-    arrival_airport = arrival.get("airport") or {}
+    first = flights[0] if isinstance(flights[0], dict) else {}
+    departure = first.get("departure_airport") or {}
+    arrival = first.get("arrival_airport") or {}
 
-    departure_code = departure_airport.get("iata") or departure_airport.get("icao") or "Unknown"
-    destination_code = arrival_airport.get("iata") or arrival_airport.get("icao") or "Unknown"
+    dep_code = departure.get("id") or departure.get("name") or "Unknown"
+    arr_code = arrival.get("id") or arrival.get("name") or "Unknown"
 
-    sched_local = departure.get("scheduledTimeLocal") or {}
-    sched_utc = departure.get("scheduledTimeUtc") or {}
-    local_str = sched_local.get("dateTime") or sched_utc.get("dateTime") or ""
-
+    raw_time = departure.get("time") or ""
     dt = None
-    if local_str:
+    if raw_time:
         try:
-            dt = datetime.fromisoformat(local_str.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             dt = dt.astimezone(timezone.utc)
@@ -236,30 +221,46 @@ def _normalize_rapidapi_flight(flight_code: str, raw: dict[str, Any]) -> dict[st
     observed = dt or _now_utc()
     expires_at = observed + timedelta(hours=6)
 
+    status = str(itinerary.get("type") or "scheduled").lower()
     return {
-        "flight_code": flight_code,
+        "flight_code": query_flight_code,
         "time_utc": observed.strftime("%H:%M"),
         "date_utc": observed.strftime("%Y-%m-%d"),
-        "departure": departure_code,
-        "destination": destination_code,
-        "status": str(raw.get("status") or "scheduled").lower(),
-        "source": "rapidapi_aerodatabox",
+        "departure": dep_code,
+        "destination": arr_code,
+        "status": status,
+        "source": "serpapi_google_flights",
         "expires_at": expires_at.isoformat(),
     }
 
 
 def _lookup_present_or_future_flights(flight_code: str) -> list[dict[str, str]]:
-    # today + next 2 days for future-flight support
-    base = _now_utc()
+    payload = _serpapi_search_google_flights(flight_code)
+    if not payload:
+        return []
+
     collected: list[dict[str, str]] = []
 
-    for days in range(0, 3):
-        day = base + timedelta(days=days)
-        flights = _rapidapi_flights_by_number(flight_code, day)
-        for raw in flights:
-            collected.append(_normalize_rapidapi_flight(flight_code, raw))
+    for bucket in ("best_flights", "other_flights"):
+        items = payload.get(bucket) or []
+        if not isinstance(items, list):
+            continue
+        for itinerary in items:
+            if not isinstance(itinerary, dict):
+                continue
+            normalized = _normalize_serpapi_itinerary(flight_code, itinerary)
+            if normalized:
+                collected.append(normalized)
 
-    # de-duplicate by code/date/time/dest
+    # fallback shape: direct flights list
+    alt = payload.get("flights") or []
+    if isinstance(alt, list):
+        for itinerary in alt:
+            if isinstance(itinerary, dict):
+                normalized = _normalize_serpapi_itinerary(flight_code, itinerary)
+                if normalized:
+                    collected.append(normalized)
+
     seen: set[tuple[str, str, str, str]] = set()
     unique: list[dict[str, str]] = []
     for item in collected:
@@ -275,7 +276,7 @@ def _lookup_present_or_future_flights(flight_code: str) -> list[dict[str, str]]:
 def _fetch_flight_live_or_future(flight_code: str) -> dict[str, str]:
     results = _lookup_present_or_future_flights(flight_code)
     if not results:
-        return {"status": "not_found", "source": "rapidapi_aerodatabox"}
+        return {"status": "not_found", "source": "serpapi_google_flights"}
 
     best = results[0]
     return {
@@ -411,7 +412,7 @@ def create_carpool() -> Any:
             flight_info.get("flight_date_utc", "Unknown"),
             int(data.get("seats_available", 3) or 3),
             str(data.get("notes", "")).strip(),
-            flight_info.get("source", "rapidapi_aerodatabox"),
+            flight_info.get("source", "serpapi_google_flights"),
             flight_info.get("status", "scheduled"),
             expires_at,
             created_at,

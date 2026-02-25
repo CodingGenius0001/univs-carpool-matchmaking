@@ -120,16 +120,16 @@ Set `DB_ENGINE=mysql` and provide:
 The app will auto-create the `carpools` table.
 
 ## Flight data providers
-The app now uses **RapidAPI AeroDataBox** for present/future flight lookup and suggestions.
+The app now uses **SerpApi Google Flights API** for present/future flight lookup and suggestions.
 
 Set these env vars:
-- `RAPIDAPI_HOST` = `aerodatabox.p.rapidapi.com`
-- `RAPIDAPI_KEY` = your RapidAPI key
+- `SERPAPI_API_KEY` (or `SERPAPI_KEY`)
+- `SERPAPI_ENDPOINT` (optional, defaults to `https://serpapi.com/search.json`)
 
 Notes:
-- Old OpenSky / ADS-B Exchange lookup code has been removed.
-- Suggestions and validation now rely on RapidAPI AeroDataBox responses.
+- Old OpenSky / ADS-B / RapidAPI lookup code has been removed.
+- Suggestions and validation now rely on SerpApi Google Flights responses.
 
 If you want me to finish production wiring right now, send:
 1. Vercel project name/environment where I should apply variables
-2. Confirmation that these are set: `DB_ENGINE`, `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `RAPIDAPI_KEY`
+2. Confirmation that these are set: `DB_ENGINE`, `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `SERPAPI_API_KEY`
