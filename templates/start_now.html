@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Start Now</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav-links">
+        <a href="/">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/add-flight-details">Add Flight Details</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="card actions">
+        <h2>What would you like to do today?</h2>
+        <div class="button-row">
+          <a class="button-link" href="/add-flight-details">Add Flight Details</a>
+          <a class="button-link" href="/find-a-carpool">Find Available Carpools</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
