@@ -412,8 +412,10 @@ def create_carpool() -> Any:
     _cleanup_expired_entries()
     data = request.get_json(silent=True) or request.form.to_dict()
 
-    required = ["first_name", "last_initial", "phone", "flight_code", "airport_code", "flight_date"]
+    required = ["first_name", "last_initial", "phone", "flight_code", "airport_code"]
     missing = [k for k in required if not str(data.get(k, "")).strip()]
+    if not str(data.get("departure_date") or data.get("flight_date") or "").strip():
+        missing.append("departure_date")
     if missing:
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
@@ -435,10 +437,10 @@ def create_carpool() -> Any:
     if not PHONE_PATTERN.match(str(data["phone"]).strip()):
         return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
 
-    flight_date_raw = str(data["flight_date"]).strip()
-    parsed_flight_date = _parse_user_flight_date(flight_date_raw)
+    departure_date_raw = str(data.get("departure_date") or data.get("flight_date") or "").strip()
+    parsed_flight_date = _parse_user_flight_date(departure_date_raw)
     if not parsed_flight_date:
-        return jsonify({"error": "flight_date must be in MM-DD-YYYY format"}), 400
+        return jsonify({"error": "departure_date must be in MM-DD-YYYY format"}), 400
     flight_date_user = _to_user_flight_date(parsed_flight_date)
 
     flight_info = _fetch_flight_live_or_future(flight_code, flight_date_user)
@@ -485,8 +487,8 @@ def create_carpool() -> Any:
 def suggest_flights() -> Any:
     query = request.args.get("query", "")
     cleaned = _clean_flight_code(query)
-    flight_date = request.args.get("flight_date", "").strip() or None
-    suggestions = _lookup_present_or_future_flights(cleaned, flight_date)
+    departure_date = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip() or None
+    suggestions = _lookup_present_or_future_flights(cleaned, departure_date)
     return jsonify({"query": cleaned, "count": len(suggestions), "results": suggestions})
 
 
@@ -495,7 +497,7 @@ def search_carpools() -> Any:
     _cleanup_expired_entries()
     flight_code = _clean_flight_code(request.args.get("flight_code", ""))
     airport_code = request.args.get("airport_code", "").upper().strip()
-    flight_date_raw = request.args.get("flight_date", "").strip()
+    flight_date_raw = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip()
     parsed_search_date = _parse_user_flight_date(flight_date_raw) if flight_date_raw else None
     flight_date = _to_user_flight_date(parsed_search_date) if parsed_search_date else ""
 

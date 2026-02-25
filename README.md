@@ -26,9 +26,9 @@ Data is persisted in SQLite (not in-memory), and admin controls are available fo
 - `GET /search` → redirects to `/find-a-carpool`
 
 ### API endpoints
-- `POST /api/carpools` → create a carpool record (requires flight date (MM-DD-YYYY), validates flight code + phone format)
+- `POST /api/carpools` → create a carpool record (requires departure date (MM-DD-YYYY), validates flight code + phone format)
 - `GET /api/flights/suggest?query=UA` → best-effort live flight suggestions for dropdown UX
-- `GET /api/carpools/search` → search/rank records (supports `flight_date` (`MM-DD-YYYY`))
+- `GET /api/carpools/search` → search/rank records (supports `departure_date` (`MM-DD-YYYY`))
 - `GET /api/carpools/<id>` → fetch full details for one record (including phone)
 
 ### Admin actions

@@ -4,7 +4,7 @@ const airportCodeInput = document.querySelector('#airport_code');
 const phoneInput = document.querySelector('#phone');
 const flightCodeInput = document.querySelector('#flight_code');
 const suggestionsBox = document.querySelector('#flight_suggestions');
-const flightDateInput = document.querySelector('#flight_date');
+const departureDateInput = document.querySelector('#departure_date');
 
 
 const formatDate = (raw) => {
@@ -42,8 +42,8 @@ phoneInput?.addEventListener('input', () => {
   phoneInput.value = formatPhone(phoneInput.value);
 });
 
-flightDateInput?.addEventListener('input', () => {
-  flightDateInput.value = formatDate(flightDateInput.value);
+departureDateInput?.addEventListener('input', () => {
+  departureDateInput.value = formatDate(departureDateInput.value);
 });
 
 flightCodeInput?.addEventListener('input', async () => {
@@ -54,7 +54,7 @@ flightCodeInput?.addEventListener('input', async () => {
     return;
   }
 
-  const dateParam = flightDateInput?.value ? `&flight_date=${encodeURIComponent(flightDateInput.value)}` : '';
+  const dateParam = departureDateInput?.value ? `&departure_date=${encodeURIComponent(departureDateInput.value)}` : '';
   const res = await fetch(`/api/flights/suggest?query=${encodeURIComponent(q)}${dateParam}`);
   const data = await res.json();
   suggestionsBox.innerHTML = '';
@@ -75,7 +75,7 @@ flightCodeInput?.addEventListener('input', async () => {
   });
 });
 
-flightDateInput?.addEventListener('change', () => {
+departureDateInput?.addEventListener('change', () => {
   if (flightCodeInput?.value?.length >= 2) {
     flightCodeInput.dispatchEvent(new Event('input'));
   }
