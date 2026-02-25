@@ -7,6 +7,7 @@ import re
 import sqlite3
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
@@ -19,6 +20,9 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
+
+RAPIDAPI_HOST = os.getenv("RAPIDAPI_HOST", "aerodatabox.p.rapidapi.com")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 
 
 def _resolve_database_path() -> str:
@@ -69,7 +73,6 @@ class DBAdapter:
             )
             return g.db
 
-        # sqlite default
         g.db = sqlite3.connect(DATABASE_PATH)
         g.db.row_factory = sqlite3.Row
         return g.db
@@ -95,10 +98,7 @@ class DBAdapter:
 
     def init_schema(self) -> None:
         if self.engine == "mysql":
-            try:
-                import pymysql
-            except Exception as exc:  # pragma: no cover
-                raise RuntimeError(f"PyMySQL is required for DB_ENGINE=mysql: {exc}")
+            import pymysql
 
             conn = pymysql.connect(
                 host=os.getenv("MYSQL_HOST", "127.0.0.1"),
@@ -112,7 +112,6 @@ class DBAdapter:
             conn = sqlite3.connect(DATABASE_PATH)
 
         cur = conn.cursor()
-
         if self.engine == "mysql":
             cur.execute(
                 """
@@ -176,126 +175,118 @@ def _clean_flight_code(code: str) -> str:
     return "".join(code.upper().strip().split())
 
 
-@app.teardown_appcontext
-def close_db(_: Any) -> None:
-    conn = g.pop("db", None)
-    if conn is not None:
-        conn.close()
-
-
-def _cleanup_expired_entries() -> None:
-    p = db.placeholder
-    db.execute(f"DELETE FROM carpools WHERE expires_at <= {p}", (_now_utc().isoformat(),))
-
-
-def _fetch_from_opensky(flight_code: str) -> dict[str, str] | None:
-    try:
-        with urlopen("https://opensky-network.org/api/states/all", timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
-        return None
-
-    for state in payload.get("states") or []:
-        callsign = (state[1] or "").strip().upper()
-        if callsign == flight_code:
-            observed = datetime.fromtimestamp(payload.get("time", 0), tz=timezone.utc) if payload.get("time") else _now_utc()
-            expires_at = observed + timedelta(hours=6)
-            return {
-                "status": "airborne" if not state[8] else "on_ground",
-                "source": "opensky",
-                "flight_time_utc": observed.strftime("%H:%M"),
-                "flight_date_utc": observed.strftime("%Y-%m-%d"),
-                "departure": state[2] or "Unknown",
-                "destination": "Unknown",
-                "expires_at": expires_at.isoformat(),
-            }
-    return {"status": "not_found_live", "source": "opensky"}
-
-
-def _fetch_from_adsbx(flight_code: str) -> dict[str, str] | None:
-    api_key = os.getenv("ADSBX_API_KEY", "").strip()
-    if not api_key:
-        return None
-
-    endpoint = f"https://api.adsbexchange.com/v2/callsign/{flight_code}/"
-    req = Request(endpoint, headers={"api-auth": api_key, "accept": "application/json"})
-    try:
-        with urlopen(req, timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
-        return None
-
-    aircraft = payload.get("ac") or []
-    if not aircraft:
-        return {"status": "not_found_live", "source": "adsbx"}
-
-    item = aircraft[0]
-    observed = _now_utc()
-    expires_at = observed + timedelta(hours=6)
+def _rapidapi_headers() -> dict[str, str]:
     return {
-        "status": "airborne" if not item.get("gnd", False) else "on_ground",
-        "source": "adsbx",
-        "flight_time_utc": observed.strftime("%H:%M"),
-        "flight_date_utc": observed.strftime("%Y-%m-%d"),
-        "departure": item.get("from") or "Unknown",
-        "destination": item.get("to") or "Unknown",
+        "x-rapidapi-host": RAPIDAPI_HOST,
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "accept": "application/json",
+    }
+
+
+def _rapidapi_flights_by_number(flight_code: str, target_date: datetime) -> list[dict[str, Any]]:
+    if not RAPIDAPI_KEY:
+        return []
+
+    date_str = target_date.strftime("%Y-%m-%d")
+    endpoint = f"https://{RAPIDAPI_HOST}/flights/number/{quote(flight_code)}/{date_str}?withAircraftImage=false&withLocation=false"
+    req = Request(endpoint, headers=_rapidapi_headers())
+
+    try:
+        with urlopen(req, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
+        return []
+
+    flights: list[dict[str, Any]] = []
+    if isinstance(payload, list):
+        flights = payload
+    elif isinstance(payload, dict):
+        for key in ("departures", "arrivals", "data", "flights"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                flights.extend(value)
+
+    return [f for f in flights if isinstance(f, dict)]
+
+
+def _normalize_rapidapi_flight(flight_code: str, raw: dict[str, Any]) -> dict[str, str]:
+    departure = raw.get("departure") or {}
+    arrival = raw.get("arrival") or {}
+
+    departure_airport = departure.get("airport") or {}
+    arrival_airport = arrival.get("airport") or {}
+
+    departure_code = departure_airport.get("iata") or departure_airport.get("icao") or "Unknown"
+    destination_code = arrival_airport.get("iata") or arrival_airport.get("icao") or "Unknown"
+
+    sched_local = departure.get("scheduledTimeLocal") or {}
+    sched_utc = departure.get("scheduledTimeUtc") or {}
+    local_str = sched_local.get("dateTime") or sched_utc.get("dateTime") or ""
+
+    dt = None
+    if local_str:
+        try:
+            dt = datetime.fromisoformat(local_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(timezone.utc)
+        except ValueError:
+            dt = None
+
+    observed = dt or _now_utc()
+    expires_at = observed + timedelta(hours=6)
+
+    return {
+        "flight_code": flight_code,
+        "time_utc": observed.strftime("%H:%M"),
+        "date_utc": observed.strftime("%Y-%m-%d"),
+        "departure": departure_code,
+        "destination": destination_code,
+        "status": str(raw.get("status") or "scheduled").lower(),
+        "source": "rapidapi_aerodatabox",
         "expires_at": expires_at.isoformat(),
     }
 
 
-def _fetch_flight_live(flight_code: str) -> dict[str, str]:
-    opensky = _fetch_from_opensky(flight_code)
-    if opensky and opensky.get("status") != "not_found_live":
-        return opensky
+def _lookup_present_or_future_flights(flight_code: str) -> list[dict[str, str]]:
+    # today + next 2 days for future-flight support
+    base = _now_utc()
+    collected: list[dict[str, str]] = []
 
-    adsbx = _fetch_from_adsbx(flight_code)
-    if adsbx and adsbx.get("status") != "not_found_live":
-        return adsbx
+    for days in range(0, 3):
+        day = base + timedelta(days=days)
+        flights = _rapidapi_flights_by_number(flight_code, day)
+        for raw in flights:
+            collected.append(_normalize_rapidapi_flight(flight_code, raw))
 
-    return {"status": "not_found_live", "source": "unavailable"}
-
-
-def _flight_suggestions(query: str) -> list[dict[str, str]]:
-    cleaned = _clean_flight_code(query)
-    if len(cleaned) < 2:
-        return []
-
-    suggestions: list[dict[str, str]] = []
-
-    opensky = _fetch_from_opensky(cleaned)
-    if opensky and opensky.get("status") not in {"not_found_live", "unknown"}:
-        suggestions.append(
-            {
-                "flight_code": cleaned,
-                "time_utc": opensky.get("flight_time_utc", "Unknown"),
-                "departure": opensky.get("departure", "Unknown"),
-                "destination": opensky.get("destination", "Unknown"),
-                "status": opensky.get("status", "unknown"),
-            }
-        )
-
-    adsbx = _fetch_from_adsbx(cleaned)
-    if adsbx and adsbx.get("status") not in {"not_found_live", "unknown"}:
-        suggestions.append(
-            {
-                "flight_code": cleaned,
-                "time_utc": adsbx.get("flight_time_utc", "Unknown"),
-                "departure": adsbx.get("departure", "Unknown"),
-                "destination": adsbx.get("destination", "Unknown"),
-                "status": adsbx.get("status", "unknown"),
-            }
-        )
-
-    # de-dupe by flight_code/source content
-    seen = set()
+    # de-duplicate by code/date/time/dest
+    seen: set[tuple[str, str, str, str]] = set()
     unique: list[dict[str, str]] = []
-    for item in suggestions:
-        key = (item["flight_code"], item["time_utc"], item["departure"], item["destination"])
+    for item in collected:
+        key = (item["flight_code"], item["date_utc"], item["time_utc"], item["destination"])
         if key in seen:
             continue
         seen.add(key)
         unique.append(item)
-    return unique[:8]
+
+    return unique[:10]
+
+
+def _fetch_flight_live_or_future(flight_code: str) -> dict[str, str]:
+    results = _lookup_present_or_future_flights(flight_code)
+    if not results:
+        return {"status": "not_found", "source": "rapidapi_aerodatabox"}
+
+    best = results[0]
+    return {
+        "status": best["status"],
+        "source": best["source"],
+        "flight_time_utc": best["time_utc"],
+        "flight_date_utc": best["date_utc"],
+        "departure": best["departure"],
+        "destination": best["destination"],
+        "expires_at": best["expires_at"],
+    }
 
 
 def _resolve_airport(code: str) -> tuple[str, str]:
@@ -314,6 +305,18 @@ def _serialize_entry(row: dict[str, Any], include_phone: bool = False) -> dict[s
 
 def _require_admin() -> bool:
     return bool(session.get("admin_authed"))
+
+
+@app.teardown_appcontext
+def close_db(_: Any) -> None:
+    conn = g.pop("db", None)
+    if conn is not None:
+        conn.close()
+
+
+def _cleanup_expired_entries() -> None:
+    p = db.placeholder
+    db.execute(f"DELETE FROM carpools WHERE expires_at <= {p}", (_now_utc().isoformat(),))
 
 
 @app.get("/")
@@ -380,9 +383,9 @@ def create_carpool() -> Any:
     if not PHONE_PATTERN.match(str(data["phone"]).strip()):
         return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
 
-    flight_info = _fetch_flight_live(flight_code)
-    if flight_info.get("status") == "not_found_live":
-        return jsonify({"error": "Flight not found in live data. Pick a valid UA533-style code from suggestions."}), 400
+    flight_info = _fetch_flight_live_or_future(flight_code)
+    if flight_info.get("status") == "not_found":
+        return jsonify({"error": "Flight not found in present/future RapidAPI results. Pick a valid code from suggestions."}), 400
 
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
@@ -408,8 +411,8 @@ def create_carpool() -> Any:
             flight_info.get("flight_date_utc", "Unknown"),
             int(data.get("seats_available", 3) or 3),
             str(data.get("notes", "")).strip(),
-            flight_info.get("source", "fallback"),
-            flight_info.get("status", "unknown"),
+            flight_info.get("source", "rapidapi_aerodatabox"),
+            flight_info.get("status", "scheduled"),
             expires_at,
             created_at,
         ),
@@ -422,8 +425,9 @@ def create_carpool() -> Any:
 @app.get("/api/flights/suggest")
 def suggest_flights() -> Any:
     query = request.args.get("query", "")
-    suggestions = _flight_suggestions(query)
-    return jsonify({"query": _clean_flight_code(query), "count": len(suggestions), "results": suggestions})
+    cleaned = _clean_flight_code(query)
+    suggestions = _lookup_present_or_future_flights(cleaned)
+    return jsonify({"query": cleaned, "count": len(suggestions), "results": suggestions})
 
 
 @app.get("/api/carpools/search")
@@ -526,7 +530,6 @@ def admin_edit_entry(entry_id: int) -> Any:
 
 
 try:
-    # Ensure sqlite dir exists if sqlite mode.
     if DB_ENGINE == "sqlite" and DATABASE_PATH not in (":memory:",):
         db_dir = os.path.dirname(DATABASE_PATH)
         if db_dir:

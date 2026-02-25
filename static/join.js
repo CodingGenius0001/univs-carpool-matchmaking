@@ -43,7 +43,7 @@ flightCodeInput?.addEventListener('input', async () => {
 
   if (!data.results?.length) {
     const opt = document.createElement('option');
-    opt.textContent = 'No live suggestions found yet';
+    opt.textContent = 'No present/future suggestions found yet';
     opt.disabled = true;
     suggestionsBox.appendChild(opt);
     return;
