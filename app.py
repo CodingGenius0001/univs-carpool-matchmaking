@@ -7,7 +7,7 @@ import re
 import sqlite3
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
@@ -23,6 +23,7 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
+SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "8"))
 
 
 def _resolve_database_path() -> str:
@@ -34,15 +35,41 @@ def _resolve_database_path() -> str:
     return "carpool.db"
 
 
-DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()  # sqlite | mysql
+DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
 DATABASE_PATH = _resolve_database_path()
 
+# Expanded airport list
 AIRPORT_CODE_MAP = {
     "SFO": {"name": "San Francisco International Airport", "location": "San Francisco, CA"},
     "ONT": {"name": "Ontario International Airport", "location": "Ontario, CA"},
     "LAX": {"name": "Los Angeles International Airport", "location": "Los Angeles, CA"},
     "JFK": {"name": "John F. Kennedy International Airport", "location": "New York, NY"},
     "EWR": {"name": "Newark Liberty International Airport", "location": "Newark, NJ"},
+    "ORD": {"name": "O'Hare International Airport", "location": "Chicago, IL"},
+    "ATL": {"name": "Hartsfield-Jackson Atlanta International Airport", "location": "Atlanta, GA"},
+    "DFW": {"name": "Dallas/Fort Worth International Airport", "location": "Dallas, TX"},
+    "DEN": {"name": "Denver International Airport", "location": "Denver, CO"},
+    "SEA": {"name": "Seattle-Tacoma International Airport", "location": "Seattle, WA"},
+    "LAS": {"name": "Harry Reid International Airport", "location": "Las Vegas, NV"},
+    "MCO": {"name": "Orlando International Airport", "location": "Orlando, FL"},
+    "MIA": {"name": "Miami International Airport", "location": "Miami, FL"},
+    "PHX": {"name": "Phoenix Sky Harbor International Airport", "location": "Phoenix, AZ"},
+    "IAH": {"name": "George Bush Intercontinental Airport", "location": "Houston, TX"},
+    "BOS": {"name": "Boston Logan International Airport", "location": "Boston, MA"},
+    "MSP": {"name": "Minneapolis-Saint Paul International Airport", "location": "Minneapolis, MN"},
+    "DTW": {"name": "Detroit Metropolitan Wayne County Airport", "location": "Detroit, MI"},
+    "PHL": {"name": "Philadelphia International Airport", "location": "Philadelphia, PA"},
+    "CLT": {"name": "Charlotte Douglas International Airport", "location": "Charlotte, NC"},
+    "SAN": {"name": "San Diego International Airport", "location": "San Diego, CA"},
+    "SJC": {"name": "San Jose International Airport", "location": "San Jose, CA"},
+    "IAD": {"name": "Washington Dulles International Airport", "location": "Washington, DC"},
+    "DCA": {"name": "Ronald Reagan Washington National Airport", "location": "Washington, DC"},
+    "BUR": {"name": "Hollywood Burbank Airport", "location": "Burbank, CA"},
+    "SNA": {"name": "John Wayne Airport", "location": "Santa Ana, CA"},
+    "OAK": {"name": "Oakland International Airport", "location": "Oakland, CA"},
+    "PDX": {"name": "Portland International Airport", "location": "Portland, OR"},
+    "TPA": {"name": "Tampa International Airport", "location": "Tampa, FL"},
+    "FLL": {"name": "Fort Lauderdale-Hollywood International Airport", "location": "Fort Lauderdale, FL"},
 }
 
 
@@ -59,7 +86,7 @@ class DBAdapter:
             try:
                 import pymysql
                 from pymysql.cursors import DictCursor
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 raise RuntimeError(f"PyMySQL is required for DB_ENGINE=mysql: {exc}")
 
             g.db = pymysql.connect(
@@ -132,7 +159,8 @@ class DBAdapter:
                     status VARCHAR(64) NOT NULL,
                     expires_at VARCHAR(64) NOT NULL,
                     created_at VARCHAR(64) NOT NULL,
-                    requested_flight_date VARCHAR(16) NOT NULL
+                    requested_flight_date VARCHAR(16) NOT NULL,
+                    destination_airport VARCHAR(3) NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -156,7 +184,8 @@ class DBAdapter:
                     status TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    requested_flight_date TEXT NOT NULL
+                    requested_flight_date TEXT NOT NULL,
+                    destination_airport TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -165,24 +194,27 @@ class DBAdapter:
         cur.close()
         conn.close()
 
-    def ensure_requested_flight_date_column(self) -> None:
+    def ensure_columns(self) -> None:
         conn = self.get_conn()
         cur = conn.cursor()
         try:
             if self.engine == "mysql":
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'requested_flight_date'")
-                exists = cur.fetchone()
-                if not exists:
+                if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN requested_flight_date VARCHAR(16) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM carpools LIKE 'destination_airport'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpools ADD COLUMN destination_airport VARCHAR(3) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
                 if "requested_flight_date" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN requested_flight_date TEXT NOT NULL DEFAULT ''")
+                if "destination_airport" not in cols:
+                    cur.execute("ALTER TABLE carpools ADD COLUMN destination_airport TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
-
 
 
 db = DBAdapter()
@@ -214,68 +246,115 @@ def _to_api_flight_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-def _serpapi_search_google_flights(query: str, flight_date_api: str | None = None) -> dict[str, Any]:
+# ---------------------------------------------------------------------------
+# SerpApi Google Flights integration
+# ---------------------------------------------------------------------------
+# NOTE: SerpApi google_flights engine searches by route (departure_id +
+# arrival_id), NOT by flight number.  We use it to find flights on a given
+# date from a given airport pair, which is what the suggest endpoint returns.
+# For flight-number-based lookup we extract matching legs from the results.
+# ---------------------------------------------------------------------------
+
+def _serpapi_search_flights(departure_id: str, arrival_id: str, outbound_date: str) -> dict[str, Any]:
+    """Search SerpApi Google Flights by route and date."""
     if not SERPAPI_API_KEY:
         return {}
 
-    encoded = quote(query)
-    date_part = f"&departure_date={quote(flight_date_api)}" if flight_date_api else ""
-    endpoint = (
-        f"{SERPAPI_ENDPOINT}?engine=google_flights&hl=en&gl=us&type=2"
-        f"&q={encoded}{date_part}&api_key={quote(SERPAPI_API_KEY)}"
-    )
-    req = Request(endpoint, headers={"accept": "application/json"})
+    params = {
+        "engine": "google_flights",
+        "hl": "en",
+        "gl": "us",
+        "type": "2",
+        "departure_id": departure_id,
+        "arrival_id": arrival_id,
+        "outbound_date": outbound_date,
+        "currency": "USD",
+        "api_key": SERPAPI_API_KEY,
+    }
+    url = f"{SERPAPI_ENDPOINT}?{urlencode(params)}"
+    req = Request(url, headers={"accept": "application/json"})
 
     try:
-        with urlopen(req, timeout=12) as response:
+        with urlopen(req, timeout=SERPAPI_TIMEOUT) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError):
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError, OSError):
         return {}
 
     return payload if isinstance(payload, dict) else {}
 
 
-def _normalize_serpapi_itinerary(query_flight_code: str, itinerary: dict[str, Any]) -> dict[str, str] | None:
-    flights = itinerary.get("flights") or []
-    if not isinstance(flights, list) or not flights:
-        return None
+def _extract_flights_from_serpapi(payload: dict, flight_code_filter: str | None = None) -> list[dict[str, str]]:
+    """Extract normalized flight info from SerpApi response."""
+    collected: list[dict[str, str]] = []
 
-    first = flights[0] if isinstance(flights[0], dict) else {}
-    departure = first.get("departure_airport") or {}
-    arrival = first.get("arrival_airport") or {}
+    for bucket in ("best_flights", "other_flights", "flights"):
+        items = payload.get(bucket) or []
+        if not isinstance(items, list):
+            continue
+        for itinerary in items:
+            if not isinstance(itinerary, dict):
+                continue
+            flights = itinerary.get("flights") or []
+            if not isinstance(flights, list) or not flights:
+                continue
 
-    dep_code = departure.get("id") or departure.get("name") or "Unknown"
-    arr_code = arrival.get("id") or arrival.get("name") or "Unknown"
+            first = flights[0] if isinstance(flights[0], dict) else {}
+            departure = first.get("departure_airport") or {}
+            arrival = first.get("arrival_airport") or {}
+            airline = first.get("airline") or ""
+            flight_number = first.get("flight_number") or ""
 
-    raw_time = departure.get("time") or ""
-    dt = None
-    if raw_time:
-        try:
-            dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt = dt.astimezone(timezone.utc)
-        except ValueError:
-            dt = None
+            full_code = f"{airline}{flight_number}".replace(" ", "").upper() if airline and flight_number else ""
+            if not full_code:
+                # Try to build from other fields
+                operating = first.get("operating_airline") or ""
+                if operating and flight_number:
+                    full_code = f"{operating}{flight_number}".replace(" ", "").upper()
 
-    observed = dt or _now_utc()
-    expires_at = observed + timedelta(hours=6)
+            dep_code = departure.get("id") or ""
+            arr_code = arrival.get("id") or ""
 
-    status = str(itinerary.get("type") or "scheduled").lower()
-    return {
-        "flight_code": query_flight_code,
-        "time_utc": observed.strftime("%H:%M"),
-        "date_utc": observed.strftime("%Y-%m-%d"),
-        "departure": dep_code,
-        "destination": arr_code,
-        "status": status,
-        "source": "serpapi_google_flights",
-        "expires_at": expires_at.isoformat(),
-    }
+            raw_time = departure.get("time") or ""
+            dep_date = ""
+            dep_time = ""
+            if raw_time:
+                try:
+                    dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+                    dep_time = dt.strftime("%H:%M")
+                    dep_date = dt.strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+
+            # If filtering by flight code, check match
+            if flight_code_filter:
+                clean_filter = _clean_flight_code(flight_code_filter)
+                if full_code and clean_filter not in full_code and full_code not in clean_filter:
+                    continue
+
+            entry = {
+                "flight_code": full_code or (flight_code_filter or "UNKNOWN"),
+                "airline": airline,
+                "time_utc": dep_time or "TBD",
+                "date_utc": dep_date or "",
+                "departure": dep_code,
+                "departure_name": departure.get("name") or "",
+                "destination": arr_code,
+                "destination_name": arrival.get("name") or "",
+                "status": str(itinerary.get("type") or "scheduled").lower(),
+                "source": "serpapi_google_flights",
+                "duration": str(first.get("duration") or ""),
+            }
+            collected.append(entry)
+
+    return collected
 
 
 def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | None = None) -> list[dict[str, str]]:
-    dates_api: list[str | None] = []
+    """Look up flights. Returns a list of matching flights."""
+    if not SERPAPI_API_KEY:
+        return []
+
+    dates_api: list[str] = []
     if flight_date_user:
         parsed = _parse_user_flight_date(flight_date_user)
         if parsed:
@@ -286,32 +365,30 @@ def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | 
         base = _now_utc().date()
         dates_api.extend([(base + timedelta(days=i)).isoformat() for i in range(0, 3)])
 
+    # Try common airport pairs for the airline
+    airline_prefix = re.match(r"^[A-Z]{2,3}", flight_code)
+    if not airline_prefix:
+        return []
+
+    # Use major US hub pairs for searching
+    hub_pairs = [
+        ("SFO", "JFK"), ("SFO", "LAX"), ("SFO", "ORD"), ("SFO", "EWR"),
+        ("LAX", "JFK"), ("LAX", "ORD"), ("LAX", "SFO"), ("LAX", "EWR"),
+        ("JFK", "LAX"), ("JFK", "SFO"), ("JFK", "ORD"), ("JFK", "MIA"),
+        ("ORD", "LAX"), ("ORD", "JFK"), ("ORD", "SFO"),
+    ]
+
     collected: list[dict[str, str]] = []
-
     for date_item in dates_api:
-        payload = _serpapi_search_google_flights(flight_code, date_item)
-        if not payload:
-            continue
+        for dep, arr in hub_pairs[:6]:  # Limit API calls
+            if collected:  # Stop once we found something
+                break
+            payload = _serpapi_search_flights(dep, arr, date_item)
+            if payload:
+                results = _extract_flights_from_serpapi(payload, flight_code)
+                collected.extend(results)
 
-        for bucket in ("best_flights", "other_flights"):
-            items = payload.get(bucket) or []
-            if not isinstance(items, list):
-                continue
-            for itinerary in items:
-                if not isinstance(itinerary, dict):
-                    continue
-                normalized = _normalize_serpapi_itinerary(flight_code, itinerary)
-                if normalized:
-                    collected.append(normalized)
-
-        alt = payload.get("flights") or []
-        if isinstance(alt, list):
-            for itinerary in alt:
-                if isinstance(itinerary, dict):
-                    normalized = _normalize_serpapi_itinerary(flight_code, itinerary)
-                    if normalized:
-                        collected.append(normalized)
-
+    # Deduplicate
     seen: set[tuple[str, str, str, str]] = set()
     unique: list[dict[str, str]] = []
     for item in collected:
@@ -327,17 +404,18 @@ def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | 
 def _fetch_flight_live_or_future(flight_code: str, flight_date_user: str | None = None) -> dict[str, str]:
     results = _lookup_present_or_future_flights(flight_code, flight_date_user)
     if not results:
-        return {"status": "not_found", "source": "serpapi_google_flights"}
+        return {"status": "unverified", "source": "user_entered"}
 
     best = results[0]
+    expires_at = (_now_utc() + timedelta(hours=6)).isoformat()
     return {
-        "status": best["status"],
+        "status": best.get("status", "scheduled"),
         "source": best["source"],
         "flight_time_utc": best["time_utc"],
         "flight_date_utc": best["date_utc"],
         "departure": best["departure"],
         "destination": best["destination"],
-        "expires_at": best["expires_at"],
+        "expires_at": expires_at,
     }
 
 
@@ -368,8 +446,12 @@ def close_db(_: Any) -> None:
 
 def _cleanup_expired_entries() -> None:
     p = db.placeholder
-    db.execute(f"DELETE FROM carpools WHERE expires_at <= {p}", (_now_utc().isoformat(),))
+    db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (_now_utc().isoformat(),))
 
+
+# ---------------------------------------------------------------------------
+# Page routes
+# ---------------------------------------------------------------------------
 
 @app.get("/")
 def landing() -> Any:
@@ -407,6 +489,10 @@ def search_page() -> Any:
     return redirect(url_for("find_a_carpool_page"), code=302)
 
 
+# ---------------------------------------------------------------------------
+# API endpoints
+# ---------------------------------------------------------------------------
+
 @app.post("/api/carpools")
 def create_carpool() -> Any:
     _cleanup_expired_entries()
@@ -443,21 +529,27 @@ def create_carpool() -> Any:
         return jsonify({"error": "departure_date must be in MM-DD-YYYY format"}), 400
     flight_date_user = _to_user_flight_date(parsed_flight_date)
 
+    # Try to fetch live flight data, but save regardless
     flight_info = _fetch_flight_live_or_future(flight_code, flight_date_user)
-    if flight_info.get("status") == "not_found":
-        return jsonify({"error": "Flight not found in present/future Google Flights results. Pick a valid code from suggestions."}), 400
+    warning = None
+    if flight_info.get("source") == "user_entered":
+        warning = "Flight could not be verified via API. Saved with user-provided details."
 
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
-    expires_at = flight_info.get("expires_at") or (_now_utc() + timedelta(hours=12)).isoformat()
+    # For unverified flights, set a longer expiration (24 hours)
+    expires_at = flight_info.get("expires_at") or (_now_utc() + timedelta(hours=24)).isoformat()
+
+    destination_airport = str(data.get("destination_airport") or flight_info.get("destination") or "").strip().upper()[:3]
 
     p = db.placeholder
     last_id = db.execute(
         f"""
         INSERT INTO carpools (
             first_name,last_initial,phone,flight_code,airport_code,airport_name,airport_location,
-            flight_time_utc,flight_date_utc,seats_available,notes,fetched_from,status,expires_at,created_at,requested_flight_date
-        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            flight_time_utc,flight_date_utc,seats_available,notes,fetched_from,status,expires_at,created_at,
+            requested_flight_date,destination_airport
+        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """,
         (
             data["first_name"].strip().title(),
@@ -468,19 +560,23 @@ def create_carpool() -> Any:
             airport_name,
             airport_location,
             flight_info.get("flight_time_utc", "Unknown"),
-            flight_info.get("flight_date_utc", "Unknown"),
+            flight_info.get("flight_date_utc", _to_api_flight_date(parsed_flight_date)),
             int(data.get("seats_available", 3) or 3),
             str(data.get("notes", "")).strip(),
-            flight_info.get("source", "serpapi_google_flights"),
-            flight_info.get("status", "scheduled"),
+            flight_info.get("source", "user_entered"),
+            flight_info.get("status", "unverified"),
             expires_at,
             created_at,
             flight_date_user,
+            destination_airport,
         ),
     )
 
     row = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))[0]
-    return jsonify({"message": "Added to carpool database", "entry": _serialize_entry(row)}), 201
+    response = {"message": "Added to carpool database", "entry": _serialize_entry(row)}
+    if warning:
+        response["warning"] = warning
+    return jsonify(response), 201
 
 
 @app.get("/api/flights/suggest")
@@ -536,6 +632,10 @@ def carpool_details(entry_id: int) -> Any:
     return jsonify({"entry": _serialize_entry(rows[0], include_phone=True)})
 
 
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+
 @app.post("/admin/login")
 def admin_login() -> Any:
     username = request.form.get("username", "")
@@ -550,7 +650,6 @@ def admin_login() -> Any:
 def admin_panel() -> Any:
     if not _require_admin():
         return redirect(url_for("landing"))
-    _cleanup_expired_entries()
     rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
     return render_template("admin.html", entries=rows)
 
@@ -581,6 +680,9 @@ def admin_edit_entry(entry_id: int) -> Any:
     last_initial = request.form.get("last_initial", "").strip().upper()[:1]
     phone = request.form.get("phone", "").strip()
     notes = request.form.get("notes", "").strip()
+    flight_code = request.form.get("flight_code", "").strip().upper()
+    airport_code = request.form.get("airport_code", "").strip().upper()
+    seats = request.form.get("seats_available", "").strip()
 
     p = db.placeholder
     db.execute(
@@ -589,13 +691,26 @@ def admin_edit_entry(entry_id: int) -> Any:
         SET first_name = COALESCE(NULLIF({p}, ''), first_name),
             last_initial = COALESCE(NULLIF({p}, ''), last_initial),
             phone = COALESCE(NULLIF({p}, ''), phone),
-            notes = COALESCE(NULLIF({p}, ''), notes)
+            notes = COALESCE(NULLIF({p}, ''), notes),
+            flight_code = COALESCE(NULLIF({p}, ''), flight_code),
+            airport_code = COALESCE(NULLIF({p}, ''), airport_code),
+            seats_available = COALESCE(NULLIF({p}, ''), seats_available)
         WHERE id = {p}
         """,
-        (first_name, last_initial, phone, notes, entry_id),
+        (first_name, last_initial, phone, notes, flight_code, airport_code, seats, entry_id),
     )
     return redirect(url_for("admin_panel"))
 
+
+@app.get("/admin/logout")
+def admin_logout() -> Any:
+    session.pop("admin_authed", None)
+    return redirect(url_for("landing"))
+
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
 
 try:
     if DB_ENGINE == "sqlite" and DATABASE_PATH not in (":memory:",):
@@ -604,7 +719,7 @@ try:
             os.makedirs(db_dir, exist_ok=True)
     with app.app_context():
         db.init_schema()
-        db.ensure_requested_flight_date_column()
+        db.ensure_columns()
 except Exception as exc:
     print(f"[startup] database initialization failed: {exc}")
 
