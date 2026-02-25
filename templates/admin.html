@@ -28,15 +28,15 @@
         <!-- Stats -->
         <div class="admin-stats">
           <div class="stat-card">
-            <div class="stat-value">{{ entries|length }}</div>
+            <div class="stat-value">{{ total }}</div>
             <div class="stat-label">Total Entries</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">{{ entries|selectattr('status', 'equalto', 'unverified')|list|length }}</div>
+            <div class="stat-value">{{ unverified }}</div>
             <div class="stat-label">Unverified</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">{{ entries|map(attribute='flight_code')|list|unique|list|length }}</div>
+            <div class="stat-value">{{ unique_flights }}</div>
             <div class="stat-label">Unique Flights</div>
           </div>
         </div>
@@ -48,7 +48,7 @@
           </form>
         </div>
 
-        {% if entries|length == 0 %}
+        {% if total == 0 %}
         <div class="empty-state">
           <div class="icon">0</div>
           <p>No entries in the database yet.</p>
@@ -82,12 +82,12 @@
                 <td>{{ entry.phone }}</td>
                 <td><strong>{{ entry.flight_code }}</strong></td>
                 <td>{{ entry.airport_code }}</td>
-                <td>{{ entry.destination_airport or '—' }}</td>
+                <td>{{ entry.get('destination_airport', '') or '—' }}</td>
                 <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
                 <td>{{ entry.seats_available }}</td>
                 <td>{{ entry.status }}</td>
-                <td title="{{ entry.notes }}">{{ entry.notes[:30] }}{{ '...' if entry.notes|length > 30 else '' }}</td>
-                <td>{{ entry.created_at[:16] }}</td>
+                <td title="{{ entry.notes or '' }}">{{ (entry.notes or '')[:30] }}{{ '...' if (entry.notes or '')|length > 30 else '' }}</td>
+                <td>{{ (entry.created_at or '')[:16] }}</td>
                 <td style="white-space: nowrap;">
                   <details>
                     <summary class="btn btn-secondary btn-sm" style="display:inline; cursor:pointer;">Edit</summary>
@@ -129,7 +129,7 @@
               </div>
               <div class="entry-field">
                 <span class="label">From / To</span>
-                <span>{{ entry.airport_code }} → {{ entry.destination_airport or '—' }}</span>
+                <span>{{ entry.airport_code }} → {{ entry.get('destination_airport', '') or '—' }}</span>
               </div>
               <div class="entry-field">
                 <span class="label">Date</span>

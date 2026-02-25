@@ -520,7 +520,11 @@ def create_carpool() -> Any:
     if not FLIGHT_CODE_PATTERN.match(flight_code):
         return jsonify({"error": "Invalid flight_code format. Example: UA533"}), 400
 
-    if not PHONE_PATTERN.match(str(data["phone"]).strip()):
+    # Normalize phone: collapse all whitespace types (including non-breaking
+    # spaces from mobile browsers) into single regular spaces, then strip.
+    raw_phone = str(data["phone"])
+    raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
+    if not PHONE_PATTERN.match(raw_phone):
         return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
 
     departure_date_raw = str(data.get("departure_date") or data.get("flight_date") or "").strip()
@@ -554,7 +558,7 @@ def create_carpool() -> Any:
         (
             data["first_name"].strip().title(),
             data["last_initial"].strip()[:1].upper(),
-            data["phone"].strip(),
+            raw_phone,
             flight_code,
             airport_code,
             airport_name,
@@ -651,7 +655,11 @@ def admin_panel() -> Any:
     if not _require_admin():
         return redirect(url_for("landing"))
     rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
-    return render_template("admin.html", entries=rows)
+    total = len(rows)
+    unverified = sum(1 for r in rows if r.get("status") == "unverified")
+    unique_flights = len({r.get("flight_code", "") for r in rows})
+    return render_template("admin.html", entries=rows, total=total,
+                           unverified=unverified, unique_flights=unique_flights)
 
 
 @app.post("/admin/delete-all")
