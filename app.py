@@ -10,6 +10,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+import traceback
+
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -23,7 +25,7 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
-SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "8"))
+SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 
 
 def _resolve_database_path() -> str:
@@ -380,8 +382,10 @@ def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | 
 
     collected: list[dict[str, str]] = []
     for date_item in dates_api:
-        for dep, arr in hub_pairs[:6]:  # Limit API calls
-            if collected:  # Stop once we found something
+        if collected:
+            break
+        for dep, arr in hub_pairs[:2]:  # Strict limit for Vercel timeout
+            if collected:
                 break
             payload = _serpapi_search_flights(dep, arr, date_item)
             if payload:
@@ -444,9 +448,39 @@ def close_db(_: Any) -> None:
         conn.close()
 
 
+_db_initialized = False
+
+
+@app.before_request
+def _ensure_db() -> None:
+    """Ensure database table exists on every request (handles Vercel cold starts)."""
+    global _db_initialized
+    if _db_initialized:
+        return
+    try:
+        db.init_schema()
+        db.ensure_columns()
+        _db_initialized = True
+    except Exception:
+        pass
+
+
+@app.errorhandler(Exception)
+def handle_exception(e: Exception) -> Any:
+    """Return JSON errors for API routes, HTML for pages."""
+    tb = traceback.format_exc()
+    app.logger.error(f"Unhandled exception: {e}\n{tb}")
+    if request.path.startswith("/api/"):
+        return jsonify({"error": f"Server error: {e}"}), 500
+    return f"<h1>Internal Server Error</h1><pre>{e}</pre>", 500
+
+
 def _cleanup_expired_entries() -> None:
-    p = db.placeholder
-    db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (_now_utc().isoformat(),))
+    try:
+        p = db.placeholder
+        db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (_now_utc().isoformat(),))
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +529,14 @@ def search_page() -> Any:
 
 @app.post("/api/carpools")
 def create_carpool() -> Any:
+    try:
+        return _create_carpool_inner()
+    except Exception as e:
+        app.logger.error(f"create_carpool error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": f"Server error: {e}"}), 500
+
+
+def _create_carpool_inner() -> Any:
     _cleanup_expired_entries()
     data = request.get_json(silent=True) or request.form.to_dict()
 
@@ -654,7 +696,10 @@ def admin_login() -> Any:
 def admin_panel() -> Any:
     if not _require_admin():
         return redirect(url_for("landing"))
-    rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
+    try:
+        rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
+    except Exception:
+        rows = []
     total = len(rows)
     unverified = sum(1 for r in rows if r.get("status") == "unverified")
     unique_flights = len({r.get("flight_code", "") for r in rows})
@@ -714,6 +759,24 @@ def admin_edit_entry(entry_id: int) -> Any:
 def admin_logout() -> Any:
     session.pop("admin_authed", None)
     return redirect(url_for("landing"))
+
+
+@app.get("/health")
+def health_check() -> Any:
+    """Debug endpoint to check app status on Vercel."""
+    info: dict[str, Any] = {
+        "status": "ok",
+        "db_engine": DB_ENGINE,
+        "db_path": DATABASE_PATH,
+        "serpapi_key_set": bool(SERPAPI_API_KEY),
+        "db_initialized": _db_initialized,
+    }
+    try:
+        count = db.query("SELECT COUNT(*) as c FROM carpools")[0]["c"]
+        info["db_count"] = count
+    except Exception as e:
+        info["db_error"] = str(e)
+    return jsonify(info)
 
 
 # ---------------------------------------------------------------------------
