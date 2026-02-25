@@ -101,6 +101,25 @@ class DBAdapter:
         self.placeholder = "%s" if self.engine == "mysql" else "?"
         self._mysql_failed = False
 
+    def _activate_sqlite_fallback(self, reason: str = "") -> None:
+        """Switch to SQLite permanently for this process."""
+        if not self._mysql_failed:
+            app.logger.warning(f"Switching to SQLite fallback. {reason}")
+        self._mysql_failed = True
+        self.placeholder = "?"
+        # Discard any broken MySQL connection on this request
+        old = g.pop("db", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+
+    def _get_sqlite_conn(self) -> Any:
+        g.db = sqlite3.connect(DATABASE_PATH)
+        g.db.row_factory = sqlite3.Row
+        return g.db
+
     def get_conn(self) -> Any:
         if "db" in g:
             return g.db
@@ -128,36 +147,63 @@ class DBAdapter:
                 return g.db
             except Exception as exc:
                 mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
-                app.logger.error(
+                self._activate_sqlite_fallback(
                     f"MySQL connection failed to {mysql_host}: {exc}. "
                     "If using InfinityFree or similar shared hosting, their MySQL "
                     "only accepts connections from their own servers — not from "
-                    "Vercel/external services. Falling back to SQLite."
+                    "Vercel/external services."
                 )
-                self._mysql_failed = True
-                self.placeholder = "?"
 
-        g.db = sqlite3.connect(DATABASE_PATH)
-        g.db.row_factory = sqlite3.Row
-        return g.db
+        return self._get_sqlite_conn()
+
+    def _is_mysql_conn_error(self, exc: Exception) -> bool:
+        """Check if an exception is a MySQL connection/operational error."""
+        try:
+            import pymysql
+            return isinstance(exc, (pymysql.OperationalError, pymysql.InterfaceError, OSError))
+        except ImportError:
+            return False
 
     def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-        conn = self.get_conn()
-        cur = conn.cursor()
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        cur.close()
-        if self.engine == "sqlite":
+        try:
+            conn = self.get_conn()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            cur.close()
+        except Exception as exc:
+            if self.engine == "mysql" and self._is_mysql_conn_error(exc):
+                self._activate_sqlite_fallback(f"MySQL query failed: {exc}")
+                conn = self._get_sqlite_conn()
+                cur = conn.cursor()
+                cur.execute(sql.replace("%s", "?"), params)
+                rows = cur.fetchall()
+                cur.close()
+            else:
+                raise
+        if self._mysql_failed or self.engine == "sqlite":
             return [dict(r) for r in rows]
         return list(rows)
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> int:
-        conn = self.get_conn()
-        cur = conn.cursor()
-        cur.execute(sql, params)
-        last_id = getattr(cur, "lastrowid", 0)
-        conn.commit()
-        cur.close()
+        try:
+            conn = self.get_conn()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            last_id = getattr(cur, "lastrowid", 0)
+            conn.commit()
+            cur.close()
+        except Exception as exc:
+            if self.engine == "mysql" and self._is_mysql_conn_error(exc):
+                self._activate_sqlite_fallback(f"MySQL execute failed: {exc}")
+                conn = self._get_sqlite_conn()
+                cur = conn.cursor()
+                cur.execute(sql.replace("%s", "?"), params)
+                last_id = getattr(cur, "lastrowid", 0)
+                conn.commit()
+                cur.close()
+            else:
+                raise
         return int(last_id or 0)
 
     def init_schema(self) -> None:
