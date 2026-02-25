@@ -3,60 +3,109 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin Panel</title>
+    <title>Admin Panel - UniRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <header class="site-header">
+      <a href="/" class="site-logo">UniRide</a>
       <nav class="nav-links">
         <a href="/">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
-        <a href="/add-flight-details">Add Flight Details</a>
+        <a href="/add-flight-details">Add Flight</a>
+        <a href="/admin" class="active">Admin</a>
       </nav>
+      <a href="/admin/logout" class="btn btn-secondary btn-sm">Logout</a>
     </header>
+
     <main class="container">
       <section class="card">
         <h2>Admin Control Panel</h2>
-        <form method="post" action="/admin/delete-all">
-          <button type="submit" class="danger">Delete Entire Database</button>
-        </form>
 
+        <!-- Stats -->
+        <div class="admin-stats">
+          <div class="stat-card">
+            <div class="stat-value">{{ entries|length }}</div>
+            <div class="stat-label">Total Entries</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ entries|selectattr('status', 'equalto', 'unverified')|list|length }}</div>
+            <div class="stat-label">Unverified</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ entries|map(attribute='flight_code')|list|unique|list|length }}</div>
+            <div class="stat-label">Unique Flights</div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+          <form method="post" action="/admin/delete-all" onsubmit="return confirm('Are you sure you want to delete ALL entries? This cannot be undone.');">
+            <button type="submit" class="danger btn-sm">Delete Entire Database</button>
+          </form>
+        </div>
+
+        {% if entries|length == 0 %}
+        <div class="empty-state">
+          <div class="icon">0</div>
+          <p>No entries in the database yet.</p>
+        </div>
+        {% else %}
+
+        <!-- Desktop table view -->
         <div class="table-wrap">
           <table class="entries-table">
             <thead>
               <tr>
-                <th>ID</th><th>First</th><th>Last Initial</th><th>Phone</th><th>Flight</th><th>Airport</th><th>Airport Name</th><th>Airport Location</th><th>Flight Date UTC</th><th>Flight Time UTC</th><th>Seats</th><th>Notes</th><th>Status</th><th>Source</th><th>Expires</th><th>Created</th><th>Actions</th>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Flight</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Date</th>
+                <th>Seats</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for entry in entries %}
               <tr>
                 <td>{{ entry.id }}</td>
-                <td>{{ entry.first_name }}</td>
-                <td>{{ entry.last_initial }}</td>
+                <td>{{ entry.first_name }} {{ entry.last_initial }}.</td>
                 <td>{{ entry.phone }}</td>
-                <td>{{ entry.flight_code }}</td>
+                <td><strong>{{ entry.flight_code }}</strong></td>
                 <td>{{ entry.airport_code }}</td>
-                <td>{{ entry.airport_name }}</td>
-                <td>{{ entry.airport_location }}</td>
-                <td>{{ entry.flight_date_utc }}</td>
-                <td>{{ entry.flight_time_utc }}</td>
+                <td>{{ entry.destination_airport or '—' }}</td>
+                <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
                 <td>{{ entry.seats_available }}</td>
-                <td>{{ entry.notes }}</td>
                 <td>{{ entry.status }}</td>
-                <td>{{ entry.fetched_from }}</td>
-                <td>{{ entry.expires_at }}</td>
-                <td>{{ entry.created_at }}</td>
-                <td>
-                  <form method="post" action="/admin/edit/{{ entry.id }}" class="grid compact">
-                    <input name="first_name" value="{{ entry.first_name }}" />
-                    <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" />
-                    <input name="phone" value="{{ entry.phone }}" />
-                    <input name="notes" value="{{ entry.notes }}" />
-                    <button type="submit">Save</button>
-                  </form>
-                  <form method="post" action="/admin/delete/{{ entry.id }}">
-                    <button type="submit" class="danger">Delete</button>
+                <td title="{{ entry.notes }}">{{ entry.notes[:30] }}{{ '...' if entry.notes|length > 30 else '' }}</td>
+                <td>{{ entry.created_at[:16] }}</td>
+                <td style="white-space: nowrap;">
+                  <details>
+                    <summary class="btn btn-secondary btn-sm" style="display:inline; cursor:pointer;">Edit</summary>
+                    <form method="post" action="/admin/edit/{{ entry.id }}" style="margin-top:0.5rem;">
+                      <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                        <input name="first_name" value="{{ entry.first_name }}" placeholder="First name" />
+                        <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" placeholder="Initial" />
+                        <input name="phone" value="{{ entry.phone }}" placeholder="Phone" />
+                        <input name="flight_code" value="{{ entry.flight_code }}" placeholder="Flight" />
+                        <input name="airport_code" value="{{ entry.airport_code }}" placeholder="Airport" maxlength="3" />
+                        <input name="seats_available" value="{{ entry.seats_available }}" type="number" min="1" max="7" />
+                        <input name="notes" value="{{ entry.notes }}" placeholder="Notes" />
+                        <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+                      </div>
+                    </form>
+                  </details>
+                  <form method="post" action="/admin/delete/{{ entry.id }}" style="display:inline;" onsubmit="return confirm('Delete this entry?');">
+                    <button type="submit" class="danger btn-sm" style="margin-top:0.25rem;">Delete</button>
                   </form>
                 </td>
               </tr>
@@ -64,6 +113,51 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Mobile card view -->
+        <div class="admin-entry-cards">
+          {% for entry in entries %}
+          <div class="admin-entry-card">
+            <div class="entry-header">
+              <strong>{{ entry.first_name }} {{ entry.last_initial }}. &mdash; {{ entry.flight_code }}</strong>
+              <span class="result-badge {{ 'score-high' if entry.status != 'unverified' else 'score-low' }}">{{ entry.status }}</span>
+            </div>
+            <div class="entry-grid">
+              <div class="entry-field">
+                <span class="label">Phone</span>
+                <span>{{ entry.phone }}</span>
+              </div>
+              <div class="entry-field">
+                <span class="label">From / To</span>
+                <span>{{ entry.airport_code }} → {{ entry.destination_airport or '—' }}</span>
+              </div>
+              <div class="entry-field">
+                <span class="label">Date</span>
+                <span>{{ entry.requested_flight_date or entry.flight_date_utc }}</span>
+              </div>
+              <div class="entry-field">
+                <span class="label">Seats</span>
+                <span>{{ entry.seats_available }}</span>
+              </div>
+              <div class="entry-field">
+                <span class="label">Notes</span>
+                <span>{{ entry.notes or '—' }}</span>
+              </div>
+              <div class="entry-field">
+                <span class="label">Created</span>
+                <span>{{ entry.created_at[:16] }}</span>
+              </div>
+            </div>
+            <div class="entry-actions">
+              <form method="post" action="/admin/delete/{{ entry.id }}" onsubmit="return confirm('Delete this entry?');">
+                <button type="submit" class="danger btn-sm">Delete</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% endif %}
       </section>
     </main>
   </body>

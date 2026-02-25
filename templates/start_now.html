@@ -3,24 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Start Now</title>
+    <title>Get Started - UniRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <header class="site-header">
+      <a href="/" class="site-logo">UniRide</a>
       <nav class="nav-links">
         <a href="/">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
-        <a href="/add-flight-details">Add Flight Details</a>
+        <a href="/add-flight-details">Add Flight</a>
       </nav>
     </header>
 
     <main class="container">
-      <section class="card actions">
-        <h2>What would you like to do today?</h2>
+      <section class="card actions text-center" style="margin-top: 4rem;">
+        <h2>What would you like to do?</h2>
+        <p class="card-subtitle">Choose an option to get started</p>
         <div class="button-row">
-          <a class="button-link" href="/add-flight-details">Add Flight Details</a>
-          <a class="button-link" href="/find-a-carpool">Find Available Carpools</a>
+          <a class="action-card" href="/add-flight-details">
+            <div class="icon">+</div>
+            <h3>Add Flight Details</h3>
+            <p>Register your flight so others can find and carpool with you</p>
+          </a>
+          <a class="action-card" href="/find-a-carpool">
+            <div class="icon">?</div>
+            <h3>Find a Carpool</h3>
+            <p>Search for students on the same flight or heading to the same place</p>
+          </a>
         </div>
       </section>
     </main>
