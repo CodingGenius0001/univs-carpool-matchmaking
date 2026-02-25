@@ -27,6 +27,26 @@ SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 
+# Airline IATA codes for autocomplete
+AIRLINE_CODES: dict[str, str] = {
+    "AA": "American Airlines", "UA": "United Airlines", "DL": "Delta Air Lines",
+    "WN": "Southwest Airlines", "B6": "JetBlue Airways", "AS": "Alaska Airlines",
+    "NK": "Spirit Airlines", "F9": "Frontier Airlines", "G4": "Allegiant Air",
+    "SY": "Sun Country Airlines", "HA": "Hawaiian Airlines",
+    "BA": "British Airways", "LH": "Lufthansa", "AF": "Air France",
+    "KL": "KLM Royal Dutch", "AC": "Air Canada", "QF": "Qantas",
+    "EK": "Emirates", "QR": "Qatar Airways", "SQ": "Singapore Airlines",
+    "CX": "Cathay Pacific", "NH": "ANA", "JL": "Japan Airlines",
+    "TK": "Turkish Airlines", "LX": "SWISS", "IB": "Iberia",
+    "VS": "Virgin Atlantic", "AM": "Aeromexico", "AV": "Avianca",
+    "LA": "LATAM Airlines", "CM": "Copa Airlines", "WS": "WestJet",
+    "EI": "Aer Lingus", "SK": "SAS Scandinavian", "AY": "Finnair",
+    "OS": "Austrian Airlines", "TP": "TAP Air Portugal",
+    "MX": "Breeze Airways", "QX": "Horizon Air",
+    "OO": "SkyWest Airlines", "YX": "Republic Airways",
+    "9K": "Cape Air", "MQ": "Envoy Air",
+}
+
 
 def _resolve_database_path() -> str:
     configured = os.getenv("DATABASE_PATH")
@@ -79,28 +99,43 @@ class DBAdapter:
     def __init__(self) -> None:
         self.engine = DB_ENGINE
         self.placeholder = "%s" if self.engine == "mysql" else "?"
+        self._mysql_failed = False
 
     def get_conn(self) -> Any:
         if "db" in g:
             return g.db
 
-        if self.engine == "mysql":
+        if self.engine == "mysql" and not self._mysql_failed:
             try:
                 import pymysql
                 from pymysql.cursors import DictCursor
             except Exception as exc:
                 raise RuntimeError(f"PyMySQL is required for DB_ENGINE=mysql: {exc}")
 
-            g.db = pymysql.connect(
-                host=os.getenv("MYSQL_HOST", "127.0.0.1"),
-                user=os.getenv("MYSQL_USER", "root"),
-                password=os.getenv("MYSQL_PASSWORD", ""),
-                database=os.getenv("MYSQL_DATABASE", "carpool"),
-                port=int(os.getenv("MYSQL_PORT", "3306")),
-                autocommit=False,
-                cursorclass=DictCursor,
-            )
-            return g.db
+            try:
+                g.db = pymysql.connect(
+                    host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+                    user=os.getenv("MYSQL_USER", "root"),
+                    password=os.getenv("MYSQL_PASSWORD", ""),
+                    database=os.getenv("MYSQL_DATABASE", "carpool"),
+                    port=int(os.getenv("MYSQL_PORT", "3306")),
+                    autocommit=False,
+                    cursorclass=DictCursor,
+                    connect_timeout=5,
+                    read_timeout=10,
+                    write_timeout=10,
+                )
+                return g.db
+            except Exception as exc:
+                mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
+                app.logger.error(
+                    f"MySQL connection failed to {mysql_host}: {exc}. "
+                    "If using InfinityFree or similar shared hosting, their MySQL "
+                    "only accepts connections from their own servers — not from "
+                    "Vercel/external services. Falling back to SQLite."
+                )
+                self._mysql_failed = True
+                self.placeholder = "?"
 
         g.db = sqlite3.connect(DATABASE_PATH)
         g.db.row_factory = sqlite3.Row
@@ -126,22 +161,34 @@ class DBAdapter:
         return int(last_id or 0)
 
     def init_schema(self) -> None:
-        if self.engine == "mysql":
-            import pymysql
+        use_mysql = self.engine == "mysql" and not self._mysql_failed
 
-            conn = pymysql.connect(
-                host=os.getenv("MYSQL_HOST", "127.0.0.1"),
-                user=os.getenv("MYSQL_USER", "root"),
-                password=os.getenv("MYSQL_PASSWORD", ""),
-                database=os.getenv("MYSQL_DATABASE", "carpool"),
-                port=int(os.getenv("MYSQL_PORT", "3306")),
-                autocommit=False,
-            )
-        else:
+        if use_mysql:
+            try:
+                import pymysql
+                conn = pymysql.connect(
+                    host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+                    user=os.getenv("MYSQL_USER", "root"),
+                    password=os.getenv("MYSQL_PASSWORD", ""),
+                    database=os.getenv("MYSQL_DATABASE", "carpool"),
+                    port=int(os.getenv("MYSQL_PORT", "3306")),
+                    autocommit=False,
+                    connect_timeout=5,
+                )
+            except Exception as exc:
+                mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
+                app.logger.error(
+                    f"MySQL init_schema failed ({mysql_host}): {exc}. Falling back to SQLite."
+                )
+                self._mysql_failed = True
+                self.placeholder = "?"
+                use_mysql = False
+
+        if not use_mysql:
             conn = sqlite3.connect(DATABASE_PATH)
 
         cur = conn.cursor()
-        if self.engine == "mysql":
+        if use_mysql:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS carpools (
@@ -199,8 +246,9 @@ class DBAdapter:
     def ensure_columns(self) -> None:
         conn = self.get_conn()
         cur = conn.cursor()
+        use_mysql = self.engine == "mysql" and not self._mysql_failed
         try:
-            if self.engine == "mysql":
+            if use_mysql:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'requested_flight_date'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN requested_flight_date VARCHAR(16) NOT NULL DEFAULT ''")
@@ -625,6 +673,21 @@ def _create_carpool_inner() -> Any:
     return jsonify(response), 201
 
 
+@app.get("/api/airlines/suggest")
+def suggest_airlines() -> Any:
+    """Return matching airlines for a prefix (instant, no external API)."""
+    prefix = request.args.get("q", "").upper().strip()
+    if not prefix:
+        return jsonify({"results": []})
+    matches = [
+        {"code": code, "name": name}
+        for code, name in AIRLINE_CODES.items()
+        if code.startswith(prefix) or name.upper().startswith(prefix)
+    ]
+    matches.sort(key=lambda x: x["code"])
+    return jsonify({"results": matches[:10]})
+
+
 @app.get("/api/flights/suggest")
 def suggest_flights() -> Any:
     query = request.args.get("query", "")
@@ -764,13 +827,23 @@ def admin_logout() -> Any:
 @app.get("/health")
 def health_check() -> Any:
     """Debug endpoint to check app status on Vercel."""
+    actual_engine = "sqlite" if db._mysql_failed else db.engine
     info: dict[str, Any] = {
         "status": "ok",
-        "db_engine": DB_ENGINE,
-        "db_path": DATABASE_PATH,
+        "db_engine_configured": DB_ENGINE,
+        "db_engine_active": actual_engine,
+        "mysql_fallback_active": db._mysql_failed,
+        "db_path": DATABASE_PATH if actual_engine == "sqlite" else "(mysql)",
         "serpapi_key_set": bool(SERPAPI_API_KEY),
         "db_initialized": _db_initialized,
     }
+    if db._mysql_failed:
+        info["mysql_note"] = (
+            "MySQL connection failed. The app fell back to SQLite. "
+            "Data in /tmp on Vercel will NOT persist between cold starts. "
+            "Use a cloud-accessible MySQL provider (TiDB Cloud, PlanetScale, etc.) "
+            "instead of InfinityFree for Vercel deployments."
+        )
     try:
         count = db.query("SELECT COUNT(*) as c FROM carpools")[0]["c"]
         info["db_count"] = count

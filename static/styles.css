@@ -367,6 +367,66 @@ label input, label textarea, label select {
   font-weight: 400;
 }
 
+/* ===== Airline Autocomplete Dropdown ===== */
+.autocomplete-wrap {
+  position: relative;
+}
+
+.airline-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--card);
+  border: 1px solid rgba(110, 231, 183, 0.25);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.airline-dropdown.open {
+  display: block;
+}
+
+.airline-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  transition: background var(--transition);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.88rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.airline-option:last-child {
+  border-bottom: none;
+}
+
+.airline-option:hover,
+.airline-option.active {
+  background: var(--accent-glow);
+}
+
+.airline-option .code {
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 28px;
+  font-size: 0.9rem;
+}
+
+.airline-option .name {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
 /* ===== Flight Suggestions ===== */
 .flight-suggestions {
   margin: 1.25rem 0;

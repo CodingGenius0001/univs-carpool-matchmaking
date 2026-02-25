@@ -7,6 +7,7 @@ const flightCodeInput = document.querySelector('#flight_code');
 const suggestionsSection = document.querySelector('#suggestions-section');
 const suggestionList = document.querySelector('#suggestion-list');
 const departureDateInput = document.querySelector('#departure_date');
+const airlineDropdown = document.querySelector('#airline-dropdown');
 
 // --- Formatters ---
 
@@ -54,17 +55,62 @@ departureDateInput?.addEventListener('input', () => {
   departureDateInput.value = formatDate(departureDateInput.value);
 });
 
-flightCodeInput?.addEventListener('input', () => {
-  flightCodeInput.value = flightCodeInput.value.toUpperCase().replace(/\s+/g, '');
-});
+// --- Airline autocomplete ---
 
-// --- Flight suggestions (debounced) ---
+let airlineActiveIdx = -1;
+let airlineResults = [];
+
+const closeAirlineDropdown = () => {
+  if (airlineDropdown) {
+    airlineDropdown.classList.remove('open');
+    airlineDropdown.innerHTML = '';
+  }
+  airlineActiveIdx = -1;
+  airlineResults = [];
+};
+
+const showAirlineDropdown = (matches) => {
+  if (!airlineDropdown || !matches.length) {
+    closeAirlineDropdown();
+    return;
+  }
+  airlineResults = matches;
+  airlineActiveIdx = -1;
+  airlineDropdown.innerHTML = '';
+
+  matches.forEach((airline, i) => {
+    const opt = document.createElement('div');
+    opt.className = 'airline-option';
+    opt.innerHTML = `<span class="code">${airline.code}</span><span class="name">${airline.name}</span>`;
+    opt.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent blur from closing dropdown
+      flightCodeInput.value = airline.code;
+      closeAirlineDropdown();
+      flightCodeInput.focus();
+    });
+    airlineDropdown.appendChild(opt);
+  });
+
+  airlineDropdown.classList.add('open');
+};
+
+const fetchAirlineSuggestions = async (prefix) => {
+  try {
+    const res = await fetch(`/api/airlines/suggest?q=${encodeURIComponent(prefix)}`);
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+};
+
+// --- Flight suggestions (SerpApi, debounced) ---
 
 let suggestTimeout = null;
 
-const fetchSuggestions = async () => {
+const fetchFlightSuggestions = async () => {
   const q = flightCodeInput.value;
-  if (q.length < 3) {
+  if (q.length < 4) {
     suggestionsSection.style.display = 'none';
     suggestionList.innerHTML = '';
     return;
@@ -109,7 +155,6 @@ const fetchSuggestions = async () => {
       `;
 
       item.addEventListener('click', () => {
-        // Auto-fill fields from suggestion
         flightCodeInput.value = flight.flight_code;
 
         if (flight.departure && airportCodeInput) {
@@ -119,35 +164,88 @@ const fetchSuggestions = async () => {
           destAirportInput.value = flight.destination;
         }
         if (flight.date_utc && departureDateInput) {
-          // Convert YYYY-MM-DD to MM-DD-YYYY
           const parts = flight.date_utc.split('-');
           if (parts.length === 3) {
             departureDateInput.value = `${parts[1]}-${parts[2]}-${parts[0]}`;
           }
         }
 
-        // Highlight selected
         suggestionList.querySelectorAll('.suggestion-item').forEach(el => el.classList.remove('selected'));
         item.classList.add('selected');
       });
 
       suggestionList.appendChild(item);
     });
-  } catch (err) {
-    // Silently fail - suggestions are optional
+  } catch {
     suggestionsSection.style.display = 'none';
   }
 };
 
-flightCodeInput?.addEventListener('input', () => {
+// --- Combined flight code input handler ---
+
+flightCodeInput?.addEventListener('input', async () => {
+  const raw = flightCodeInput.value.toUpperCase().replace(/\s+/g, '');
+  flightCodeInput.value = raw;
+
+  // Extract the letter prefix (airline code part)
+  const letterPrefix = raw.match(/^[A-Z0-9]{0,3}/)?.[0] || '';
+  const hasDigits = /\d/.test(raw);
+
+  // Show airline dropdown only when typing the airline prefix (letters only, 1-3 chars)
+  if (letterPrefix.length >= 1 && letterPrefix.length <= 3 && !hasDigits) {
+    const matches = await fetchAirlineSuggestions(letterPrefix);
+    showAirlineDropdown(matches);
+  } else {
+    closeAirlineDropdown();
+  }
+
+  // Once user has a full flight code (4+ chars), fetch SerpApi suggestions
   clearTimeout(suggestTimeout);
-  suggestTimeout = setTimeout(fetchSuggestions, 500);
+  if (raw.length >= 4) {
+    suggestTimeout = setTimeout(fetchFlightSuggestions, 600);
+  } else {
+    suggestionsSection.style.display = 'none';
+    suggestionList.innerHTML = '';
+  }
 });
 
+// Keyboard navigation for airline dropdown
+flightCodeInput?.addEventListener('keydown', (e) => {
+  if (!airlineDropdown?.classList.contains('open') || !airlineResults.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    airlineActiveIdx = Math.min(airlineActiveIdx + 1, airlineResults.length - 1);
+    updateActiveAirline();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    airlineActiveIdx = Math.max(airlineActiveIdx - 1, 0);
+    updateActiveAirline();
+  } else if (e.key === 'Enter' && airlineActiveIdx >= 0) {
+    e.preventDefault();
+    flightCodeInput.value = airlineResults[airlineActiveIdx].code;
+    closeAirlineDropdown();
+  } else if (e.key === 'Escape') {
+    closeAirlineDropdown();
+  }
+});
+
+const updateActiveAirline = () => {
+  const opts = airlineDropdown?.querySelectorAll('.airline-option') || [];
+  opts.forEach((opt, i) => opt.classList.toggle('active', i === airlineActiveIdx));
+};
+
+// Close dropdown when clicking outside
+flightCodeInput?.addEventListener('blur', () => {
+  // Small delay to allow mousedown on dropdown items to fire first
+  setTimeout(closeAirlineDropdown, 150);
+});
+
+// Also trigger flight suggestions when date changes
 departureDateInput?.addEventListener('change', () => {
-  if (flightCodeInput?.value?.length >= 3) {
+  if (flightCodeInput?.value?.length >= 4) {
     clearTimeout(suggestTimeout);
-    suggestTimeout = setTimeout(fetchSuggestions, 300);
+    suggestTimeout = setTimeout(fetchFlightSuggestions, 300);
   }
 });
 
@@ -155,6 +253,7 @@ departureDateInput?.addEventListener('change', () => {
 
 form?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  closeAirlineDropdown();
   msg.textContent = 'Saving your flight details...';
   msg.className = '';
 
