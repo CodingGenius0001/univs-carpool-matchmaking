@@ -7,7 +7,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <header class="topbar">
+    <header class="site-header">
+      <nav class="nav-links">
+        <a href="/" class="active">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/add-flight-details">Add Flight Details</a>
+      </nav>
       <form class="admin-login" method="post" action="/admin/login">
         <input name="username" placeholder="Admin username" required />
         <input name="password" type="password" placeholder="Admin password" required />
@@ -15,16 +20,19 @@
       </form>
     </header>
 
-    <main class="landing">
-      <h1>University Carpool Matchmaking</h1>
-      <p class="tagline">Find students on the same flight and split airport rides to save money and time.</p>
-      <div class="scroll-cta">⬇ Scroll below to start ⬇</div>
+    <main>
+      <section class="hero-screen">
+        <p class="badge">WELCOME</p>
+        <h1>University Carpool Matchmaking</h1>
+        <p class="tagline">Connecting students one flight at a time.</p>
+        <a class="scroll-button" href="#start">Scroll to Start ↓</a>
+      </section>
 
-      <section class="card actions">
+      <section class="card actions" id="start">
         <h2>What would you like to do today?</h2>
         <div class="button-row">
-          <a class="button-link" href="/search">Search for a Carpool</a>
-          <a class="button-link" href="/join">Add to Carpool Database</a>
+          <a class="button-link" href="/add-flight-details">Add Flight Details</a>
+          <a class="button-link" href="/find-a-carpool">Find Available Carpools</a>
         </div>
       </section>
     </main>
