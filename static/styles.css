@@ -1,0 +1,25 @@
+:root{--bg:#070b18;--bg2:#121f48;--card:#101a36;--text:#f3f7ff;--accent:#5ef2da;--accent2:#76b7ff;--danger:#ff6f7d}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--text);background:radial-gradient(1200px 500px at 50% -10%,#2e4f9c,var(--bg) 55%)}
+main,.container{max-width:1100px;margin:0 auto;padding:1.2rem}
+.site-header{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;gap:.8rem;padding:.8rem 1rem;background:rgba(7,10,20,.88);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.14)}
+.nav-links{display:flex;gap:1rem;flex-wrap:wrap}
+.nav-links a{color:#cdfef4;text-decoration:none;font-weight:600;padding:.25rem .4rem;border-radius:8px}
+.nav-links a.active,.nav-links a:hover{background:rgba(94,242,218,.15)}
+.admin-login{display:flex;gap:.4rem;align-items:center}
+input,textarea,button{font:inherit;border-radius:10px;border:1px solid rgba(255,255,255,.24);background:rgba(5,8,16,.75);color:#fff;padding:.55rem .7rem}
+button,.button-link,.scroll-button{background:linear-gradient(90deg,var(--accent2),var(--accent));color:#032426;border:none;cursor:pointer;font-weight:700;text-decoration:none;padding:.62rem .95rem;border-radius:10px;display:inline-block}
+.hero-screen{min-height:76vh;display:grid;place-content:center;text-align:center;gap:.8rem;padding:2rem 1rem}
+.badge{display:inline-block;justify-self:center;background:rgba(255,255,255,.12);padding:.3rem .65rem;border-radius:999px;font-size:.75rem;letter-spacing:.08em}
+h1{font-size:clamp(2.3rem,6vw,4rem);margin:0}
+.tagline{font-size:1.12rem;opacity:.95;margin:0 auto;max-width:560px}
+.scroll-button{justify-self:center;margin-top:.5rem}
+.card{background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.15);padding:1rem;border-radius:16px}
+.actions{margin:1rem auto 3rem;max-width:850px;text-align:center}
+.actions .button-row{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem}
+label{display:grid;gap:.35rem;font-size:.9rem}
+.result{margin-top:.8rem;padding:.8rem;border:1px solid rgba(100,228,209,.45);border-radius:12px}
+.disclaimer{font-size:.9rem;opacity:.9}.compact{margin-top:.5rem}
+.danger{background:linear-gradient(90deg,#ff8e9b,var(--danger));color:#35060d}
