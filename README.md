@@ -26,9 +26,9 @@ Data is persisted in SQLite (not in-memory), and admin controls are available fo
 - `GET /search` → redirects to `/find-a-carpool`
 
 ### API endpoints
-- `POST /api/carpools` → create a carpool record (validates flight code format + phone format)
+- `POST /api/carpools` → create a carpool record (requires flight date (MM-DD-YYYY), validates flight code + phone format)
 - `GET /api/flights/suggest?query=UA` → best-effort live flight suggestions for dropdown UX
-- `GET /api/carpools/search` → search/rank records
+- `GET /api/carpools/search` → search/rank records (supports `flight_date` (`MM-DD-YYYY`))
 - `GET /api/carpools/<id>` → fetch full details for one record (including phone)
 
 ### Admin actions
@@ -53,6 +53,7 @@ You can still override with `DATABASE_PATH`.
 - Configurable path: `DATABASE_PATH=/path/to/file.db`
 - Table is auto-created on startup (`init_db()` in `app.py`).
 - Expired flights are auto-purged using `expires_at`.
+- User-entered date is persisted as `requested_flight_date` for matching.
 
 > Note: SQLite persists on a single host filesystem. It is **not durable** on ephemeral serverless filesystems.
 

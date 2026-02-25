@@ -4,6 +4,19 @@ const airportCodeInput = document.querySelector('#airport_code');
 const phoneInput = document.querySelector('#phone');
 const flightCodeInput = document.querySelector('#flight_code');
 const suggestionsBox = document.querySelector('#flight_suggestions');
+const flightDateInput = document.querySelector('#flight_date');
+
+
+const formatDate = (raw) => {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  const mm = digits.slice(0, 2);
+  const dd = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  let out = mm;
+  if (dd) out += `-${dd}`;
+  if (yyyy) out += `-${yyyy}`;
+  return out;
+};
 
 const formatPhone = (raw) => {
   const digits = raw.replace(/\D/g, '').slice(0, 11);
@@ -29,6 +42,10 @@ phoneInput?.addEventListener('input', () => {
   phoneInput.value = formatPhone(phoneInput.value);
 });
 
+flightDateInput?.addEventListener('input', () => {
+  flightDateInput.value = formatDate(flightDateInput.value);
+});
+
 flightCodeInput?.addEventListener('input', async () => {
   flightCodeInput.value = flightCodeInput.value.toUpperCase().replace(/\s+/g, '');
   const q = flightCodeInput.value;
@@ -37,7 +54,8 @@ flightCodeInput?.addEventListener('input', async () => {
     return;
   }
 
-  const res = await fetch(`/api/flights/suggest?query=${encodeURIComponent(q)}`);
+  const dateParam = flightDateInput?.value ? `&flight_date=${encodeURIComponent(flightDateInput.value)}` : '';
+  const res = await fetch(`/api/flights/suggest?query=${encodeURIComponent(q)}${dateParam}`);
   const data = await res.json();
   suggestionsBox.innerHTML = '';
 
@@ -55,6 +73,12 @@ flightCodeInput?.addEventListener('input', async () => {
     opt.textContent = `${flight.flight_code} | ${flight.time_utc} UTC | ${flight.departure} → ${flight.destination}`;
     suggestionsBox.appendChild(opt);
   });
+});
+
+flightDateInput?.addEventListener('change', () => {
+  if (flightCodeInput?.value?.length >= 2) {
+    flightCodeInput.dispatchEvent(new Event('input'));
+  }
 });
 
 suggestionsBox?.addEventListener('change', () => {
