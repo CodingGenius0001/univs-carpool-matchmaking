@@ -38,6 +38,15 @@ Data is persisted in SQLite (not in-memory), and admin controls are available fo
 ---
 
 ## Database and persistence
+
+### Vercel crash fix (FUNCTION_INVOCATION_FAILED)
+The app now auto-selects a Vercel-safe default DB path:
+- On Vercel: `/tmp/carpool.db`
+- Elsewhere: `carpool.db`
+
+This avoids startup crashes caused by trying to write SQLite files to read-only serverless paths.
+You can still override with `DATABASE_PATH`.
+
 - Default DB file: `carpool.db`
 - Configurable path: `DATABASE_PATH=/path/to/file.db`
 - Table is auto-created on startup (`init_db()` in `app.py`).

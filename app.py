@@ -16,7 +16,19 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
-DATABASE_PATH = os.getenv("DATABASE_PATH", "carpool.db")
+def _resolve_database_path() -> str:
+    configured = os.getenv("DATABASE_PATH")
+    if configured:
+        return configured
+
+    # Vercel serverless runtime only guarantees writable /tmp.
+    if os.getenv("VERCEL"):
+        return "/tmp/carpool.db"
+
+    return "carpool.db"
+
+
+DATABASE_PATH = _resolve_database_path()
 
 AIRPORT_CODE_MAP = {
     "SFO": {"name": "San Francisco International Airport", "location": "San Francisco, CA"},
@@ -50,6 +62,11 @@ def close_db(_: Any) -> None:
 
 
 def init_db() -> None:
+    if DATABASE_PATH not in (":memory:",):
+        db_dir = os.path.dirname(DATABASE_PATH)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+
     conn = sqlite3.connect(DATABASE_PATH)
     conn.execute(
         """
@@ -315,7 +332,11 @@ def admin_edit_entry(entry_id: int) -> Any:
     return redirect(url_for("admin_panel"))
 
 
-init_db()
+try:
+    init_db()
+except sqlite3.Error as exc:
+    # Keep import alive so Vercel can return logs instead of immediate crash loop.
+    print(f"[startup] database initialization failed: {exc}")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
