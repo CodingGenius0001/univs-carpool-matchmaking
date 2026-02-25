@@ -21,23 +21,49 @@
           <button type="submit" class="danger">Delete Entire Database</button>
         </form>
 
-        {% for entry in entries %}
-        <article class="result">
-          <strong>#{{ entry.id }} {{ entry.first_name }} {{ entry.last_initial }}.</strong>
-          <div>{{ entry.flight_code }} → {{ entry.airport_code }} | {{ entry.flight_date_utc }} {{ entry.flight_time_utc }} UTC</div>
-          <div>Phone: {{ entry.phone }}</div>
-          <form method="post" action="/admin/edit/{{ entry.id }}" class="grid compact">
-            <input name="first_name" value="{{ entry.first_name }}" />
-            <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" />
-            <input name="phone" value="{{ entry.phone }}" />
-            <input name="notes" value="{{ entry.notes }}" />
-            <button type="submit">Save Edit</button>
-          </form>
-          <form method="post" action="/admin/delete/{{ entry.id }}">
-            <button type="submit" class="danger">Delete Entry</button>
-          </form>
-        </article>
-        {% endfor %}
+        <div class="table-wrap">
+          <table class="entries-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>First</th><th>Last Initial</th><th>Phone</th><th>Flight</th><th>Airport</th><th>Airport Name</th><th>Airport Location</th><th>Flight Date UTC</th><th>Flight Time UTC</th><th>Seats</th><th>Notes</th><th>Status</th><th>Source</th><th>Expires</th><th>Created</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in entries %}
+              <tr>
+                <td>{{ entry.id }}</td>
+                <td>{{ entry.first_name }}</td>
+                <td>{{ entry.last_initial }}</td>
+                <td>{{ entry.phone }}</td>
+                <td>{{ entry.flight_code }}</td>
+                <td>{{ entry.airport_code }}</td>
+                <td>{{ entry.airport_name }}</td>
+                <td>{{ entry.airport_location }}</td>
+                <td>{{ entry.flight_date_utc }}</td>
+                <td>{{ entry.flight_time_utc }}</td>
+                <td>{{ entry.seats_available }}</td>
+                <td>{{ entry.notes }}</td>
+                <td>{{ entry.status }}</td>
+                <td>{{ entry.fetched_from }}</td>
+                <td>{{ entry.expires_at }}</td>
+                <td>{{ entry.created_at }}</td>
+                <td>
+                  <form method="post" action="/admin/edit/{{ entry.id }}" class="grid compact">
+                    <input name="first_name" value="{{ entry.first_name }}" />
+                    <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" />
+                    <input name="phone" value="{{ entry.phone }}" />
+                    <input name="notes" value="{{ entry.notes }}" />
+                    <button type="submit">Save</button>
+                  </form>
+                  <form method="post" action="/admin/delete/{{ entry.id }}">
+                    <button type="submit" class="danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   </body>

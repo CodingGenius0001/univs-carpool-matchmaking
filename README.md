@@ -17,6 +17,7 @@ Data is persisted in SQLite (not in-memory), and admin controls are available fo
 - `GET /` → `templates/welcome.html` (main landing page)
 - `GET /add-flight-details` → `templates/add_flight_details.html`
 - `GET /find-a-carpool` → `templates/find_a_carpool.html`
+- `GET /start-now` → `templates/start_now.html` (selection page reached only from landing CTA)
 - `GET /admin` → `templates/admin.html` (admin-only)
 
 ### Compatibility redirects (legacy links)
@@ -25,7 +26,8 @@ Data is persisted in SQLite (not in-memory), and admin controls are available fo
 - `GET /search` → redirects to `/find-a-carpool`
 
 ### API endpoints
-- `POST /api/carpools` → create a carpool record
+- `POST /api/carpools` → create a carpool record (validates flight code format + phone format)
+- `GET /api/flights/suggest?query=UA` → best-effort live flight suggestions for dropdown UX
 - `GET /api/carpools/search` → search/rank records
 - `GET /api/carpools/<id>` → fetch full details for one record (including phone)
 
@@ -62,6 +64,7 @@ You can still override with `DATABASE_PATH`.
 - `templates/welcome.html`
 - `templates/add_flight_details.html`
 - `templates/find_a_carpool.html`
+- `templates/start_now.html`
 - `templates/admin.html`
 
 ### Static files currently used
@@ -104,3 +107,30 @@ This repo includes:
 ### Important Vercel note
 Vercel filesystem is ephemeral. SQLite files are not long-term durable there.
 For production persistence, use a managed DB (e.g., Supabase/Neon/Postgres) and migrate from SQLite.
+
+
+## MySQL support (for real persistence across instances)
+Set `DB_ENGINE=mysql` and provide:
+- `MYSQL_HOST`
+- `MYSQL_PORT` (default `3306`)
+- `MYSQL_USER`
+- `MYSQL_PASSWORD`
+- `MYSQL_DATABASE`
+
+The app will auto-create the `carpools` table.
+
+## Flight data providers
+The app now tries flight lookup in this order:
+1. OpenSky
+2. ADS-B Exchange (when `ADSBX_API_KEY` is set)
+
+Set:
+- `ADSBX_API_KEY` for ADS-B Exchange fallback.
+
+If you want me to wire a managed MySQL provider right now, send me:
+1. Host
+2. Port
+3. Username
+4. Password
+5. Database name
+6. Whether SSL is required
