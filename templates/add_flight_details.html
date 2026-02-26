@@ -35,8 +35,9 @@
             <label>Phone Number
               <input name="phone" id="phone" required placeholder="+1 (909) 555 1234" maxlength="17" />
             </label>
-            <label>Flight Code
+            <label class="autocomplete-wrap">Flight Code
               <input name="flight_code" id="flight_code" placeholder="e.g. UA1375" required autocomplete="off" />
+              <div id="airline-dropdown" class="airline-dropdown"></div>
             </label>
             <label>Date of Departure
               <input type="text" name="departure_date" id="departure_date" required placeholder="MM-DD-YYYY" maxlength="10" />
