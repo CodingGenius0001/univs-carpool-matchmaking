@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sqlite3
+import ssl
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -95,6 +96,20 @@ AIRPORT_CODE_MAP = {
 }
 
 
+def _mysql_needs_ssl() -> bool:
+    """Auto-detect whether the MySQL host requires SSL (e.g. TiDB Cloud)."""
+    if os.getenv("MYSQL_SSL", "").lower() in ("1", "true", "yes"):
+        return True
+    host = os.getenv("MYSQL_HOST", "")
+    return "tidbcloud.com" in host or "aivencloud.com" in host
+
+
+def _mysql_ssl_ctx() -> ssl.SSLContext | None:
+    if not _mysql_needs_ssl():
+        return None
+    return ssl.create_default_context()
+
+
 class DBAdapter:
     def __init__(self) -> None:
         self.engine = DB_ENGINE
@@ -132,7 +147,7 @@ class DBAdapter:
                 raise RuntimeError(f"PyMySQL is required for DB_ENGINE=mysql: {exc}")
 
             try:
-                g.db = pymysql.connect(
+                connect_kwargs: dict[str, Any] = dict(
                     host=os.getenv("MYSQL_HOST", "127.0.0.1"),
                     user=os.getenv("MYSQL_USER", "root"),
                     password=os.getenv("MYSQL_PASSWORD", ""),
@@ -144,6 +159,10 @@ class DBAdapter:
                     read_timeout=10,
                     write_timeout=10,
                 )
+                ssl_ctx = _mysql_ssl_ctx()
+                if ssl_ctx:
+                    connect_kwargs["ssl"] = ssl_ctx
+                g.db = pymysql.connect(**connect_kwargs)
                 return g.db
             except Exception as exc:
                 mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -212,7 +231,7 @@ class DBAdapter:
         if use_mysql:
             try:
                 import pymysql
-                conn = pymysql.connect(
+                init_kwargs: dict[str, Any] = dict(
                     host=os.getenv("MYSQL_HOST", "127.0.0.1"),
                     user=os.getenv("MYSQL_USER", "root"),
                     password=os.getenv("MYSQL_PASSWORD", ""),
@@ -221,6 +240,10 @@ class DBAdapter:
                     autocommit=False,
                     connect_timeout=5,
                 )
+                ssl_ctx = _mysql_ssl_ctx()
+                if ssl_ctx:
+                    init_kwargs["ssl"] = ssl_ctx
+                conn = pymysql.connect(**init_kwargs)
             except Exception as exc:
                 mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
                 app.logger.error(
