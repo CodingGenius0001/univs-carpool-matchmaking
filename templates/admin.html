@@ -18,9 +18,16 @@
         <a href="/add-flight-details">Add Flight</a>
         <a href="/admin" class="active">Admin</a>
       </nav>
-      <form method="post" action="/admin/logout" style="display:inline; grid-column:3; justify-self:end;">
-        <button type="submit" class="btn btn-danger btn-sm">Logout</button>
-      </form>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/eula">EULA & ToS</a>
+          <div class="menu-divider"></div>
+          <a href="/admin/logout" class="menu-logout">Admin Logout</a>
+        </div>
+      </div>
     </header>
 
     <main class="container">
@@ -241,6 +248,14 @@
 
       modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.style.display = 'none';
+      });
+
+      // Hamburger menu
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
     </script>
   </body>

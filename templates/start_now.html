@@ -13,10 +13,21 @@
     <header class="site-header">
       <a href="/" class="site-logo">UniRide</a>
       <nav class="nav-links">
-        <a href="/">Home</a>
+        <a href="/start-now" class="active">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
         <a href="/add-flight-details">Add Flight</a>
       </nav>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/eula">EULA & ToS</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+        </div>
+      </div>
     </header>
 
     <main class="container">
@@ -32,10 +43,23 @@
           <a class="action-card" href="/find-a-carpool">
             <div class="icon">?</div>
             <h3>Find a Carpool</h3>
-            <p>Search for students on the same flight or heading to the same place</p>
+            <p>Search for students on the same flight or heading the same way</p>
           </a>
         </div>
       </section>
     </main>
+
+    <footer class="site-footer">
+      <p>UniRide &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+    </script>
   </body>
 </html>
