@@ -43,13 +43,14 @@
               <input id="airline_name" placeholder="Auto-detected from flight code" readonly tabindex="-1" class="airline-readonly" />
             </label>
             <label>Date of Departure
-              <input type="text" name="departure_date" id="departure_date" required placeholder="MM-DD-YYYY" maxlength="10" />
+              <input type="date" name="departure_date" id="departure_date" required />
             </label>
             <label>Departure Airport
-              <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. SFO" required />
+              <input name="airport_code" id="airport_code" maxlength="3" placeholder="Auto-filled from flight" required readonly tabindex="-1" class="airport-readonly" />
+              <small id="airport_hint" class="field-hint">Select a flight suggestion to auto-fill</small>
             </label>
-            <label>Destination Airport
-              <input name="destination_airport" id="destination_airport" maxlength="3" placeholder="e.g. JFK" />
+            <label>Planned Departure Time (from campus)
+              <input type="time" name="planned_departure_time" id="planned_departure_time" />
             </label>
             <label>Planned Departure Time (from campus)
               <input type="time" name="planned_departure_time" id="planned_departure_time" />

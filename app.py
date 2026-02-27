@@ -870,8 +870,15 @@ def suggest_airlines() -> Any:
 def suggest_flights() -> Any:
     query = request.args.get("query", "")
     cleaned = _clean_flight_code(query)
+    if len(cleaned) < 2:
+        return jsonify({"query": cleaned, "count": 0, "results": []})
     departure_date = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip() or None
-    suggestions = _suggest_flights_for_airline(cleaned, departure_date)
+    # Use broader suggestion for short queries (just airline prefix)
+    has_digits = any(c.isdigit() for c in cleaned)
+    if has_digits:
+        suggestions = _suggest_flights_for_airline(cleaned, departure_date)
+    else:
+        suggestions = _suggest_flights_for_airline(cleaned, departure_date)
     return jsonify({"query": cleaned, "count": len(suggestions), "results": suggestions})
 
 
@@ -1008,10 +1015,24 @@ def admin_edit_entry(entry_id: int) -> Any:
     return redirect(url_for("admin_panel"))
 
 
-@app.get("/admin/logout")
+@app.route("/admin/logout", methods=["GET", "POST"])
 def admin_logout() -> Any:
     session.clear()
-    return redirect(url_for("landing"))
+    resp = redirect(url_for("admin_login_page"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
+@app.after_request
+def _add_admin_cache_headers(response: Any) -> Any:
+    """Prevent browser from caching admin pages so logout is effective."""
+    if request.path.startswith("/admin"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 @app.get("/health")

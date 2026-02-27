@@ -18,7 +18,9 @@
         <a href="/add-flight-details">Add Flight</a>
         <a href="/admin" class="active">Admin</a>
       </nav>
-      <a href="/admin/logout" class="btn btn-secondary btn-sm">Logout</a>
+      <form method="post" action="/admin/logout" style="display:inline; grid-column:3; justify-self:end;">
+        <button type="submit" class="btn btn-danger btn-sm">Logout</button>
+      </form>
     </header>
 
     <main class="container">
@@ -64,8 +66,7 @@
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Flight</th>
-                <th>From</th>
-                <th>To</th>
+                <th>Airport</th>
                 <th>Date</th>
                 <th>Depart Time</th>
                 <th>Seats</th>
@@ -83,7 +84,6 @@
                 <td>{{ entry.phone }}</td>
                 <td><strong>{{ entry.flight_code }}</strong></td>
                 <td>{{ entry.airport_code }}</td>
-                <td>{{ entry.get('destination_airport', '') or '—' }}</td>
                 <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
                 <td>{{ entry.get('planned_departure_time', '') or '—' }}</td>
                 <td>{{ entry.seats_available }}</td>
@@ -126,8 +126,8 @@
                 <span>{{ entry.phone }}</span>
               </div>
               <div class="entry-field">
-                <span class="label">From / To</span>
-                <span>{{ entry.airport_code }} → {{ entry.get('destination_airport', '') or '—' }}</span>
+                <span class="label">Airport</span>
+                <span>{{ entry.airport_code }}</span>
               </div>
               <div class="entry-field">
                 <span class="label">Date</span>
