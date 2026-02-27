@@ -761,7 +761,7 @@ def eula_page() -> Any:
 @app.get("/docs/<path:filename>")
 def serve_docs(filename: str) -> Any:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
-    return send_from_directory(docs_dir, filename)
+    return send_from_directory(docs_dir, filename, mimetype="application/pdf")
 
 
 @app.get("/login")
