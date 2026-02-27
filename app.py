@@ -24,6 +24,7 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
+NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
@@ -770,8 +771,13 @@ def _create_carpool_inner() -> Any:
     if missing:
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-    if len(data["last_initial"].strip()) != 1:
-        return jsonify({"error": "last_initial must be exactly 1 character"}), 400
+    first_name = data["first_name"].strip()
+    if not NAME_PATTERN.match(first_name):
+        return jsonify({"error": "First name can only contain letters, spaces, hyphens, and apostrophes"}), 400
+
+    last_initial = data["last_initial"].strip()
+    if len(last_initial) != 1 or not last_initial.isalpha():
+        return jsonify({"error": "Last initial must be exactly 1 letter"}), 400
 
     airport_code = data["airport_code"].upper().strip()
     if len(airport_code) != 3:

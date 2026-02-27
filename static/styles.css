@@ -379,8 +379,7 @@ label input, label textarea, label select {
 }
 
 /* ===== Readonly auto-filled fields ===== */
-.airline-readonly,
-.airport-readonly {
+.airline-readonly {
   background: rgba(110, 231, 183, 0.06) !important;
   border-color: rgba(110, 231, 183, 0.15) !important;
   color: var(--accent) !important;
@@ -394,21 +393,6 @@ label input, label textarea, label select {
   font-weight: 400;
 }
 
-.airport-readonly.auto-filled {
-  background: rgba(110, 231, 183, 0.12) !important;
-  border-color: rgba(110, 231, 183, 0.3) !important;
-}
-
-.field-hint {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: normal;
-  margin-top: 0.15rem;
-}
-
 /* ===== Date input (calendar picker) ===== */
 input[type="date"] {
   color-scheme: dark;
@@ -418,23 +402,6 @@ input[type="date"] {
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7) sepia(1) saturate(3) hue-rotate(100deg);
   cursor: pointer;
-}
-
-/* ===== Suggestion loading / empty states ===== */
-.suggestion-loading,
-.suggestion-empty {
-  padding: 0.85rem 1rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: normal;
-}
-
-.suggestion-loading .spinner {
-  vertical-align: middle;
-  margin-right: 0.4rem;
 }
 
 /* ===== Airline Autocomplete Dropdown ===== */
