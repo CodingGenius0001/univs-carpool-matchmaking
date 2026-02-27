@@ -31,15 +31,24 @@
         <p class="card-subtitle">Please review our End User License Agreement and Terms of Service below.</p>
 
         <div class="pdf-viewer">
-          <iframe
-            src="{{ url_for('serve_docs', filename='CAMPUS2AIR TERMS OF SERVICE.pdf') }}"
-            title="EULA & Terms of Service"
-          ></iframe>
+          <object
+            data="{{ url_for('serve_docs', filename='campus2air-tos.pdf') }}"
+            type="application/pdf"
+            width="100%"
+            height="100%"
+          >
+            <p style="padding:2rem;text-align:center;color:var(--text-muted);">
+              Your browser cannot display the PDF inline.
+              <a href="{{ url_for('serve_docs', filename='campus2air-tos.pdf') }}" target="_blank" style="color:var(--accent);">
+                Click here to open the document.
+              </a>
+            </p>
+          </object>
         </div>
 
         <div class="mt-2 text-center">
           <a
-            href="{{ url_for('serve_docs', filename='CAMPUS2AIR TERMS OF SERVICE.pdf') }}"
+            href="{{ url_for('serve_docs', filename='campus2air-tos.pdf') }}"
             target="_blank"
             class="btn btn-secondary btn-sm"
           >
