@@ -387,7 +387,8 @@ label input, label textarea, label select {
   font-weight: 500;
 }
 
-.airline-readonly::placeholder {
+.airline-readonly::placeholder,
+.airport-readonly::placeholder {
   color: rgba(136, 146, 168, 0.4) !important;
   font-weight: 400;
 }

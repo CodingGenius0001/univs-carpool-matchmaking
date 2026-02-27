@@ -25,7 +25,22 @@ if (departureDateInput) {
   departureDateInput.max = `${maxYyyy}-${maxMm}-${maxDd}`;
 }
 
-// --- Formatters ---
+// --- Set min date to today ---
+if (departureDateInput) {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  departureDateInput.min = `${yyyy}-${mm}-${dd}`;
+
+  // Also set a reasonable max (1 year from now)
+  const maxDate = new Date(today);
+  maxDate.setFullYear(maxDate.getFullYear() + 1);
+  const maxYyyy = maxDate.getFullYear();
+  const maxMm = String(maxDate.getMonth() + 1).padStart(2, '0');
+  const maxDd = String(maxDate.getDate()).padStart(2, '0');
+  departureDateInput.max = `${maxYyyy}-${maxMm}-${maxDd}`;
+}
 
 const formatPhone = (raw) => {
   const digits = raw.replace(/\D/g, '').slice(0, 11);
