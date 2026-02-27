@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Party - Campus2Air</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="site-logo">Campus2Air</a>
+      <nav class="nav-links">
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/add-flight-details">Create Carpool</a>
+      </nav>
+      {% if has_party %}
+      <a href="/my-party" class="my-party-btn active" id="my-party-btn">My Party</a>
+      {% endif %}
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/eula">EULA & ToS</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div id="party-content">
+        <p class="text-muted text-center mt-3"><span class="spinner"></span> Loading your parties...</p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const content = document.getElementById('party-content');
+
+      async function loadParties() {
+        try {
+          const res = await fetch('/api/my-parties');
+          const data = await res.json();
+
+          if (!data.parties?.length) {
+            content.innerHTML = `
+              <section class="card text-center" style="margin-top:3rem;">
+                <h2>No Parties Yet</h2>
+                <p class="card-subtitle">You haven't joined or created any carpool parties.</p>
+                <div style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+                  <a href="/find-a-carpool" class="btn btn-primary">Find a Carpool</a>
+                  <a href="/add-flight-details" class="btn btn-secondary">Create a Carpool</a>
+                </div>
+              </section>`;
+            return;
+          }
+
+          content.innerHTML = data.parties.map(p => {
+            const c = p.carpool;
+            const members = p.members || [];
+            return `
+              <section class="card party-card">
+                <div class="party-header">
+                  <h2>${c.first_name} ${c.last_initial}.'s Carpool</h2>
+                  <span class="result-badge score-high">${members.length} member${members.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="result-info">
+                  <span><span class="label">Flight</span><strong>${c.flight_code}</strong></span>
+                  <span><span class="label">Airport</span>${c.airport_code}</span>
+                  <span><span class="label">Date</span>${c.requested_flight_date || c.flight_date_utc || '\u2014'}</span>
+                  <span><span class="label">Departure Time</span>${c.planned_departure_time || '\u2014'}</span>
+                  <span><span class="label">Phone</span><strong>${c.phone}</strong></span>
+                  <span><span class="label">Notes</span>${c.notes || 'None'}</span>
+                </div>
+                <div class="party-members">
+                  <h3>Party Members</h3>
+                  <ul class="member-list">
+                    ${members.map((m, i) => `
+                      <li class="member-item">
+                        <span class="member-email">${m.user_email}</span>
+                        ${i === 0 ? '<span class="member-badge">Creator</span>' : ''}
+                      </li>
+                    `).join('')}
+                  </ul>
+                </div>
+                <div class="party-actions">
+                  <button data-id="${c.id}" class="leave-btn btn btn-secondary btn-sm">Leave Party</button>
+                </div>
+              </section>`;
+          }).join('');
+        } catch (err) {
+          content.innerHTML = '<p class="text-muted text-center mt-3">Failed to load parties. Please refresh.</p>';
+        }
+      }
+
+      loadParties();
+
+      // Leave party handler
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.leave-btn');
+        if (!btn) return;
+        const id = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = 'Leaving...';
+        try {
+          const res = await fetch(`/api/carpools/${id}/leave`, { method: 'POST' });
+          if (res.ok) {
+            btn.textContent = 'Left!';
+            setTimeout(() => loadParties(), 500);
+          }
+        } catch {
+          btn.textContent = 'Error';
+          setTimeout(() => { btn.textContent = 'Leave Party'; btn.disabled = false; }, 2000);
+        }
+      });
+
+      // Hamburger menu
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+    </script>
+  </body>
+</html>
