@@ -9,12 +9,13 @@
 // =============================================================================
 
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyBvumZvNJeP5Re0o-N401rrQMBHe1vnDcg",
+  authDomain: "campus2air-carpool.firebaseapp.com",
+  projectId: "campus2air-carpool",
+  storageBucket: "campus2air-carpool.firebasestorage.app",
+  messagingSenderId: "121527225683",
+  appId: "1:121527225683:web:b6f203b52bfdfadb42a5a6",
+  measurementId: "G-RJZP600N14"
 };
 
 // Initialize Firebase
