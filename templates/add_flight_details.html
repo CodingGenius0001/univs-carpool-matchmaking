@@ -13,10 +13,21 @@
     <header class="site-header">
       <a href="/" class="site-logo">UniRide</a>
       <nav class="nav-links">
-        <a href="/">Home</a>
+        <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
         <a href="/add-flight-details" class="active">Add Flight</a>
       </nav>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/eula">EULA & ToS</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+        </div>
+      </div>
     </header>
 
     <main class="container">
@@ -40,7 +51,7 @@
               <div id="airline-dropdown" class="airline-dropdown"></div>
             </label>
             <label>Airline
-              <input id="airline_name" placeholder="Auto-detected from flight code" readonly tabindex="-1" class="airline-readonly" />
+              <input id="airline_name" placeholder="Auto-detected or type manually" />
             </label>
             <label>Date of Departure
               <input type="date" name="departure_date" id="departure_date" required />
@@ -48,9 +59,6 @@
             <label>Departure Airport
               <input name="airport_code" id="airport_code" maxlength="3" placeholder="Auto-filled from flight" required readonly tabindex="-1" class="airport-readonly" />
               <small id="airport_hint" class="field-hint">Select a flight suggestion to auto-fill</small>
-            </label>
-            <label>Planned Departure Time (from campus)
-              <input type="time" name="planned_departure_time" id="planned_departure_time" />
             </label>
             <label>Planned Departure Time (from campus)
               <input type="time" name="planned_departure_time" id="planned_departure_time" />
@@ -75,5 +83,13 @@
     </footer>
 
     <script src="{{ url_for('static', filename='join.js') }}"></script>
+    <script>
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+    </script>
   </body>
 </html>

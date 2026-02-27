@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UniRide - University Carpool Matchmaking</title>
+    <title>EULA & Terms of Service - UniRide</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -13,29 +13,38 @@
     <header class="site-header">
       <a href="/" class="site-logo">UniRide</a>
       <nav class="nav-links">
-        <a href="/" class="active">Home</a>
+        <a href="/">Home</a>
       </nav>
       <div class="hamburger-wrap">
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
-          <a href="/eula">EULA & ToS</a>
-          <a href="/admin/login">Admin Panel</a>
+          <a href="/eula" class="active">EULA & ToS</a>
         </div>
       </div>
     </header>
 
-    <main>
-      <section class="hero-screen">
-        <span class="badge">University Carpool Matchmaking</span>
-        <h1>Share Your Ride, <span class="gradient-text">Save Together</span></h1>
-        <p class="tagline">Find students on the same flight and split the ride from the airport. Enter your flight details and we'll match you with others heading the same way.</p>
+    <main class="container">
+      <section class="card">
+        <h2>EULA & Terms of Service</h2>
+        <p class="card-subtitle">Please review our End User License Agreement and Terms of Service below.</p>
 
-        <div id="landing-error" style="display:none;" class="login-error"></div>
+        <div class="pdf-viewer">
+          <iframe
+            src="{{ url_for('serve_docs', filename='CAMPUS2AIR TERMS OF SERVICE.pdf') }}"
+            title="EULA & Terms of Service"
+          ></iframe>
+        </div>
 
-        <div class="hero-cta">
-          <a class="btn btn-primary" href="/login">Start Now</a>
+        <div class="mt-2 text-center">
+          <a
+            href="{{ url_for('serve_docs', filename='CAMPUS2AIR TERMS OF SERVICE.pdf') }}"
+            target="_blank"
+            class="btn btn-secondary btn-sm"
+          >
+            Open PDF in New Tab
+          </a>
         </div>
       </section>
     </main>
@@ -45,16 +54,6 @@
     </footer>
 
     <script>
-      // Show error message if redirected from failed login
-      const params = new URLSearchParams(window.location.search);
-      const error = params.get('error');
-      if (error === 'ucr_only') {
-        const el = document.getElementById('landing-error');
-        el.textContent = 'Please sign in with your @ucr.edu UCR Student Google Account.';
-        el.style.display = 'block';
-      }
-
-      // Hamburger menu
       const btn = document.getElementById('hamburger-btn');
       const menu = document.getElementById('hamburger-menu');
       btn?.addEventListener('click', () => menu.classList.toggle('open'));

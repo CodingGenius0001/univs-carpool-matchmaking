@@ -155,26 +155,37 @@ flightCodeInput?.addEventListener('input', async () => {
   const raw = flightCodeInput.value.toUpperCase().replace(/\s+/g, '');
   flightCodeInput.value = raw;
 
-  const letterPrefix = raw.match(/^[A-Z0-9]{0,3}/)?.[0] || '';
-  const hasDigits = /\d/.test(raw);
-
-  // Show airline dropdown only when typing the airline prefix (letters only, 1-3 chars)
-  if (letterPrefix.length >= 1 && letterPrefix.length <= 3 && !hasDigits) {
-    const matches = await fetchAirlineSuggestions(letterPrefix);
-    showAirlineDropdown(matches);
-    if (airlineNameInput) {
-      const exact = matches.find(m => m.code === letterPrefix);
-      airlineNameInput.value = exact ? exact.name : (matches.length === 1 ? matches[0].name : '');
+  // Airline codes can contain digits (e.g. F9, 9K, G4)
+  // Show airline dropdown while typing short codes (1-3 chars)
+  if (raw.length >= 1 && raw.length <= 3) {
+    const matches = await fetchAirlineSuggestions(raw);
+    if (matches.length) {
+      showAirlineDropdown(matches);
+      if (airlineNameInput) {
+        const exact = matches.find(m => m.code === raw);
+        if (exact) {
+          airlineNameInput.value = exact.name;
+        } else if (matches.length === 1) {
+          airlineNameInput.value = matches[0].name;
+        }
+      }
+    } else {
+      closeAirlineDropdown();
     }
   } else {
     closeAirlineDropdown();
-    // Resolve airline name from prefix when digits are added
-    if (airlineNameInput && letterPrefix.length >= 2) {
-      const pureLetters = raw.match(/^[A-Z]{2,3}/)?.[0] || '';
-      if (pureLetters && !airlineNameInput.value) {
-        const matches = await fetchAirlineSuggestions(pureLetters);
-        const exact = matches.find(m => m.code === pureLetters);
-        if (exact) airlineNameInput.value = exact.name;
+    // Once user is typing flight number, try to resolve airline from prefix
+    if (airlineNameInput && raw.length >= 3 && !airlineNameInput.value) {
+      // Try 3-char prefix, then 2-char (covers F9xxx, 9Kxxx, AAxxxx, etc.)
+      for (const len of [3, 2]) {
+        if (raw.length < len) continue;
+        const prefix = raw.slice(0, len);
+        const matches = await fetchAirlineSuggestions(prefix);
+        const exact = matches.find(m => m.code === prefix);
+        if (exact) {
+          airlineNameInput.value = exact.name;
+          break;
+        }
       }
     }
   }

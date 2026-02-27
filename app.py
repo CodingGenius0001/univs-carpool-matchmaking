@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 import traceback
 
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -717,9 +717,16 @@ def landing() -> Any:
     return render_template("welcome.html")
 
 
+def _require_user_login() -> bool:
+    """Check if a regular user is logged in via Firebase."""
+    return bool(session.get("user_email"))
+
+
 @app.get("/start-now")
 def start_now_page() -> Any:
-    return render_template("start_now.html")
+    if not _require_user_login():
+        return redirect(url_for("login_page"))
+    return render_template("start_now.html", user_email=session.get("user_email", ""))
 
 
 @app.get("/landing")
@@ -729,17 +736,69 @@ def landing_legacy() -> Any:
 
 @app.get("/add-flight-details")
 def add_flight_details_page() -> Any:
-    return render_template("add_flight_details.html")
+    if not _require_user_login():
+        return redirect(url_for("login_page"))
+    return render_template("add_flight_details.html", user_email=session.get("user_email", ""))
 
 
 @app.get("/find-a-carpool")
 def find_a_carpool_page() -> Any:
-    return render_template("find_a_carpool.html")
+    if not _require_user_login():
+        return redirect(url_for("login_page"))
+    return render_template("find_a_carpool.html", user_email=session.get("user_email", ""))
 
 
 @app.get("/join")
 def join_page() -> Any:
     return redirect(url_for("add_flight_details_page"), code=302)
+
+
+@app.get("/eula")
+def eula_page() -> Any:
+    return render_template("eula.html")
+
+
+@app.get("/docs/<path:filename>")
+def serve_docs(filename: str) -> Any:
+    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+    return send_from_directory(docs_dir, filename)
+
+
+@app.get("/login")
+def login_page() -> Any:
+    if session.get("user_email"):
+        return redirect(url_for("start_now_page"))
+    error = request.args.get("error", "")
+    return render_template("login.html", error=error)
+
+
+@app.post("/auth/firebase-callback")
+def firebase_callback() -> Any:
+    """Receive Firebase ID token from client, verify email domain, set session."""
+    data = request.get_json(silent=True) or {}
+    email = str(data.get("email", "")).strip().lower()
+    name = str(data.get("name", "")).strip()
+    uid = str(data.get("uid", "")).strip()
+
+    if not email or not uid:
+        return jsonify({"error": "Missing authentication data"}), 400
+
+    if not email.endswith("@ucr.edu"):
+        return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
+
+    session.permanent = True
+    session["user_email"] = email
+    session["user_name"] = name
+    session["user_uid"] = uid
+    return jsonify({"ok": True, "redirect": url_for("start_now_page")})
+
+
+@app.get("/auth/logout")
+def user_logout() -> Any:
+    session.pop("user_email", None)
+    session.pop("user_name", None)
+    session.pop("user_uid", None)
+    return redirect(url_for("landing"))
 
 
 @app.get("/search")
