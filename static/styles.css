@@ -1238,6 +1238,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-top: 1.25rem;
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ===== Member name (replaces email) ===== */
+.member-name {
+  font-size: 0.9rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ===== Phone call button ===== */
+.phone-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(110, 231, 183, 0.12);
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid rgba(110, 231, 183, 0.25);
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.phone-btn:hover {
+  background: rgba(110, 231, 183, 0.25);
+  border-color: var(--accent);
 }
 
 /* ===== PDF Viewer ===== */
@@ -1285,17 +1314,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .eula-checkbox {
   display: flex;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
   gap: 0.5rem;
-  margin: 1.25rem 0 1rem;
+  margin: 1rem 0 0.5rem;
   cursor: pointer;
   font-size: 0.85rem;
   color: var(--text-muted);
   text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
 }
 
 .eula-checkbox input[type="checkbox"] {
-  margin-top: 0.15rem;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -1359,31 +1391,64 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-size: 0.9rem;
 }
 
+/* ===== Mobile logo short name ===== */
+.site-logo .logo-short {
+  display: none;
+}
+
+.site-logo .logo-full {
+  display: inline;
+}
+
+/* ===== Nav links inside hamburger on mobile ===== */
+.hamburger-menu .mobile-nav-link {
+  display: none;
+}
+
+.hamburger-menu .mobile-party-link {
+  display: none;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .site-header {
-    grid-template-columns: 1fr;
-    justify-items: center;
+    grid-template-columns: 1fr auto;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
   }
 
-  .site-header .site-logo,
-  .site-header .nav-links,
-  .site-header > a.btn,
-  .site-header .hamburger-wrap {
+  .site-logo {
     grid-column: 1;
-    justify-self: center;
+    justify-self: start;
+  }
+
+  .site-logo .logo-short {
+    display: inline;
+  }
+
+  .site-logo .logo-full {
+    display: none;
   }
 
   .nav-links {
-    gap: 0.15rem;
-    justify-content: center;
+    display: none;
   }
 
-  .nav-links a {
-    font-size: 0.8rem;
-    padding: 0.35rem 0.5rem;
+  .my-party-btn {
+    display: none !important;
+  }
+
+  .hamburger-wrap {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .hamburger-menu .mobile-nav-link {
+    display: block;
+  }
+
+  .hamburger-menu .mobile-party-link {
+    display: block;
   }
 
   main, .container {

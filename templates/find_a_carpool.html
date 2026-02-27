@@ -11,7 +11,7 @@
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo">Campus2Air</a>
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool" class="active">Find a Carpool</a>
@@ -23,6 +23,11 @@
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link active">Find a Carpool</a>
+          <a href="/add-flight-details" class="mobile-nav-link">Create Carpool</a>
+          <a href="/my-party" class="mobile-party-link" id="mobile-my-party-link" {% if not has_party %}style="display:none"{% endif %}>My Party</a>
+          <div class="menu-divider"></div>
           <a href="/eula">EULA & ToS</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
@@ -34,7 +39,7 @@
     <main class="container">
       <section class="card">
         <h2>Find Available Carpools</h2>
-        <p class="card-subtitle">Search by flight code, airport, or date. Leave fields empty to see all available carpools.</p>
+        <p class="card-subtitle">Search by flight code, airport, or date. At least one field is required.</p>
 
         <form id="search-form">
           <div class="grid">

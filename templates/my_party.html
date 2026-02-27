@@ -11,7 +11,7 @@
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo">Campus2Air</a>
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -25,6 +25,13 @@
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/add-flight-details" class="mobile-nav-link">Create Carpool</a>
+          {% if has_party %}
+          <a href="/my-party" class="mobile-party-link active">My Party</a>
+          {% endif %}
+          <div class="menu-divider"></div>
           <a href="/eula">EULA & ToS</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
@@ -34,10 +41,58 @@
     </header>
 
     <main class="container">
+      <!-- Notifications banner -->
+      <div id="notifications-banner"></div>
+
       <div id="party-content">
         <p class="text-muted text-center mt-3"><span class="spinner"></span> Loading your parties...</p>
       </div>
     </main>
+
+    <!-- Edit Party Modal -->
+    <div id="edit-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card">
+        <h3>Edit Party Details</h3>
+        <form id="edit-form">
+          <input type="hidden" id="edit-carpool-id" />
+          <div class="modal-grid">
+            <label>Departure Time
+              <input type="time" id="edit-departure-time" />
+            </label>
+            <label>Seats Available
+              <input type="number" id="edit-seats" min="1" max="7" />
+            </label>
+          </div>
+          <label class="mt-2">Notes
+            <textarea id="edit-notes" rows="3"></textarea>
+          </label>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+          </div>
+          <p id="edit-message" class="text-sm mt-1"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Disband Party Modal -->
+    <div id="disband-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card">
+        <h3>Disband Party</h3>
+        <p class="text-muted text-sm">This will permanently delete the party and notify all members.</p>
+        <form id="disband-form">
+          <input type="hidden" id="disband-carpool-id" />
+          <label class="mt-2">Reason for disbanding
+            <textarea id="disband-reason" rows="3" required placeholder="e.g. Flight cancelled, plans changed..."></textarea>
+          </label>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-danger">Disband Party</button>
+            <button type="button" class="btn btn-secondary" id="disband-cancel">Cancel</button>
+          </div>
+          <p id="disband-message" class="text-sm mt-1"></p>
+        </form>
+      </div>
+    </div>
 
     <footer class="site-footer">
       <p>Campus2Air &mdash; Built for students, by students.</p>
@@ -45,6 +100,34 @@
 
     <script>
       const content = document.getElementById('party-content');
+      const currentUserEmail = '{{ user_email }}';
+
+      // Load notifications
+      async function loadNotifications() {
+        try {
+          const res = await fetch('/api/notifications');
+          const data = await res.json();
+          const banner = document.getElementById('notifications-banner');
+          if (data.notifications?.length) {
+            banner.innerHTML = data.notifications.map(n => `
+              <div class="message message-warning" style="margin-top:0.75rem;display:flex;align-items:flex-start;gap:0.75rem;">
+                <div style="flex:1">${n.message}</div>
+                <button class="dismiss-notif-btn btn btn-sm btn-secondary" data-id="${n.id}" style="flex-shrink:0">Dismiss</button>
+              </div>
+            `).join('');
+          }
+        } catch {}
+      }
+
+      // Dismiss notification
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.dismiss-notif-btn');
+        if (!btn) return;
+        try {
+          await fetch(`/api/notifications/${btn.dataset.id}/dismiss`, { method: 'POST' });
+          btn.closest('.message').remove();
+        } catch {}
+      });
 
       async function loadParties() {
         try {
@@ -67,6 +150,40 @@
           content.innerHTML = data.parties.map(p => {
             const c = p.carpool;
             const members = p.members || [];
+            const isCreator = p.is_creator;
+
+            const membersList = members.map((m, i) => {
+              const displayName = m.first_name
+                ? `${m.first_name} ${m.last_initial ? m.last_initial + '.' : ''}`
+                : m.user_email.split('@')[0];
+              const isCreatorMember = i === 0;
+              const phoneBtn = m.phone
+                ? `<a href="tel:${m.phone.replace(/\s/g, '')}" class="phone-btn" title="Call ${displayName}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  </a>`
+                : '';
+              const removeBtn = isCreator && !isCreatorMember
+                ? `<button class="remove-member-btn btn btn-sm" data-carpool="${c.id}" data-email="${m.user_email}" title="Remove member" style="background:var(--danger-bg);color:var(--danger);border:1px solid rgba(248,113,113,0.2);padding:0.25rem 0.5rem;font-size:0.7rem;">Remove</button>`
+                : '';
+              return `
+                <li class="member-item">
+                  <span class="member-name">${displayName}</span>
+                  ${isCreatorMember ? '<span class="member-badge">Creator</span>' : ''}
+                  <span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;">
+                    ${phoneBtn}
+                    ${removeBtn}
+                  </span>
+                </li>`;
+            }).join('');
+
+            const creatorActions = isCreator ? `
+              <button data-id="${c.id}" class="edit-party-btn btn btn-secondary btn-sm"
+                data-time="${c.planned_departure_time || ''}"
+                data-notes="${(c.notes || '').replace(/"/g, '&quot;')}"
+                data-seats="${c.seats_available || 3}">Edit Details</button>
+              <button data-id="${c.id}" class="disband-btn btn btn-danger btn-sm">Disband Party</button>
+            ` : '';
+
             return `
               <section class="card party-card">
                 <div class="party-header">
@@ -78,22 +195,17 @@
                   <span><span class="label">Airport</span>${c.airport_code}</span>
                   <span><span class="label">Date</span>${c.requested_flight_date || c.flight_date_utc || '\u2014'}</span>
                   <span><span class="label">Departure Time</span>${c.planned_departure_time || '\u2014'}</span>
-                  <span><span class="label">Phone</span><strong>${c.phone}</strong></span>
                   <span><span class="label">Notes</span>${c.notes || 'None'}</span>
                 </div>
                 <div class="party-members">
                   <h3>Party Members</h3>
                   <ul class="member-list">
-                    ${members.map((m, i) => `
-                      <li class="member-item">
-                        <span class="member-email">${m.user_email}</span>
-                        ${i === 0 ? '<span class="member-badge">Creator</span>' : ''}
-                      </li>
-                    `).join('')}
+                    ${membersList}
                   </ul>
                 </div>
                 <div class="party-actions">
                   <button data-id="${c.id}" class="leave-btn btn btn-secondary btn-sm">Leave Party</button>
+                  ${creatorActions}
                 </div>
               </section>`;
           }).join('');
@@ -103,12 +215,14 @@
       }
 
       loadParties();
+      loadNotifications();
 
       // Leave party handler
       document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.leave-btn');
         if (!btn) return;
         const id = btn.dataset.id;
+        if (!confirm('Are you sure you want to leave this party?')) return;
         btn.disabled = true;
         btn.textContent = 'Leaving...';
         try {
@@ -121,6 +235,140 @@
           btn.textContent = 'Error';
           setTimeout(() => { btn.textContent = 'Leave Party'; btn.disabled = false; }, 2000);
         }
+      });
+
+      // Remove member handler
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.remove-member-btn');
+        if (!btn) return;
+        const carpoolId = btn.dataset.carpool;
+        const email = btn.dataset.email;
+        if (!confirm(`Remove this member from the party?`)) return;
+        btn.disabled = true;
+        btn.textContent = 'Removing...';
+        try {
+          const res = await fetch(`/api/carpools/${carpoolId}/remove-member`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          if (res.ok) {
+            btn.textContent = 'Removed!';
+            setTimeout(() => loadParties(), 500);
+          } else {
+            const data = await res.json();
+            btn.textContent = data.error || 'Failed';
+            setTimeout(() => { btn.textContent = 'Remove'; btn.disabled = false; }, 2000);
+          }
+        } catch {
+          btn.textContent = 'Error';
+          setTimeout(() => { btn.textContent = 'Remove'; btn.disabled = false; }, 2000);
+        }
+      });
+
+      // Edit party modal
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.edit-party-btn');
+        if (!btn) return;
+        document.getElementById('edit-carpool-id').value = btn.dataset.id;
+        document.getElementById('edit-departure-time').value = btn.dataset.time;
+        document.getElementById('edit-notes').value = btn.dataset.notes;
+        document.getElementById('edit-seats').value = btn.dataset.seats;
+        document.getElementById('edit-message').textContent = '';
+        document.getElementById('edit-modal').style.display = '';
+      });
+
+      document.getElementById('edit-cancel').addEventListener('click', () => {
+        document.getElementById('edit-modal').style.display = 'none';
+      });
+
+      document.getElementById('edit-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('edit-carpool-id').value;
+        const payload = {
+          planned_departure_time: document.getElementById('edit-departure-time').value,
+          notes: document.getElementById('edit-notes').value,
+          seats_available: parseInt(document.getElementById('edit-seats').value) || 3,
+        };
+        const msgEl = document.getElementById('edit-message');
+        try {
+          const res = await fetch(`/api/carpools/${id}/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            msgEl.textContent = 'Saved!';
+            msgEl.style.color = 'var(--success)';
+            setTimeout(() => {
+              document.getElementById('edit-modal').style.display = 'none';
+              loadParties();
+            }, 500);
+          } else {
+            msgEl.textContent = data.error || 'Failed to save';
+            msgEl.style.color = 'var(--danger)';
+          }
+        } catch {
+          msgEl.textContent = 'Network error';
+          msgEl.style.color = 'var(--danger)';
+        }
+      });
+
+      // Disband party modal
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.disband-btn');
+        if (!btn) return;
+        document.getElementById('disband-carpool-id').value = btn.dataset.id;
+        document.getElementById('disband-reason').value = '';
+        document.getElementById('disband-message').textContent = '';
+        document.getElementById('disband-modal').style.display = '';
+      });
+
+      document.getElementById('disband-cancel').addEventListener('click', () => {
+        document.getElementById('disband-modal').style.display = 'none';
+      });
+
+      document.getElementById('disband-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('disband-carpool-id').value;
+        const reason = document.getElementById('disband-reason').value.trim();
+        const msgEl = document.getElementById('disband-message');
+        if (!reason) {
+          msgEl.textContent = 'Please provide a reason.';
+          msgEl.style.color = 'var(--danger)';
+          return;
+        }
+        if (!confirm('Are you sure you want to disband this party? This cannot be undone.')) return;
+        try {
+          const res = await fetch(`/api/carpools/${id}/disband`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            msgEl.textContent = 'Party disbanded.';
+            msgEl.style.color = 'var(--success)';
+            setTimeout(() => {
+              document.getElementById('disband-modal').style.display = 'none';
+              loadParties();
+            }, 500);
+          } else {
+            msgEl.textContent = data.error || 'Failed to disband';
+            msgEl.style.color = 'var(--danger)';
+          }
+        } catch {
+          msgEl.textContent = 'Network error';
+          msgEl.style.color = 'var(--danger)';
+        }
+      });
+
+      // Close modals on overlay click
+      document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) modal.style.display = 'none';
+        });
       });
 
       // Hamburger menu
