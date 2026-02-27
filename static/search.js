@@ -111,6 +111,11 @@ searchForm?.addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (!data.results?.length) {
+      const params = new URLSearchParams();
+      if (formData.flight_code) params.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
+      if (formData.airport_code) params.set('airport_code', searchForm.querySelector('[name="airport_code"]').value);
+      if (searchForm.querySelector('[name="departure_date"]').value) params.set('departure_date', searchForm.querySelector('[name="departure_date"]').value);
+      const addUrl = '/add-flight-details' + (params.toString() ? '?' + params.toString() : '');
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
