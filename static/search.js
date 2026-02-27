@@ -38,10 +38,16 @@ searchForm?.addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (!data.results?.length) {
+      const params = new URLSearchParams();
+      if (formData.flight_code) params.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
+      if (formData.airport_code) params.set('airport_code', searchForm.querySelector('[name="airport_code"]').value);
+      if (searchForm.querySelector('[name="departure_date"]').value) params.set('departure_date', searchForm.querySelector('[name="departure_date"]').value);
+      const addUrl = '/add-flight-details' + (params.toString() ? '?' + params.toString() : '');
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
-          <p>No matching carpools found. Try adjusting your search or check back later.</p>
+          <p>No matching carpools found. Try adjusting your search or add your own flight so others can find you!</p>
+          <a href="${addUrl}" class="btn btn-primary mt-2">Add Your Flight Details</a>
         </div>`;
       return;
     }
@@ -90,6 +96,18 @@ searchForm?.addEventListener('submit', async (e) => {
             <div id="detail-${r.id}" class="result-detail" style="display:none;"></div>
           </article>`;
       }).join('');
+
+    // Add "Add Your Flight Details" button below results
+    const addParams = new URLSearchParams();
+    if (formData.flight_code) addParams.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
+    if (formData.airport_code) addParams.set('airport_code', searchForm.querySelector('[name="airport_code"]').value);
+    if (searchForm.querySelector('[name="departure_date"]').value) addParams.set('departure_date', searchForm.querySelector('[name="departure_date"]').value);
+    const addLink = '/add-flight-details' + (addParams.toString() ? '?' + addParams.toString() : '');
+    results.innerHTML += `
+      <div class="text-center mt-3">
+        <p class="text-muted text-sm">Can't find what you're looking for?</p>
+        <a href="${addLink}" class="btn btn-primary mt-1">Add Your Flight Details</a>
+      </div>`;
   } catch (err) {
     results.innerHTML = '<p class="text-muted text-center mt-2">Search failed. Please try again.</p>';
   } finally {
