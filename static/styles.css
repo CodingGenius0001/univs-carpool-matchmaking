@@ -1189,6 +1189,40 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-bottom: 1.5rem;
 }
 
+.eula-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 1.25rem 0 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.eula-checkbox input[type="checkbox"] {
+  margin-top: 0.15rem;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.eula-checkbox a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.eula-checkbox a:hover {
+  color: var(--accent2);
+}
+
+.google-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .google-btn {
   display: inline-flex;
   align-items: center;
