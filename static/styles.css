@@ -1146,6 +1146,100 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--danger) !important;
 }
 
+/* ===== My Party Button (header) ===== */
+.my-party-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius);
+  background: rgba(110, 231, 183, 0.12);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid rgba(110, 231, 183, 0.25);
+  transition: all var(--transition);
+  white-space: nowrap;
+  margin-left: auto;
+  margin-right: 0.5rem;
+}
+
+.my-party-btn:hover,
+.my-party-btn.active {
+  background: rgba(110, 231, 183, 0.2);
+  border-color: var(--accent);
+}
+
+/* ===== Party Card (My Party page) ===== */
+.party-card {
+  margin-top: 1.5rem;
+}
+
+.party-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.party-header h2 {
+  margin: 0;
+}
+
+.party-members {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.party-members h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+}
+
+.member-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+}
+
+.member-email {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-family: monospace;
+}
+
+.member-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 99px;
+  background: rgba(110, 231, 183, 0.15);
+  color: var(--accent);
+}
+
+.party-actions {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ===== PDF Viewer ===== */
 .eula-wide {
   max-width: 1200px;
@@ -1187,6 +1281,40 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .login-card .card-subtitle {
   margin-bottom: 1.5rem;
+}
+
+.eula-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 1.25rem 0 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.eula-checkbox input[type="checkbox"] {
+  margin-top: 0.15rem;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.eula-checkbox a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.eula-checkbox a:hover {
+  color: var(--accent2);
+}
+
+.google-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .google-btn {

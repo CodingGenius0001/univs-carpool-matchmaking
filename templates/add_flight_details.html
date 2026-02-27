@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Add Flight Details - Campus2Air</title>
+    <title>Create a Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -15,8 +15,11 @@
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
-        <a href="/add-flight-details" class="active">Add Flight</a>
+        <a href="/add-flight-details" class="active">Create Carpool</a>
       </nav>
+      {% if has_party %}
+      <a href="/my-party" class="my-party-btn" id="my-party-btn">My Party</a>
+      {% endif %}
       <div class="hamburger-wrap">
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
@@ -32,7 +35,7 @@
 
     <main class="container">
       <section class="card">
-        <h2>Add Your Flight Details</h2>
+        <h2>Create a Carpool</h2>
         <p class="disclaimer">Your info is only visible to matched carpool partners. Records are automatically removed after the flight lands.</p>
 
         <form id="join-form">
@@ -71,7 +74,7 @@
             <textarea name="notes" rows="3" placeholder="Pickup location preference, luggage info, etc."></textarea>
           </label>
 
-          <button type="submit" class="btn btn-primary btn-block mt-2">Save to Database</button>
+          <button type="submit" class="btn btn-primary btn-block mt-2">Create Carpool</button>
         </form>
         <p id="join-message"></p>
       </section>

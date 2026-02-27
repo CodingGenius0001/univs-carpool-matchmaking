@@ -323,7 +323,34 @@ class DBAdapter:
                     created_at TEXT NOT NULL,
                     requested_flight_date TEXT NOT NULL,
                     destination_airport TEXT NOT NULL DEFAULT '',
-                    planned_departure_time TEXT NOT NULL DEFAULT ''
+                    planned_departure_time TEXT NOT NULL DEFAULT '',
+                    creator_email TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+
+        # Create party_members table
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS party_members (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    carpool_id INT NOT NULL,
+                    user_email VARCHAR(255) NOT NULL,
+                    joined_at VARCHAR(64) NOT NULL,
+                    UNIQUE KEY uq_carpool_member (carpool_id, user_email)
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS party_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    carpool_id INTEGER NOT NULL,
+                    user_email TEXT NOT NULL,
+                    joined_at TEXT NOT NULL,
+                    UNIQUE(carpool_id, user_email)
                 )
                 """
             )
@@ -347,6 +374,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'planned_departure_time'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time VARCHAR(16) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM carpools LIKE 'creator_email'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -356,6 +386,8 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN destination_airport TEXT NOT NULL DEFAULT ''")
                 if "planned_departure_time" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
+                if "creator_email" not in cols:
+                    cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -722,11 +754,25 @@ def _require_user_login() -> bool:
     return bool(session.get("user_email"))
 
 
+def _user_context() -> dict[str, Any]:
+    """Build common template context for logged-in pages."""
+    email = session.get("user_email", "")
+    has_party = False
+    if email:
+        try:
+            p = db.placeholder
+            rows = db.query(f"SELECT COUNT(*) as c FROM party_members WHERE user_email = {p}", (email,))
+            has_party = rows[0]["c"] > 0 if rows else False
+        except Exception:
+            pass
+    return {"user_email": email, "has_party": has_party}
+
+
 @app.get("/start-now")
 def start_now_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
-    return render_template("start_now.html", user_email=session.get("user_email", ""))
+    return render_template("start_now.html", **_user_context())
 
 
 @app.get("/landing")
@@ -738,14 +784,21 @@ def landing_legacy() -> Any:
 def add_flight_details_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
-    return render_template("add_flight_details.html", user_email=session.get("user_email", ""))
+    return render_template("add_flight_details.html", **_user_context())
 
 
 @app.get("/find-a-carpool")
 def find_a_carpool_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
-    return render_template("find_a_carpool.html", user_email=session.get("user_email", ""))
+    return render_template("find_a_carpool.html", **_user_context())
+
+
+@app.get("/my-party")
+def my_party_page() -> Any:
+    if not _require_user_login():
+        return redirect(url_for("login_page"))
+    return render_template("my_party.html", **_user_context())
 
 
 @app.get("/join")
@@ -863,20 +916,15 @@ def _create_carpool_inner() -> Any:
         return jsonify({"error": "departure_date must be in MM-DD-YYYY format"}), 400
     flight_date_user = _to_user_flight_date(parsed_flight_date)
 
-    # Try to fetch live flight data, but save regardless
-    flight_info = _fetch_flight_live_or_future(flight_code, flight_date_user)
-    warning = None
-    if flight_info.get("source") == "user_entered":
-        warning = "Flight could not be verified via API. Saved with user-provided details."
-
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
 
     # Expire at 11:59 PM UTC on the departure date
     expires_at = parsed_flight_date.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
-    destination_airport = str(data.get("destination_airport") or flight_info.get("destination") or "").strip().upper()[:3]
+    destination_airport = str(data.get("destination_airport", "")).strip().upper()[:3]
     planned_departure_time = str(data.get("planned_departure_time", "")).strip()
+    creator_email = session.get("user_email", "")
 
     p = db.placeholder
     last_id = db.execute(
@@ -884,8 +932,8 @@ def _create_carpool_inner() -> Any:
         INSERT INTO carpools (
             first_name,last_initial,phone,flight_code,airport_code,airport_name,airport_location,
             flight_time_utc,flight_date_utc,seats_available,notes,fetched_from,status,expires_at,created_at,
-            requested_flight_date,destination_airport,planned_departure_time
-        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            requested_flight_date,destination_airport,planned_departure_time,creator_email
+        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """,
         (
             data["first_name"].strip().title(),
@@ -895,25 +943,33 @@ def _create_carpool_inner() -> Any:
             airport_code,
             airport_name,
             airport_location,
-            flight_info.get("flight_time_utc", "Unknown"),
-            flight_info.get("flight_date_utc", _to_api_flight_date(parsed_flight_date)),
+            "TBD",
+            _to_api_flight_date(parsed_flight_date),
             int(data.get("seats_available", 3) or 3),
             str(data.get("notes", "")).strip(),
-            flight_info.get("source", "user_entered"),
-            flight_info.get("status", "unverified"),
+            "direct",
+            "active",
             expires_at,
             created_at,
             flight_date_user,
             destination_airport,
             planned_departure_time,
+            creator_email,
         ),
     )
 
+    # Auto-add creator to party_members
+    if creator_email:
+        try:
+            db.execute(
+                f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
+                (last_id, creator_email, created_at),
+            )
+        except Exception:
+            pass  # Ignore duplicate
+
     row = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))[0]
-    response = {"message": "Added to carpool database", "entry": _serialize_entry(row)}
-    if warning:
-        response["warning"] = warning
-    return jsonify(response), 201
+    return jsonify({"message": "Carpool created!", "entry": _serialize_entry(row)}), 201
 
 
 @app.get("/api/airlines/suggest")
@@ -956,7 +1012,23 @@ def search_carpools() -> Any:
     parsed_search_date = _parse_user_flight_date(flight_date_raw) if flight_date_raw else None
     flight_date = _to_user_flight_date(parsed_search_date) if parsed_search_date else ""
 
+    current_user = session.get("user_email", "")
+    p = db.placeholder
+
     rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
+
+    # Get member counts for all carpools
+    member_counts: dict[int, int] = {}
+    user_memberships: set[int] = set()
+    try:
+        all_members = db.query("SELECT carpool_id, user_email FROM party_members")
+        for m in all_members:
+            cid = m["carpool_id"]
+            member_counts[cid] = member_counts.get(cid, 0) + 1
+            if m["user_email"] == current_user:
+                user_memberships.add(cid)
+    except Exception:
+        pass
 
     results: list[dict[str, Any]] = []
     for entry in rows:
@@ -975,6 +1047,11 @@ def search_carpools() -> Any:
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
             public_row["match_reasons"] = reasons
+            cid = entry["id"]
+            mc = member_counts.get(cid, 0)
+            public_row["member_count"] = mc
+            public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - (mc - 1))
+            public_row["is_member"] = cid in user_memberships
             results.append(public_row)
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
@@ -989,6 +1066,90 @@ def carpool_details(entry_id: int) -> Any:
     if not rows:
         return jsonify({"error": "Not found"}), 404
     return jsonify({"entry": _serialize_entry(rows[0], include_phone=True)})
+
+
+@app.post("/api/carpools/<int:carpool_id>/join")
+def join_party(carpool_id: int) -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+
+    carpool = rows[0]
+
+    # Check if already a member
+    existing = db.query(
+        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, email),
+    )
+    if existing:
+        return jsonify({"error": "Already in this party"}), 409
+
+    # Check seat cap: seats_available = max joiners beyond creator
+    members = db.query(
+        f"SELECT COUNT(*) as c FROM party_members WHERE carpool_id = {p}",
+        (carpool_id,),
+    )
+    current_count = members[0]["c"] if members else 0
+    max_members = int(carpool.get("seats_available", 3)) + 1  # +1 for creator
+    if current_count >= max_members:
+        return jsonify({"error": "This carpool party is full"}), 409
+
+    db.execute(
+        f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
+        (carpool_id, email, _now_utc().isoformat()),
+    )
+    return jsonify({"ok": True, "message": "Joined the party!"})
+
+
+@app.post("/api/carpools/<int:carpool_id>/leave")
+def leave_party(carpool_id: int) -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+
+    p = db.placeholder
+    db.execute(
+        f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, email),
+    )
+    return jsonify({"ok": True, "message": "Left the party."})
+
+
+@app.get("/api/my-parties")
+def my_parties() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+
+    p = db.placeholder
+    memberships = db.query(
+        f"SELECT carpool_id FROM party_members WHERE user_email = {p}", (email,)
+    )
+    if not memberships:
+        return jsonify({"parties": []})
+
+    parties = []
+    for mem in memberships:
+        cid = mem["carpool_id"]
+        rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (cid,))
+        if not rows:
+            continue
+        carpool = rows[0]
+        members = db.query(
+            f"SELECT user_email, joined_at FROM party_members WHERE carpool_id = {p} ORDER BY joined_at",
+            (cid,),
+        )
+        parties.append({
+            "carpool": _serialize_entry(carpool, include_phone=True),
+            "members": [dict(m) for m in members],
+        })
+
+    return jsonify({"parties": parties})
 
 
 # ---------------------------------------------------------------------------

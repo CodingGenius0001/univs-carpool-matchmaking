@@ -310,11 +310,7 @@ form?.addEventListener('submit', async (e) => {
       return;
     }
 
-    let text = 'Your flight has been saved to the carpool database!';
-    if (data.warning) {
-      text += ` Note: ${data.warning}`;
-    }
-    msg.textContent = text;
+    msg.textContent = 'Carpool created! Others can now find and join your party.';
     msg.className = '';
     form.reset();
     if (airlineNameInput) airlineNameInput.value = '';
