@@ -11,7 +11,7 @@
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo">Campus2Air</a>
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/">Home</a>
       </nav>
@@ -20,6 +20,8 @@
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/" class="mobile-nav-link">Home</a>
+          <div class="menu-divider mobile-nav-link"></div>
           <a href="/eula">EULA & ToS</a>
         </div>
       </div>
@@ -37,11 +39,6 @@
           <div class="login-error">Authentication failed. Please try again.</div>
           {% endif %}
 
-          <label class="eula-checkbox">
-            <input type="checkbox" id="eula-agree" />
-            <span>I agree to the <a href="/eula" target="_blank">Terms of Service & EULA</a></span>
-          </label>
-
           <button id="google-signin-btn" class="google-btn" type="button" disabled>
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -51,6 +48,11 @@
             </svg>
             Sign in with Google
           </button>
+
+          <label class="eula-checkbox">
+            <input type="checkbox" id="eula-agree" />
+            <span>I agree to the <a href="/eula" target="_blank">Terms of Service & EULA</a></span>
+          </label>
 
           <p id="login-status" style="margin-top: 1rem; font-size: 0.85rem;"></p>
 

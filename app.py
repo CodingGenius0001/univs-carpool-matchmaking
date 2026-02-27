@@ -355,6 +355,58 @@ class DBAdapter:
                 """
             )
 
+        # Create users table for storing profile info (name, phone)
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    user_email VARCHAR(255) PRIMARY KEY,
+                    first_name VARCHAR(120) NOT NULL DEFAULT '',
+                    last_initial VARCHAR(1) NOT NULL DEFAULT '',
+                    phone VARCHAR(32) NOT NULL DEFAULT '',
+                    created_at VARCHAR(64) NOT NULL DEFAULT ''
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    user_email TEXT PRIMARY KEY,
+                    first_name TEXT NOT NULL DEFAULT '',
+                    last_initial TEXT NOT NULL DEFAULT '',
+                    phone TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+
+        # Create notifications table for disband messages etc.
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_email VARCHAR(255) NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at VARCHAR(64) NOT NULL,
+                    dismissed INT NOT NULL DEFAULT 0
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    dismissed INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+
         conn.commit()
         cur.close()
         conn.close()
@@ -735,7 +787,13 @@ def handle_exception(e: Exception) -> Any:
 def _cleanup_expired_entries() -> None:
     try:
         p = db.placeholder
-        db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (_now_utc().isoformat(),))
+        now_iso = _now_utc().isoformat()
+        # Find expired carpools first so we can clean up party_members too
+        expired = db.query(f"SELECT id FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
+        if expired:
+            for row in expired:
+                db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (row["id"],))
+            db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
     except Exception:
         pass
 
@@ -843,6 +901,29 @@ def firebase_callback() -> Any:
     session["user_email"] = email
     session["user_name"] = name
     session["user_uid"] = uid
+
+    # Store/update user profile from Google display name
+    if name:
+        parts = name.strip().split()
+        first_name = parts[0] if parts else ""
+        last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
+        p = db.placeholder
+        try:
+            existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+            if not existing:
+                db.execute(
+                    f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+                    (email, first_name, last_initial, "", _now_utc().isoformat()),
+                )
+            else:
+                # Update name in case Google name changed, but don't overwrite phone
+                db.execute(
+                    f"UPDATE users SET first_name = {p}, last_initial = {p} WHERE user_email = {p}",
+                    (first_name, last_initial, email),
+                )
+        except Exception:
+            pass
+
     return jsonify({"ok": True, "redirect": url_for("start_now_page")})
 
 
@@ -1012,6 +1093,10 @@ def search_carpools() -> Any:
     parsed_search_date = _parse_user_flight_date(flight_date_raw) if flight_date_raw else None
     flight_date = _to_user_flight_date(parsed_search_date) if parsed_search_date else ""
 
+    # Require at least one search field
+    if not flight_code and not airport_code and not flight_date_raw:
+        return jsonify({"error": "At least 1 search field is required", "count": 0, "results": []}), 400
+
     current_user = session.get("user_email", "")
     p = db.placeholder
 
@@ -1043,7 +1128,7 @@ def search_carpools() -> Any:
         if flight_date and entry.get("requested_flight_date") == flight_date:
             score += 20
             reasons.append("Same requested flight date")
-        if score > 0 or (not flight_code and not airport_code and not flight_date):
+        if score > 0:
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
             public_row["match_reasons"] = reasons
@@ -1099,6 +1184,28 @@ def join_party(carpool_id: int) -> Any:
     if current_count >= max_members:
         return jsonify({"error": "This carpool party is full"}), 409
 
+    # Store phone number if provided
+    data = request.get_json(silent=True) or {}
+    raw_phone = str(data.get("phone", "")).strip()
+    if raw_phone:
+        raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
+        if PHONE_PATTERN.match(raw_phone):
+            try:
+                existing_user = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+                if existing_user:
+                    db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
+                else:
+                    name = session.get("user_name", "")
+                    parts = name.strip().split() if name else []
+                    first_name = parts[0] if parts else email.split("@")[0]
+                    last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
+                    db.execute(
+                        f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+                        (email, first_name, last_initial, raw_phone, _now_utc().isoformat()),
+                    )
+            except Exception:
+                pass
+
     db.execute(
         f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
         (carpool_id, email, _now_utc().isoformat()),
@@ -1144,12 +1251,209 @@ def my_parties() -> Any:
             f"SELECT user_email, joined_at FROM party_members WHERE carpool_id = {p} ORDER BY joined_at",
             (cid,),
         )
+        # Enrich members with name and phone from users table
+        enriched_members = []
+        for m in members:
+            member_data = dict(m)
+            try:
+                user_rows = db.query(f"SELECT first_name, last_initial, phone FROM users WHERE user_email = {p}", (m["user_email"],))
+                if user_rows:
+                    member_data["first_name"] = user_rows[0]["first_name"]
+                    member_data["last_initial"] = user_rows[0]["last_initial"]
+                    member_data["phone"] = user_rows[0]["phone"]
+                else:
+                    member_data["first_name"] = m["user_email"].split("@")[0]
+                    member_data["last_initial"] = ""
+                    member_data["phone"] = ""
+            except Exception:
+                member_data["first_name"] = m["user_email"].split("@")[0]
+                member_data["last_initial"] = ""
+                member_data["phone"] = ""
+            enriched_members.append(member_data)
         parties.append({
             "carpool": _serialize_entry(carpool, include_phone=True),
-            "members": [dict(m) for m in members],
+            "members": enriched_members,
+            "is_creator": carpool.get("creator_email") == email,
         })
 
     return jsonify({"parties": parties})
+
+
+@app.get("/api/user/profile")
+def user_profile() -> Any:
+    """Get current user's profile (name, phone) for auto-fill."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    try:
+        rows = db.query(f"SELECT * FROM users WHERE user_email = {p}", (email,))
+        if rows:
+            return jsonify({"profile": dict(rows[0])})
+    except Exception:
+        pass
+    return jsonify({"profile": {"user_email": email, "first_name": "", "last_initial": "", "phone": ""}})
+
+
+@app.post("/api/user/phone")
+def update_user_phone() -> Any:
+    """Update current user's phone number."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    data = request.get_json(silent=True) or {}
+    raw_phone = str(data.get("phone", ""))
+    raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
+    if not PHONE_PATTERN.match(raw_phone):
+        return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
+    p = db.placeholder
+    try:
+        existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+        if existing:
+            db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
+        else:
+            db.execute(
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+                (email, "", "", raw_phone, _now_utc().isoformat()),
+            )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.post("/api/carpools/<int:carpool_id>/remove-member")
+def remove_member(carpool_id: int) -> Any:
+    """Allow the party creator to remove a member."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    data = request.get_json(silent=True) or {}
+    target_email = str(data.get("email", "")).strip().lower()
+    if not target_email:
+        return jsonify({"error": "Missing member email"}), 400
+    p = db.placeholder
+    # Verify caller is the creator
+    rows = db.query(f"SELECT creator_email FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    if rows[0]["creator_email"] != email:
+        return jsonify({"error": "Only the party creator can remove members"}), 403
+    if target_email == email:
+        return jsonify({"error": "Cannot remove yourself. Use disband instead."}), 400
+    db.execute(
+        f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, target_email),
+    )
+    return jsonify({"ok": True, "message": "Member removed."})
+
+
+@app.post("/api/carpools/<int:carpool_id>/edit")
+def edit_party(carpool_id: int) -> Any:
+    """Allow the party creator to edit party details."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    rows = db.query(f"SELECT creator_email FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    if rows[0]["creator_email"] != email:
+        return jsonify({"error": "Only the party creator can edit details"}), 403
+    data = request.get_json(silent=True) or {}
+    updates = []
+    params: list[Any] = []
+    if "planned_departure_time" in data:
+        updates.append(f"planned_departure_time = {p}")
+        params.append(str(data["planned_departure_time"]).strip())
+    if "notes" in data:
+        updates.append(f"notes = {p}")
+        params.append(str(data["notes"]).strip())
+    if "seats_available" in data:
+        try:
+            seats = int(data["seats_available"])
+            if 1 <= seats <= 7:
+                updates.append(f"seats_available = {p}")
+                params.append(seats)
+        except (ValueError, TypeError):
+            pass
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+    params.append(carpool_id)
+    db.execute(
+        f"UPDATE carpools SET {', '.join(updates)} WHERE id = {p}",
+        tuple(params),
+    )
+    return jsonify({"ok": True, "message": "Party updated."})
+
+
+@app.post("/api/carpools/<int:carpool_id>/disband")
+def disband_party(carpool_id: int) -> Any:
+    """Allow the party creator to disband the party with a reason."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    data = request.get_json(silent=True) or {}
+    reason = str(data.get("reason", "")).strip()
+    if not reason:
+        return jsonify({"error": "A reason for disbanding is required"}), 400
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    carpool = rows[0]
+    if carpool["creator_email"] != email:
+        return jsonify({"error": "Only the party creator can disband the party"}), 403
+    # Notify all members (except creator)
+    members = db.query(
+        f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
+        (carpool_id, email),
+    )
+    now = _now_utc().isoformat()
+    creator_name = f"{carpool['first_name']} {carpool['last_initial']}."
+    flight = carpool["flight_code"]
+    for m in members:
+        try:
+            db.execute(
+                f"INSERT INTO notifications (user_email, message, created_at) VALUES ({p}, {p}, {p})",
+                (m["user_email"], f"The carpool for flight {flight} created by {creator_name} has been disbanded. Reason: {reason}", now),
+            )
+        except Exception:
+            pass
+    # Delete all party members and the carpool
+    db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (carpool_id,))
+    db.execute(f"DELETE FROM carpools WHERE id = {p}", (carpool_id,))
+    return jsonify({"ok": True, "message": "Party disbanded."})
+
+
+@app.get("/api/notifications")
+def get_notifications() -> Any:
+    """Get unread notifications for current user."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    try:
+        rows = db.query(
+            f"SELECT * FROM notifications WHERE user_email = {p} AND dismissed = 0 ORDER BY created_at DESC",
+            (email,),
+        )
+        return jsonify({"notifications": [dict(r) for r in rows]})
+    except Exception:
+        return jsonify({"notifications": []})
+
+
+@app.post("/api/notifications/<int:notif_id>/dismiss")
+def dismiss_notification(notif_id: int) -> Any:
+    """Dismiss a notification."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    db.execute(
+        f"UPDATE notifications SET dismissed = 1 WHERE id = {p} AND user_email = {p}",
+        (notif_id, email),
+    )
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

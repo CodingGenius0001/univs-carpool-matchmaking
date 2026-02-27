@@ -25,6 +25,37 @@ function buildAddUrl() {
   return '/add-flight-details' + (params.toString() ? '?' + params.toString() : '');
 }
 
+// Phone formatting helper
+function formatPhone(raw) {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  const withCountry = digits.startsWith('1') ? digits : `1${digits}`;
+  const limited = withCountry.slice(0, 11);
+  const a = limited.slice(1, 4);
+  const b = limited.slice(4, 7);
+  const c = limited.slice(7, 11);
+  let out = '+1';
+  if (a) out += ` (${a}`;
+  if (a.length === 3) out += ')';
+  if (b) out += ` ${b}`;
+  if (c) out += ` ${c}`;
+  return out;
+}
+
+// Cached user phone for auto-fill
+let cachedUserPhone = '';
+
+// Load user phone on page load
+async function loadUserPhone() {
+  try {
+    const res = await fetch('/api/user/profile');
+    const data = await res.json();
+    if (data.profile?.phone) {
+      cachedUserPhone = data.profile.phone;
+    }
+  } catch {}
+}
+loadUserPhone();
+
 function renderResults(data) {
   results.innerHTML = `<p class="text-muted text-sm mt-2">${data.count} carpool${data.count !== 1 ? 's' : ''} found</p>` +
     data.results.map((r) => {
@@ -93,9 +124,22 @@ function renderResults(data) {
 
 searchForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  results.innerHTML = '<p class="text-muted text-center mt-2"><span class="spinner"></span> Searching...</p>';
 
   const submitBtn = searchForm.querySelector('button[type="submit"]');
+
+  // Validate at least 1 field is filled
+  const fc = searchForm.querySelector('[name="flight_code"]')?.value.trim();
+  const ac = searchForm.querySelector('[name="airport_code"]')?.value.trim();
+  const dd = searchForm.querySelector('[name="departure_date"]')?.value.trim();
+  if (!fc && !ac && !dd) {
+    results.innerHTML = `
+      <div class="message message-warning mt-2">
+        At least 1 search field is required. Please enter a flight code, airport code, or departure date to search.
+      </div>`;
+    return;
+  }
+
+  results.innerHTML = '<p class="text-muted text-center mt-2"><span class="spinner"></span> Searching...</p>';
   submitBtn.disabled = true;
 
   try {
@@ -133,35 +177,97 @@ searchForm?.addEventListener('submit', async (e) => {
   }
 });
 
-// Join party handler
+// Join party handler - shows phone prompt
 document.addEventListener('click', async (e) => {
   const joinBtn = e.target.closest('.join-party-btn');
   if (!joinBtn) return;
 
   const id = joinBtn.dataset.id;
-  joinBtn.disabled = true;
-  joinBtn.textContent = 'Joining...';
 
-  try {
-    const res = await fetch(`/api/carpools/${id}/join`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) {
-      joinBtn.textContent = 'Joined!';
-      joinBtn.className = 'btn btn-secondary btn-sm';
-      // Re-trigger search to refresh the UI
-      setTimeout(() => searchForm?.requestSubmit(), 500);
-      // Show My Party button in header if hidden
-      const myPartyBtn = document.getElementById('my-party-btn');
-      if (myPartyBtn) myPartyBtn.style.display = '';
-    } else {
-      joinBtn.textContent = data.error || 'Failed';
+  // Show phone prompt modal
+  showPhonePrompt(id, joinBtn);
+});
+
+function showPhonePrompt(carpoolId, joinBtn) {
+  // Remove existing modal if any
+  document.getElementById('phone-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'phone-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="card modal-card" style="max-width:400px">
+      <h3>Enter Your Phone Number</h3>
+      <p class="text-muted text-sm">Your phone number helps party members coordinate. It will be saved for future use.</p>
+      <form id="phone-join-form">
+        <label class="mt-2">Phone Number
+          <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${cachedUserPhone}" />
+        </label>
+        <div class="modal-actions mt-2">
+          <button type="submit" class="btn btn-primary">Join Party</button>
+          <button type="button" class="btn btn-secondary" id="phone-cancel">Cancel</button>
+        </div>
+        <p id="phone-error" class="text-sm mt-1" style="color:var(--danger)"></p>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const phoneInput = document.getElementById('join-phone');
+  phoneInput.addEventListener('input', () => {
+    phoneInput.value = formatPhone(phoneInput.value);
+  });
+
+  // Focus input
+  phoneInput.focus();
+
+  document.getElementById('phone-cancel').addEventListener('click', () => {
+    modal.remove();
+  });
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+
+  document.getElementById('phone-join-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const phone = phoneInput.value.trim();
+    const phonePattern = /^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$/;
+    if (!phonePattern.test(phone)) {
+      document.getElementById('phone-error').textContent = 'Please enter a valid phone number in format +1 (XXX) XXX XXXX';
+      return;
+    }
+
+    joinBtn.disabled = true;
+    joinBtn.textContent = 'Joining...';
+    modal.remove();
+
+    try {
+      const res = await fetch(`/api/carpools/${carpoolId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        cachedUserPhone = phone;
+        joinBtn.textContent = 'Joined!';
+        joinBtn.className = 'btn btn-secondary btn-sm';
+        setTimeout(() => searchForm?.requestSubmit(), 500);
+        const myPartyBtn = document.getElementById('my-party-btn');
+        if (myPartyBtn) myPartyBtn.style.display = '';
+        // Also show mobile party link
+        const mobileLink = document.getElementById('mobile-my-party-link');
+        if (mobileLink) mobileLink.style.display = '';
+      } else {
+        joinBtn.textContent = data.error || 'Failed';
+        setTimeout(() => { joinBtn.textContent = 'Join Party'; joinBtn.disabled = false; }, 2000);
+      }
+    } catch {
+      joinBtn.textContent = 'Error';
       setTimeout(() => { joinBtn.textContent = 'Join Party'; joinBtn.disabled = false; }, 2000);
     }
-  } catch {
-    joinBtn.textContent = 'Error';
-    setTimeout(() => { joinBtn.textContent = 'Join Party'; joinBtn.disabled = false; }, 2000);
-  }
-});
+  });
+}
 
 // Leave party handler
 document.addEventListener('click', async (e) => {
