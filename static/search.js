@@ -14,16 +14,8 @@ searchFlight?.addEventListener('input', () => {
   searchFlight.value = searchFlight.value.toUpperCase().replace(/\s+/g, '');
 });
 
-searchDate?.addEventListener('input', () => {
-  const digits = searchDate.value.replace(/\D/g, '').slice(0, 8);
-  const mm = digits.slice(0, 2);
-  const dd = digits.slice(2, 4);
-  const yyyy = digits.slice(4, 8);
-  let out = mm;
-  if (dd) out += `-${dd}`;
-  if (yyyy) out += `-${yyyy}`;
-  searchDate.value = out;
-});
+// Convert YYYY-MM-DD from date picker to MM-DD-YYYY for the API on form submit
+// (native date input handles formatting)
 
 searchForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -33,7 +25,15 @@ searchForm?.addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
 
   try {
-    const query = new URLSearchParams(Object.fromEntries(new FormData(searchForm).entries()));
+    const formData = Object.fromEntries(new FormData(searchForm).entries());
+    // Convert YYYY-MM-DD from date picker to MM-DD-YYYY for the API
+    if (formData.departure_date && formData.departure_date.includes('-')) {
+      const parts = formData.departure_date.split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        formData.departure_date = `${parts[1]}-${parts[2]}-${parts[0]}`;
+      }
+    }
+    const query = new URLSearchParams(formData);
     const res = await fetch(`/api/carpools/search?${query.toString()}`);
     const data = await res.json();
 
@@ -68,12 +68,8 @@ searchForm?.addEventListener('submit', async (e) => {
                 <strong>${r.flight_code}</strong>
               </span>
               <span>
-                <span class="label">From</span>
+                <span class="label">Airport</span>
                 ${r.airport_code}
-              </span>
-              <span>
-                <span class="label">To</span>
-                ${r.destination_airport || '\u2014'}
               </span>
               <span>
                 <span class="label">Date</span>
