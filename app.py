@@ -295,7 +295,8 @@ class DBAdapter:
                     expires_at VARCHAR(64) NOT NULL,
                     created_at VARCHAR(64) NOT NULL,
                     requested_flight_date VARCHAR(16) NOT NULL,
-                    destination_airport VARCHAR(3) NOT NULL DEFAULT ''
+                    destination_airport VARCHAR(3) NOT NULL DEFAULT '',
+                    planned_departure_time VARCHAR(16) NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -320,7 +321,8 @@ class DBAdapter:
                     expires_at TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     requested_flight_date TEXT NOT NULL,
-                    destination_airport TEXT NOT NULL DEFAULT ''
+                    destination_airport TEXT NOT NULL DEFAULT '',
+                    planned_departure_time TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -341,6 +343,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'destination_airport'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN destination_airport VARCHAR(3) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM carpools LIKE 'planned_departure_time'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time VARCHAR(16) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -348,6 +353,8 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN requested_flight_date TEXT NOT NULL DEFAULT ''")
                 if "destination_airport" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN destination_airport TEXT NOT NULL DEFAULT ''")
+                if "planned_departure_time" not in cols:
+                    cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -640,7 +647,22 @@ def _serialize_entry(row: dict[str, Any], include_phone: bool = False) -> dict[s
 
 
 def _require_admin() -> bool:
-    return bool(session.get("admin_authed"))
+    if not session.get("admin_authed"):
+        return False
+    login_time = session.get("admin_login_at")
+    if not login_time:
+        session.pop("admin_authed", None)
+        return False
+    try:
+        login_dt = datetime.fromisoformat(login_time)
+        if _now_utc() - login_dt > timedelta(minutes=30):
+            session.pop("admin_authed", None)
+            session.pop("admin_login_at", None)
+            return False
+    except (ValueError, TypeError):
+        session.pop("admin_authed", None)
+        return False
+    return True
 
 
 @app.teardown_appcontext
@@ -784,10 +806,12 @@ def _create_carpool_inner() -> Any:
 
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
-    # For unverified flights, set a longer expiration (24 hours)
-    expires_at = flight_info.get("expires_at") or (_now_utc() + timedelta(hours=24)).isoformat()
+
+    # Expire at 11:59 PM UTC on the departure date
+    expires_at = parsed_flight_date.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
     destination_airport = str(data.get("destination_airport") or flight_info.get("destination") or "").strip().upper()[:3]
+    planned_departure_time = str(data.get("planned_departure_time", "")).strip()
 
     p = db.placeholder
     last_id = db.execute(
@@ -795,8 +819,8 @@ def _create_carpool_inner() -> Any:
         INSERT INTO carpools (
             first_name,last_initial,phone,flight_code,airport_code,airport_name,airport_location,
             flight_time_utc,flight_date_utc,seats_available,notes,fetched_from,status,expires_at,created_at,
-            requested_flight_date,destination_airport
-        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            requested_flight_date,destination_airport,planned_departure_time
+        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """,
         (
             data["first_name"].strip().title(),
@@ -816,6 +840,7 @@ def _create_carpool_inner() -> Any:
             created_at,
             flight_date_user,
             destination_airport,
+            planned_departure_time,
         ),
     )
 
@@ -913,6 +938,7 @@ def admin_login() -> Any:
     if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
         session.permanent = True
         session["admin_authed"] = True
+        session["admin_login_at"] = _now_utc().isoformat()
         return redirect(url_for("admin_panel"))
     return redirect(url_for("admin_login_page", error=1))
 
@@ -961,6 +987,7 @@ def admin_edit_entry(entry_id: int) -> Any:
     flight_code = request.form.get("flight_code", "").strip().upper()
     airport_code = request.form.get("airport_code", "").strip().upper()
     seats = request.form.get("seats_available", "").strip()
+    planned_departure_time = request.form.get("planned_departure_time", "").strip()
 
     p = db.placeholder
     db.execute(
@@ -972,17 +999,18 @@ def admin_edit_entry(entry_id: int) -> Any:
             notes = COALESCE(NULLIF({p}, ''), notes),
             flight_code = COALESCE(NULLIF({p}, ''), flight_code),
             airport_code = COALESCE(NULLIF({p}, ''), airport_code),
-            seats_available = COALESCE(NULLIF({p}, ''), seats_available)
+            seats_available = COALESCE(NULLIF({p}, ''), seats_available),
+            planned_departure_time = COALESCE(NULLIF({p}, ''), planned_departure_time)
         WHERE id = {p}
         """,
-        (first_name, last_initial, phone, notes, flight_code, airport_code, seats, entry_id),
+        (first_name, last_initial, phone, notes, flight_code, airport_code, seats, planned_departure_time, entry_id),
     )
     return redirect(url_for("admin_panel"))
 
 
 @app.get("/admin/logout")
 def admin_logout() -> Any:
-    session.pop("admin_authed", None)
+    session.clear()
     return redirect(url_for("landing"))
 
 

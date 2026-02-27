@@ -67,6 +67,7 @@
                 <th>From</th>
                 <th>To</th>
                 <th>Date</th>
+                <th>Depart Time</th>
                 <th>Seats</th>
                 <th>Status</th>
                 <th>Notes</th>
@@ -84,26 +85,23 @@
                 <td>{{ entry.airport_code }}</td>
                 <td>{{ entry.get('destination_airport', '') or '—' }}</td>
                 <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
+                <td>{{ entry.get('planned_departure_time', '') or '—' }}</td>
                 <td>{{ entry.seats_available }}</td>
                 <td>{{ entry.status }}</td>
                 <td title="{{ entry.notes or '' }}">{{ (entry.notes or '')[:30] }}{{ '...' if (entry.notes or '')|length > 30 else '' }}</td>
                 <td>{{ (entry.created_at or '')[:16] }}</td>
                 <td style="white-space: nowrap;">
-                  <details>
-                    <summary class="btn btn-secondary btn-sm" style="display:inline; cursor:pointer;">Edit</summary>
-                    <form method="post" action="/admin/edit/{{ entry.id }}" style="margin-top:0.5rem;">
-                      <div style="display:flex; flex-direction:column; gap:0.3rem;">
-                        <input name="first_name" value="{{ entry.first_name }}" placeholder="First name" />
-                        <input name="last_initial" value="{{ entry.last_initial }}" maxlength="1" placeholder="Initial" />
-                        <input name="phone" value="{{ entry.phone }}" placeholder="Phone" />
-                        <input name="flight_code" value="{{ entry.flight_code }}" placeholder="Flight" />
-                        <input name="airport_code" value="{{ entry.airport_code }}" placeholder="Airport" maxlength="3" />
-                        <input name="seats_available" value="{{ entry.seats_available }}" type="number" min="1" max="7" />
-                        <input name="notes" value="{{ entry.notes }}" placeholder="Notes" />
-                        <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
-                      </div>
-                    </form>
-                  </details>
+                  <button type="button" class="btn btn-secondary btn-sm edit-btn"
+                    data-id="{{ entry.id }}"
+                    data-first_name="{{ entry.first_name }}"
+                    data-last_initial="{{ entry.last_initial }}"
+                    data-phone="{{ entry.phone }}"
+                    data-flight_code="{{ entry.flight_code }}"
+                    data-airport_code="{{ entry.airport_code }}"
+                    data-seats_available="{{ entry.seats_available }}"
+                    data-notes="{{ entry.notes or '' }}"
+                    data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
+                  >Edit</button>
                   <form method="post" action="/admin/delete/{{ entry.id }}" style="display:inline;" onsubmit="return confirm('Delete this entry?');">
                     <button type="submit" class="danger btn-sm" style="margin-top:0.25rem;">Delete</button>
                   </form>
@@ -136,6 +134,10 @@
                 <span>{{ entry.requested_flight_date or entry.flight_date_utc }}</span>
               </div>
               <div class="entry-field">
+                <span class="label">Depart Time</span>
+                <span>{{ entry.get('planned_departure_time', '') or '—' }}</span>
+              </div>
+              <div class="entry-field">
                 <span class="label">Seats</span>
                 <span>{{ entry.seats_available }}</span>
               </div>
@@ -149,6 +151,17 @@
               </div>
             </div>
             <div class="entry-actions">
+              <button type="button" class="btn btn-secondary btn-sm edit-btn"
+                data-id="{{ entry.id }}"
+                data-first_name="{{ entry.first_name }}"
+                data-last_initial="{{ entry.last_initial }}"
+                data-phone="{{ entry.phone }}"
+                data-flight_code="{{ entry.flight_code }}"
+                data-airport_code="{{ entry.airport_code }}"
+                data-seats_available="{{ entry.seats_available }}"
+                data-notes="{{ entry.notes or '' }}"
+                data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
+              >Edit</button>
               <form method="post" action="/admin/delete/{{ entry.id }}" onsubmit="return confirm('Delete this entry?');">
                 <button type="submit" class="danger btn-sm">Delete</button>
               </form>
@@ -160,5 +173,75 @@
         {% endif %}
       </section>
     </main>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card card">
+        <h3>Edit Entry</h3>
+        <form id="edit-form" method="post" action="">
+          <div class="modal-grid">
+            <label>First Name
+              <input name="first_name" id="edit-first_name" placeholder="First name" />
+            </label>
+            <label>Last Initial
+              <input name="last_initial" id="edit-last_initial" maxlength="1" placeholder="Initial" />
+            </label>
+            <label>Phone
+              <input name="phone" id="edit-phone" placeholder="Phone" />
+            </label>
+            <label>Flight Code
+              <input name="flight_code" id="edit-flight_code" placeholder="Flight code" />
+            </label>
+            <label>Airport Code
+              <input name="airport_code" id="edit-airport_code" maxlength="3" placeholder="Airport" />
+            </label>
+            <label>Seats Available
+              <input name="seats_available" id="edit-seats_available" type="number" min="1" max="7" />
+            </label>
+            <label>Planned Departure Time
+              <input name="planned_departure_time" id="edit-planned_departure_time" type="time" />
+            </label>
+          </div>
+          <label class="mt-2">Notes
+            <textarea name="notes" id="edit-notes" rows="2" placeholder="Notes"></textarea>
+          </label>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // Edit modal logic
+      const modal = document.getElementById('edit-modal');
+      const editForm = document.getElementById('edit-form');
+      const cancelBtn = document.getElementById('edit-cancel');
+
+      document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          editForm.action = `/admin/edit/${id}`;
+          document.getElementById('edit-first_name').value = btn.dataset.first_name;
+          document.getElementById('edit-last_initial').value = btn.dataset.last_initial;
+          document.getElementById('edit-phone').value = btn.dataset.phone;
+          document.getElementById('edit-flight_code').value = btn.dataset.flight_code;
+          document.getElementById('edit-airport_code').value = btn.dataset.airport_code;
+          document.getElementById('edit-seats_available').value = btn.dataset.seats_available;
+          document.getElementById('edit-notes').value = btn.dataset.notes;
+          document.getElementById('edit-planned_departure_time').value = btn.dataset.planned_departure_time || '';
+          modal.style.display = 'flex';
+        });
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    </script>
   </body>
 </html>
