@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Login - UniRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="site-logo">UniRide</a>
+      <nav class="nav-links">
+        <a href="/">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/add-flight-details">Add Flight</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="admin-login-page">
+        <div class="admin-login-card card">
+          <h2>Admin Login</h2>
+          <p class="card-subtitle">Enter your credentials to access the admin panel.</p>
+
+          {% if admin_error %}
+          <p class="error-banner">Incorrect username or password. Please try again.</p>
+          {% endif %}
+
+          <form method="post" action="/admin/login" class="admin-login-form">
+            <label>Username
+              <input name="username" placeholder="Username" required autocomplete="username" />
+            </label>
+            <label>Password
+              <input name="password" type="password" placeholder="Password" required autocomplete="current-password" />
+            </label>
+            <button type="submit" class="btn btn-primary btn-block mt-2">Sign In</button>
+          </form>
+
+          <p class="text-center text-muted text-sm mt-2">
+            <a href="/" style="color: var(--accent2); text-decoration: none;">Back to Home</a>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>UniRide &mdash; Built for students, by students.</p>
+    </footer>
+  </body>
+</html>

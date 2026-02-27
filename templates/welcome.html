@@ -17,11 +17,7 @@
         <a href="/find-a-carpool">Find a Carpool</a>
         <a href="/add-flight-details">Add Flight</a>
       </nav>
-      <form class="admin-login" method="post" action="/admin/login">
-        <input name="username" placeholder="Username" required />
-        <input name="password" type="password" placeholder="Password" required />
-        <button type="submit">Login</button>
-      </form>
+      <a href="/admin/login" class="btn btn-secondary btn-sm">Admin Panel</a>
     </header>
 
     <main>
@@ -33,9 +29,6 @@
           <a class="btn btn-primary" href="/add-flight-details">Add Your Flight</a>
           <a class="btn btn-secondary" href="/find-a-carpool">Find a Carpool</a>
         </div>
-        {% if admin_error %}
-        <p class="error-banner">Incorrect credentials. Please try again.</p>
-        {% endif %}
       </section>
     </main>
 

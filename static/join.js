@@ -8,6 +8,7 @@ const suggestionsSection = document.querySelector('#suggestions-section');
 const suggestionList = document.querySelector('#suggestion-list');
 const departureDateInput = document.querySelector('#departure_date');
 const airlineDropdown = document.querySelector('#airline-dropdown');
+const airlineNameInput = document.querySelector('#airline_name');
 
 // --- Formatters ---
 
@@ -85,6 +86,7 @@ const showAirlineDropdown = (matches) => {
     opt.addEventListener('mousedown', (e) => {
       e.preventDefault(); // prevent blur from closing dropdown
       flightCodeInput.value = airline.code;
+      if (airlineNameInput) airlineNameInput.value = airline.name;
       closeAirlineDropdown();
       flightCodeInput.focus();
     });
@@ -154,7 +156,7 @@ const fetchFlightSuggestions = async () => {
         </div>
       `;
 
-      item.addEventListener('click', () => {
+      item.addEventListener('click', async () => {
         flightCodeInput.value = flight.flight_code;
 
         if (flight.departure && airportCodeInput) {
@@ -167,6 +169,20 @@ const fetchFlightSuggestions = async () => {
           const parts = flight.date_utc.split('-');
           if (parts.length === 3) {
             departureDateInput.value = `${parts[1]}-${parts[2]}-${parts[0]}`;
+          }
+        }
+
+        // Auto-fill airline name from the flight's airline field or code prefix
+        if (airlineNameInput) {
+          if (flight.airline) {
+            airlineNameInput.value = flight.airline;
+          } else {
+            const prefix = flight.flight_code.match(/^[A-Z]{2,3}/)?.[0] || '';
+            if (prefix) {
+              const matches = await fetchAirlineSuggestions(prefix);
+              const exact = matches.find(m => m.code === prefix);
+              if (exact) airlineNameInput.value = exact.name;
+            }
           }
         }
 
@@ -195,8 +211,22 @@ flightCodeInput?.addEventListener('input', async () => {
   if (letterPrefix.length >= 1 && letterPrefix.length <= 3 && !hasDigits) {
     const matches = await fetchAirlineSuggestions(letterPrefix);
     showAirlineDropdown(matches);
+    // Auto-fill airline name if there's an exact code match
+    if (airlineNameInput) {
+      const exact = matches.find(m => m.code === letterPrefix);
+      airlineNameInput.value = exact ? exact.name : (matches.length === 1 ? matches[0].name : '');
+    }
   } else {
     closeAirlineDropdown();
+    // When digits are present, try to resolve airline from the prefix
+    if (airlineNameInput && letterPrefix.length >= 2) {
+      const pureLetters = raw.match(/^[A-Z]{2,3}/)?.[0] || '';
+      if (pureLetters && !airlineNameInput.value) {
+        const matches = await fetchAirlineSuggestions(pureLetters);
+        const exact = matches.find(m => m.code === pureLetters);
+        if (exact) airlineNameInput.value = exact.name;
+      }
+    }
   }
 
   // Once user has a full flight code (4+ chars), fetch SerpApi suggestions
@@ -224,6 +254,7 @@ flightCodeInput?.addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter' && airlineActiveIdx >= 0) {
     e.preventDefault();
     flightCodeInput.value = airlineResults[airlineActiveIdx].code;
+    if (airlineNameInput) airlineNameInput.value = airlineResults[airlineActiveIdx].name;
     closeAirlineDropdown();
   } else if (e.key === 'Escape') {
     closeAirlineDropdown();
@@ -291,6 +322,7 @@ form?.addEventListener('submit', async (e) => {
     msg.textContent = text;
     msg.className = '';
     form.reset();
+    if (airlineNameInput) airlineNameInput.value = '';
     suggestionsSection.style.display = 'none';
     suggestionList.innerHTML = '';
   } catch (err) {

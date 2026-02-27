@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
@@ -46,6 +47,22 @@ AIRLINE_CODES: dict[str, str] = {
     "MX": "Breeze Airways", "QX": "Horizon Air",
     "OO": "SkyWest Airlines", "YX": "Republic Airways",
     "9K": "Cape Air", "MQ": "Envoy Air",
+}
+
+# Airline hub airports for smarter flight suggestions
+AIRLINE_HUBS: dict[str, list[str]] = {
+    "AA": ["DFW", "CLT", "MIA", "PHL", "ORD"],
+    "UA": ["ORD", "EWR", "IAH", "SFO", "DEN"],
+    "DL": ["ATL", "MSP", "DTW", "JFK", "LAX"],
+    "WN": ["LAS", "DEN", "PHX", "MCO"],
+    "B6": ["JFK", "BOS", "FLL", "MCO"],
+    "AS": ["SEA", "PDX", "SFO", "LAX"],
+    "NK": ["FLL", "LAS", "DTW", "MCO"],
+    "F9": ["DEN", "LAS", "MCO"],
+    "G4": ["LAS", "SFO", "LAX"],
+    "SY": ["MSP", "DFW"],
+    "HA": ["HNL", "LAX", "SFO"],
+    "MX": ["TPA", "MCO", "CHS", "RIC", "BDL", "MSY"],
 }
 
 
@@ -468,6 +485,32 @@ def _extract_flights_from_serpapi(payload: dict, flight_code_filter: str | None 
     return collected
 
 
+def _build_hub_pairs(airline_prefix: str) -> list[tuple[str, str]]:
+    """Build hub pairs prioritizing airline-specific hubs."""
+    major_dests = ["JFK", "LAX", "ORD", "SFO", "ATL", "DEN", "MCO", "SEA"]
+    pairs: list[tuple[str, str]] = []
+
+    # Add airline-specific hub pairs first
+    hubs = AIRLINE_HUBS.get(airline_prefix, [])
+    for hub in hubs[:3]:
+        for dest in major_dests:
+            if dest != hub:
+                pairs.append((hub, dest))
+                break
+
+    # Add generic hub pairs as fallback
+    generic = [
+        ("SFO", "JFK"), ("LAX", "JFK"), ("ORD", "LAX"), ("ATL", "LAX"),
+        ("DFW", "JFK"), ("DEN", "ORD"), ("SEA", "LAX"), ("BOS", "MIA"),
+        ("MCO", "JFK"), ("JFK", "SFO"), ("EWR", "LAX"), ("MIA", "ORD"),
+    ]
+    for pair in generic:
+        if pair not in pairs:
+            pairs.append(pair)
+
+    return pairs
+
+
 def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | None = None) -> list[dict[str, str]]:
     """Look up flights. Returns a list of matching flights."""
     if not SERPAPI_API_KEY:
@@ -484,30 +527,72 @@ def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | 
         base = _now_utc().date()
         dates_api.extend([(base + timedelta(days=i)).isoformat() for i in range(0, 3)])
 
-    # Try common airport pairs for the airline
     airline_prefix = re.match(r"^[A-Z]{2,3}", flight_code)
     if not airline_prefix:
         return []
 
-    # Use major US hub pairs for searching
-    hub_pairs = [
-        ("SFO", "JFK"), ("SFO", "LAX"), ("SFO", "ORD"), ("SFO", "EWR"),
-        ("LAX", "JFK"), ("LAX", "ORD"), ("LAX", "SFO"), ("LAX", "EWR"),
-        ("JFK", "LAX"), ("JFK", "SFO"), ("JFK", "ORD"), ("JFK", "MIA"),
-        ("ORD", "LAX"), ("ORD", "JFK"), ("ORD", "SFO"),
-    ]
+    hub_pairs = _build_hub_pairs(airline_prefix.group())
 
     collected: list[dict[str, str]] = []
     for date_item in dates_api:
         if collected:
             break
-        for dep, arr in hub_pairs[:2]:  # Strict limit for Vercel timeout
+        for dep, arr in hub_pairs[:4]:
             if collected:
                 break
             payload = _serpapi_search_flights(dep, arr, date_item)
             if payload:
                 results = _extract_flights_from_serpapi(payload, flight_code)
                 collected.extend(results)
+
+    # Deduplicate
+    seen: set[tuple[str, str, str, str]] = set()
+    unique: list[dict[str, str]] = []
+    for item in collected:
+        key = (item["flight_code"], item["date_utc"], item["time_utc"], item["destination"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+
+    return unique[:10]
+
+
+def _suggest_flights_for_airline(flight_code: str, flight_date_user: str | None = None) -> list[dict[str, str]]:
+    """Suggest flights matching an airline prefix. Less strict than verification lookup."""
+    if not SERPAPI_API_KEY:
+        return []
+
+    dates_api: list[str] = []
+    if flight_date_user:
+        parsed = _parse_user_flight_date(flight_date_user)
+        if parsed:
+            dates_api.append(_to_api_flight_date(parsed))
+        else:
+            return []
+    else:
+        base = _now_utc().date()
+        dates_api.append(base.isoformat())
+
+    airline_prefix = re.match(r"^[A-Z]{2,3}", flight_code)
+    if not airline_prefix:
+        return []
+    prefix = airline_prefix.group()
+
+    hub_pairs = _build_hub_pairs(prefix)
+
+    collected: list[dict[str, str]] = []
+    for date_item in dates_api:
+        for dep, arr in hub_pairs[:5]:
+            payload = _serpapi_search_flights(dep, arr, date_item)
+            if payload:
+                # Filter by airline prefix only for broader results
+                results = _extract_flights_from_serpapi(payload, prefix)
+                collected.extend(results)
+            if len(collected) >= 10:
+                break
+        if collected:
+            break
 
     # Deduplicate
     seen: set[tuple[str, str, str, str]] = set()
@@ -606,8 +691,7 @@ def _cleanup_expired_entries() -> None:
 
 @app.get("/")
 def landing() -> Any:
-    admin_error = request.args.get("admin_error") == "1"
-    return render_template("welcome.html", admin_error=admin_error)
+    return render_template("welcome.html")
 
 
 @app.get("/start-now")
@@ -762,7 +846,7 @@ def suggest_flights() -> Any:
     query = request.args.get("query", "")
     cleaned = _clean_flight_code(query)
     departure_date = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip() or None
-    suggestions = _lookup_present_or_future_flights(cleaned, departure_date)
+    suggestions = _suggest_flights_for_airline(cleaned, departure_date)
     return jsonify({"query": cleaned, "count": len(suggestions), "results": suggestions})
 
 
@@ -814,20 +898,29 @@ def carpool_details(entry_id: int) -> Any:
 # Admin routes
 # ---------------------------------------------------------------------------
 
+@app.get("/admin/login")
+def admin_login_page() -> Any:
+    if _require_admin():
+        return redirect(url_for("admin_panel"))
+    admin_error = request.args.get("error") == "1"
+    return render_template("admin_login.html", admin_error=admin_error)
+
+
 @app.post("/admin/login")
 def admin_login() -> Any:
     username = request.form.get("username", "")
     password = request.form.get("password", "")
     if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        session.permanent = True
         session["admin_authed"] = True
         return redirect(url_for("admin_panel"))
-    return redirect(url_for("landing", admin_error=1))
+    return redirect(url_for("admin_login_page", error=1))
 
 
 @app.get("/admin")
 def admin_panel() -> Any:
     if not _require_admin():
-        return redirect(url_for("landing"))
+        return redirect(url_for("admin_login_page"))
     try:
         rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
     except Exception:
