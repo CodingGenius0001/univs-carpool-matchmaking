@@ -39,6 +39,9 @@
               <input name="flight_code" id="flight_code" placeholder="e.g. UA1375" required autocomplete="off" />
               <div id="airline-dropdown" class="airline-dropdown"></div>
             </label>
+            <label>Airline
+              <input id="airline_name" placeholder="Auto-detected from flight code" readonly tabindex="-1" class="airline-readonly" />
+            </label>
             <label>Date of Departure
               <input type="text" name="departure_date" id="departure_date" required placeholder="MM-DD-YYYY" maxlength="10" />
             </label>
