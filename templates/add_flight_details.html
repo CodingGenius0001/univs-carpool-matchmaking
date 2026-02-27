@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Add Flight Details - UniRide</title>
+    <title>Add Flight Details - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -11,7 +11,7 @@
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo">UniRide</a>
+      <a href="/" class="site-logo">Campus2Air</a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -78,11 +78,19 @@
     </main>
 
     <footer class="site-footer">
-      <p>UniRide &mdash; Built for students, by students.</p>
+      <p>Campus2Air &mdash; Built for students, by students.</p>
     </footer>
 
     <script src="{{ url_for('static', filename='join.js') }}"></script>
     <script>
+      // Pre-fill form from URL params (carried over from Find a Carpool)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('flight_code')) document.getElementById('flight_code').value = urlParams.get('flight_code');
+      if (urlParams.get('airport_code')) document.getElementById('airport_code').value = urlParams.get('airport_code');
+      if (urlParams.get('departure_date')) document.getElementById('departure_date').value = urlParams.get('departure_date');
+      // Trigger flight code input event so airline auto-detect kicks in
+      if (urlParams.get('flight_code')) document.getElementById('flight_code').dispatchEvent(new Event('input'));
+
       const hbBtn = document.getElementById('hamburger-btn');
       const hbMenu = document.getElementById('hamburger-menu');
       hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));

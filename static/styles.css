@@ -1147,6 +1147,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* ===== PDF Viewer ===== */
+.eula-wide {
+  max-width: 1200px;
+}
+
 .pdf-viewer {
   margin-top: 1rem;
   border: 1px solid var(--card-border);
@@ -1155,10 +1159,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: #1a1a2e;
 }
 
-.pdf-viewer iframe {
+.pdf-viewer object {
   width: 100%;
-  height: 75vh;
-  min-height: 500px;
+  height: 80vh;
+  min-height: 600px;
   border: none;
   display: block;
 }
