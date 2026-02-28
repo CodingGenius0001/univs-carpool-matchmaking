@@ -1142,7 +1142,7 @@ def search_carpools() -> Any:
             cid = entry["id"]
             mc = member_counts.get(cid, 0)
             public_row["member_count"] = mc
-            public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - (mc - 1))
+            public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - mc)
             public_row["is_member"] = cid in user_memberships
             results.append(public_row)
 
@@ -1181,13 +1181,13 @@ def join_party(carpool_id: int) -> Any:
     if existing:
         return jsonify({"error": "Already in this party"}), 409
 
-    # Check seat cap: seats_available = max joiners beyond creator
+    # Check seat cap: seats_available includes the creator seat
     members = db.query(
         f"SELECT COUNT(*) as c FROM party_members WHERE carpool_id = {p}",
         (carpool_id,),
     )
     current_count = members[0]["c"] if members else 0
-    max_members = int(carpool.get("seats_available", 3)) + 1  # +1 for creator
+    max_members = int(carpool.get("seats_available", 3))
     if current_count >= max_members:
         return jsonify({"error": "This carpool party is full"}), 409
 
@@ -1227,11 +1227,66 @@ def leave_party(carpool_id: int) -> Any:
         return jsonify({"error": "Login required"}), 401
 
     p = db.placeholder
+    # Verify this party exists and the user is currently a member.
+    carpool_rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
+    if not carpool_rows:
+        return jsonify({"error": "Carpool not found"}), 404
+
+    member_rows = db.query(
+        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, email),
+    )
+    if not member_rows:
+        return jsonify({"error": "You are not a member of this party"}), 404
+
+    carpool = carpool_rows[0]
+    is_creator = carpool.get("creator_email") == email
+
+    # Remove caller from party first.
     db.execute(
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, email),
     )
-    return jsonify({"ok": True, "message": "Left the party."})
+
+    # Non-creators can leave immediately.
+    if not is_creator:
+        return jsonify({"ok": True, "message": "Left the party."})
+
+    # Creator is leaving: transfer ownership if members remain, otherwise disband.
+    remaining_members = db.query(
+        f"SELECT user_email, joined_at FROM party_members WHERE carpool_id = {p} ORDER BY joined_at ASC",
+        (carpool_id,),
+    )
+
+    if not remaining_members:
+        # Nobody is left -> auto-disband the party.
+        db.execute(f"DELETE FROM carpools WHERE id = {p}", (carpool_id,))
+        return jsonify({"ok": True, "message": "You left and the party was disbanded because no members remained."})
+
+    # Transfer to the earliest-joined remaining member.
+    new_owner_email = remaining_members[0]["user_email"]
+
+    # Keep party display data in sync with the new owner if profile exists.
+    profile = db.query(
+        f"SELECT first_name, last_initial, phone FROM users WHERE user_email = {p}",
+        (new_owner_email,),
+    )
+
+    if profile:
+        first_name = str(profile[0].get("first_name") or "").strip() or new_owner_email.split("@")[0]
+        last_initial = str(profile[0].get("last_initial") or "").strip()[:1].upper()
+        phone = str(profile[0].get("phone") or "").strip()
+        db.execute(
+            f"UPDATE carpools SET creator_email = {p}, first_name = {p}, last_initial = {p}, phone = {p} WHERE id = {p}",
+            (new_owner_email, first_name, last_initial, phone, carpool_id),
+        )
+    else:
+        db.execute(
+            f"UPDATE carpools SET creator_email = {p} WHERE id = {p}",
+            (new_owner_email, carpool_id),
+        )
+
+    return jsonify({"ok": True, "message": f"Left the party. Ownership transferred to {new_owner_email}."})
 
 
 @app.get("/api/my-parties")
