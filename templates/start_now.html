@@ -62,6 +62,9 @@
 
     <footer class="site-footer">
       <p>Campus2Air &mdash; Built for students, by students.</p>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
+        <span id="theme-icon">&#9788;</span> <span id="theme-label">Light Mode</span>
+      </button>
     </footer>
 
     <script>
@@ -71,6 +74,25 @@
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
+
+      // Theme toggle
+      (function() {
+        const toggle = document.getElementById('theme-toggle');
+        const icon = document.getElementById('theme-icon');
+        const label = document.getElementById('theme-label');
+        function applyTheme(theme) {
+          const isLight = theme === 'light';
+          document.documentElement.classList.toggle('light-mode', isLight);
+          if (icon) icon.innerHTML = isLight ? '&#9790;' : '&#9788;';
+          if (label) label.textContent = isLight ? 'Dark Mode' : 'Light Mode';
+        }
+        applyTheme(localStorage.getItem('theme') || 'dark');
+        toggle?.addEventListener('click', () => {
+          const next = document.documentElement.classList.contains('light-mode') ? 'dark' : 'light';
+          localStorage.setItem('theme', next);
+          applyTheme(next);
+        });
+      })();
     </script>
       <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
