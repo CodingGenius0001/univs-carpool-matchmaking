@@ -873,7 +873,7 @@ def join_page() -> Any:
 
 @app.get("/eula")
 def eula_page() -> Any:
-    return render_template("eula.html")
+    return render_template("eula.html", **_user_context())
 
 
 @app.get("/docs/<path:filename>")
