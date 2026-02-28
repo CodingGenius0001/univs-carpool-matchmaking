@@ -1185,18 +1185,43 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 
+.eula-header {
+  grid-template-columns: 1fr auto auto;
+}
+
+.eula-header .nav-links {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.eula-header .hamburger-wrap {
+  grid-column: 3;
+}
+
+.eula-card {
+  position: relative;
+  padding-right: 4.25rem;
+}
+
 .eula-close-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   border: 1px solid var(--card-border);
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 1rem;
-  margin-right: 0.5rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.eula-panel-close {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
 }
 
 .eula-close-btn:hover {
@@ -1470,6 +1495,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .nav-links {
     display: none;
+  }
+
+  .eula-header {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .eula-header .nav-links {
+    display: flex;
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .eula-header .nav-links a {
+    padding: 0.35rem 0.55rem;
+  }
+
+  .eula-header .hamburger-wrap {
+    grid-column: 3;
+  }
+
+  .eula-card {
+    padding-right: 1.25rem;
+    padding-top: 3.2rem;
+  }
+
+  .eula-panel-close {
+    top: 0.8rem;
+    right: 0.8rem;
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
   }
 
   .my-party-btn {

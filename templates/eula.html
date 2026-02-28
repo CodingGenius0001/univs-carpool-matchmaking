@@ -11,7 +11,7 @@
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
-    <header class="site-header">
+    <header class="site-header eula-header">
       <a href="/" class="site-logo">Campus2Air</a>
       <nav class="nav-links">
         {% if user_email %}
@@ -26,7 +26,6 @@
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
         </button>
-        <a href="{% if user_email %}/start-now{% else %}/{% endif %}" class="eula-close-btn" aria-label="Close EULA">✕</a>
         <div class="hamburger-menu" id="hamburger-menu">
           {% if user_email %}
           <a href="/start-now" class="mobile-nav-link">Home</a>
@@ -47,7 +46,8 @@
     </header>
 
     <main class="container eula-wide">
-      <section class="card">
+      <section class="card eula-card">
+        <a href="{% if user_email %}/start-now{% else %}/{% endif %}" class="eula-close-btn eula-panel-close" aria-label="Close EULA">✕</a>
         <h2>EULA & Terms of Service</h2>
         <p class="card-subtitle">Please review our End User License Agreement and Terms of Service below.</p>
 
