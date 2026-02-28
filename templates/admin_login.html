@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
     <header class="site-header">
@@ -63,5 +64,6 @@
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
     </script>
+      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>
