@@ -1517,3 +1517,97 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Light Mode ===== */
+.light-mode {
+  --bg: #f4f6fb;
+  --bg2: #e9ecf2;
+  --card: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.1);
+  --text: #1a1a2e;
+  --text-muted: #5a6278;
+  --accent: #059669;
+  --accent2: #2563eb;
+  --accent-glow: rgba(5, 150, 105, 0.1);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.08);
+  --success: #16a34a;
+  --warning: #d97706;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.light-mode body::before {
+  background:
+    radial-gradient(ellipse 800px 600px at 20% 0%, rgba(37, 99, 235, 0.06), transparent),
+    radial-gradient(ellipse 600px 400px at 80% 10%, rgba(5, 150, 105, 0.04), transparent);
+}
+
+.light-mode input,
+.light-mode textarea,
+.light-mode select {
+  background: #f0f2f7;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text);
+}
+
+.light-mode input:focus,
+.light-mode textarea:focus,
+.light-mode select:focus {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.light-mode .site-header {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.light-mode .hamburger-btn span {
+  background: var(--text);
+}
+
+.light-mode .hamburger-menu {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.light-mode .airline-dropdown {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.light-mode .airline-option:hover,
+.light-mode .airline-option.active {
+  background: rgba(5, 150, 105, 0.08);
+}
+
+.light-mode .result {
+  background: var(--card);
+  border-color: var(--card-border);
+}
+
+.light-mode .modal-overlay {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ===== Theme Toggle ===== */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  transition: var(--transition);
+  margin-top: 0.75rem;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

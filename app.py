@@ -297,7 +297,8 @@ class DBAdapter:
                     created_at VARCHAR(64) NOT NULL,
                     requested_flight_date VARCHAR(16) NOT NULL,
                     destination_airport VARCHAR(3) NOT NULL DEFAULT '',
-                    planned_departure_time VARCHAR(16) NOT NULL DEFAULT ''
+                    planned_departure_time VARCHAR(16) NOT NULL DEFAULT '',
+                    creator_email VARCHAR(255) NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -838,11 +839,17 @@ def landing_legacy() -> Any:
     return redirect(url_for("landing"), code=302)
 
 
-@app.get("/add-flight-details")
-def add_flight_details_page() -> Any:
+@app.get("/create-a-carpool")
+def create_a_carpool_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
-    return render_template("add_flight_details.html", **_user_context())
+    return render_template("create_a_carpool.html", **_user_context())
+
+
+@app.get("/add-flight-details")
+def add_flight_details_redirect() -> Any:
+    """Redirect old URL to new one for backwards compatibility."""
+    return redirect(url_for("create_a_carpool_page"), code=301)
 
 
 @app.get("/find-a-carpool")
@@ -861,7 +868,7 @@ def my_party_page() -> Any:
 
 @app.get("/join")
 def join_page() -> Any:
-    return redirect(url_for("add_flight_details_page"), code=302)
+    return redirect(url_for("create_a_carpool_page"), code=302)
 
 
 @app.get("/eula")

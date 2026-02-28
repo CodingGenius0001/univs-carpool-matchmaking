@@ -22,7 +22,7 @@ function buildAddUrl() {
   if (fc) params.set('flight_code', fc);
   if (ac) params.set('airport_code', ac);
   if (dd) params.set('departure_date', dd);
-  return '/add-flight-details' + (params.toString() ? '?' + params.toString() : '');
+  return '/create-a-carpool' + (params.toString() ? '?' + params.toString() : '');
 }
 
 // Phone formatting helper
@@ -159,7 +159,7 @@ searchForm?.addEventListener('submit', async (e) => {
       if (formData.flight_code) params.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
       if (formData.airport_code) params.set('airport_code', searchForm.querySelector('[name="airport_code"]').value);
       if (searchForm.querySelector('[name="departure_date"]').value) params.set('departure_date', searchForm.querySelector('[name="departure_date"]').value);
-      const addUrl = '/add-flight-details' + (params.toString() ? '?' + params.toString() : '');
+      const addUrl = '/create-a-carpool' + (params.toString() ? '?' + params.toString() : '');
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
