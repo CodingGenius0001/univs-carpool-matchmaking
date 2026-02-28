@@ -8,25 +8,46 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
-    <header class="site-header">
+    <header class="site-header eula-header">
       <a href="/" class="site-logo">Campus2Air</a>
       <nav class="nav-links">
+        {% if user_email %}
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/create-a-carpool">Create Carpool</a>
+        {% else %}
         <a href="/">Home</a>
+        {% endif %}
       </nav>
       <div class="hamburger-wrap">
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
+          {% if user_email %}
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
+          <div class="menu-divider"></div>
           <a href="/eula" class="active">EULA & ToS</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+          {% else %}
+          <a href="/" class="mobile-nav-link">Home</a>
+          <a href="/eula" class="active">EULA & ToS</a>
+          <a href="/login">Sign In</a>
+          {% endif %}
         </div>
       </div>
     </header>
 
     <main class="container eula-wide">
-      <section class="card">
+      <section class="card eula-card">
+        <a href="{% if user_email %}/start-now{% else %}/{% endif %}" class="eula-close-btn eula-panel-close" aria-label="Close EULA">✕</a>
         <h2>EULA & Terms of Service</h2>
         <p class="card-subtitle">Please review our End User License Agreement and Terms of Service below.</p>
 
@@ -70,5 +91,6 @@
         if (!e.target.closest('.hamburger-wrap')) menu.classList.remove('open');
       });
     </script>
+      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>

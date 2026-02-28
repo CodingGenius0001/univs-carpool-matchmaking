@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Search Carpools</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
     <main class="container">
@@ -22,5 +23,6 @@
       </section>
     </main>
     <script src="{{ url_for('static', filename='search.js') }}"></script>
+      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>

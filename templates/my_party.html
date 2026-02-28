@@ -8,10 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
-    <script>if(localStorage.getItem('theme')==='light')document.documentElement.className='light-mode';</script>
-  </head>
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+      </head>
   <body>
-    <header class="site-header">
+    <header class="site-header app-header">
       <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
@@ -402,5 +402,6 @@
         });
       })();
     </script>
+      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>
