@@ -8,10 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
-    <script>if(localStorage.getItem('theme')==='light')document.documentElement.className='light-mode';</script>
-  </head>
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+      </head>
   <body>
-    <header class="site-header">
+    <header class="site-header app-header">
       <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
@@ -90,9 +90,6 @@
 
     <footer class="site-footer">
       <p>Campus2Air &mdash; Built for students, by students.</p>
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
-        <span id="theme-icon">&#9788;</span> <span id="theme-label">Light Mode</span>
-      </button>
     </footer>
 
     <script src="{{ url_for('static', filename='join.js') }}"></script>
@@ -111,25 +108,7 @@
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
-
-      // Theme toggle
-      (function() {
-        const toggle = document.getElementById('theme-toggle');
-        const icon = document.getElementById('theme-icon');
-        const label = document.getElementById('theme-label');
-        function applyTheme(theme) {
-          const isLight = theme === 'light';
-          document.documentElement.classList.toggle('light-mode', isLight);
-          if (icon) icon.innerHTML = isLight ? '&#9790;' : '&#9788;';
-          if (label) label.textContent = isLight ? 'Dark Mode' : 'Light Mode';
-        }
-        applyTheme(localStorage.getItem('theme') || 'dark');
-        toggle?.addEventListener('click', () => {
-          const next = document.documentElement.classList.contains('light-mode') ? 'dark' : 'light';
-          localStorage.setItem('theme', next);
-          applyTheme(next);
-        });
-      })();
     </script>
+      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>
