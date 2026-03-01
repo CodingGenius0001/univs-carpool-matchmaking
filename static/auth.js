@@ -32,19 +32,32 @@ googleProvider.setCustomParameters({
   hd: 'ucr.edu'
 });
 
-// --- EULA checkbox gate ---
+// --- EULA + Privacy Policy checkbox gate ---
 const eulaCheckbox = document.getElementById('eula-agree');
+const privacyCheckbox = document.getElementById('privacy-agree');
 const signinBtn = document.getElementById('google-signin-btn');
 const statusEl = document.getElementById('login-status');
 
+function _bothChecked() {
+  return !!(eulaCheckbox?.checked && privacyCheckbox?.checked);
+}
+
 eulaCheckbox?.addEventListener('change', () => {
-  signinBtn.disabled = !eulaCheckbox.checked;
+  signinBtn.disabled = !_bothChecked();
+});
+
+privacyCheckbox?.addEventListener('change', () => {
+  signinBtn.disabled = !_bothChecked();
 });
 
 // --- Sign in handler ---
 signinBtn?.addEventListener('click', async () => {
   if (!eulaCheckbox?.checked) {
     if (statusEl) statusEl.textContent = 'You must agree to the Terms of Service & EULA to continue.';
+    return;
+  }
+  if (!privacyCheckbox?.checked) {
+    if (statusEl) statusEl.textContent = 'You must agree to the Privacy Policy to continue.';
     return;
   }
   signinBtn.disabled = true;
@@ -102,7 +115,7 @@ signinBtn?.addEventListener('click', async () => {
       }
     }
   } finally {
-    signinBtn.disabled = !eulaCheckbox?.checked;
+    signinBtn.disabled = !_bothChecked();
     signinBtn.innerHTML = `
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>

@@ -1,2 +1,5 @@
 carpool.db
 __pycache__/
+.env
+*.pyc
+app_local.log

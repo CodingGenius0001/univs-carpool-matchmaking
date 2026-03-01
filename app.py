@@ -13,6 +13,14 @@ from urllib.request import Request, urlopen
 
 import traceback
 
+# Load .env file for local development (silently ignored if not present or
+# if python-dotenv is not installed)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -133,12 +141,15 @@ class DBAdapter:
         self.engine = DB_ENGINE
         self.placeholder = "%s" if self.engine == "mysql" else "?"
         self._mysql_failed = False
+        self._mysql_failed_at: float | None = None  # timestamp of last failure
 
     def _activate_sqlite_fallback(self, reason: str = "") -> None:
-        """Switch to SQLite permanently for this process."""
+        """Switch to SQLite fallback. Retries MySQL after 60 s of downtime."""
+        import time
         if not self._mysql_failed:
             app.logger.warning(f"Switching to SQLite fallback. {reason}")
         self._mysql_failed = True
+        self._mysql_failed_at = time.time()
         self.placeholder = "?"
         # Discard any broken MySQL connection on this request
         old = g.pop("db", None)
@@ -148,14 +159,34 @@ class DBAdapter:
             except Exception:
                 pass
 
+    def _should_retry_mysql(self) -> bool:
+        """Return True if enough time has passed to retry MySQL after a failure."""
+        import time
+        if not self._mysql_failed:
+            return False
+        if self._mysql_failed_at is None:
+            return False
+        return (time.time() - self._mysql_failed_at) > 60
+
     def _get_sqlite_conn(self) -> Any:
         g.db = sqlite3.connect(DATABASE_PATH)
         g.db.row_factory = sqlite3.Row
+        # WAL mode: allows concurrent readers with one writer, more reliable
+        # on mobile/serverless where requests may overlap
+        g.db.execute("PRAGMA journal_mode=WAL")
+        g.db.execute("PRAGMA synchronous=NORMAL")
         return g.db
 
     def get_conn(self) -> Any:
         if "db" in g:
             return g.db
+
+        # Reset failure flag after 60 s so transient MySQL outages self-heal
+        if self._should_retry_mysql():
+            app.logger.info("Retrying MySQL connection after cooldown.")
+            self._mysql_failed = False
+            self._mysql_failed_at = None
+            self.placeholder = "%s"
 
         if self.engine == "mysql" and not self._mysql_failed:
             try:
@@ -874,6 +905,11 @@ def join_page() -> Any:
 @app.get("/eula")
 def eula_page() -> Any:
     return render_template("eula.html", **_user_context())
+
+
+@app.get("/privacy")
+def privacy_page() -> Any:
+    return render_template("privacy_policy.html", **_user_context())
 
 
 @app.get("/docs/<path:filename>")
