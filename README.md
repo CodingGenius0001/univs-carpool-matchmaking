@@ -27,7 +27,9 @@ This project was developed as part of a university coursework assignment to solv
 ## Security Configuration
 
 - `FLASK_SECRET_KEY` strongly recommended in all environments; if missing, the app uses an ephemeral in-memory secret so deployments still boot.
-- `ADMIN_PASSWORD_HASH` enables admin login (Werkzeug hash). If unset, admin login is disabled.
+- `ADMIN_PASSWORD_HASH` sets admin password hash (recommended).
+- `ADMIN_PASSWORD` optional plaintext fallback for backward compatibility when no hash is provided (default fallback remains legacy value).
+- `ADMIN_LOGIN_DISABLED` optional kill switch (`true/1/yes`) to disable admin login entirely.
 - `FIREBASE_PROJECT_ID` expected Firebase project for verified ID tokens.
 - `HEALTHCHECK_TOKEN` optional token gate for `/health` endpoint (`/health?token=...`).
 - `REQUIRE_SECRET_KEY` optional hard-fail switch (`true/1/yes`) to force startup failure when `FLASK_SECRET_KEY` is missing.

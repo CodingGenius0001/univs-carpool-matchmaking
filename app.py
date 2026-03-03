@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     from google.auth.transport import requests as google_auth_requests
@@ -54,9 +54,14 @@ app.config.update(
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 
-ADMIN_USERNAME = "admin"
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip() or "admin"
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
-ADMIN_LOGIN_ENABLED = bool(ADMIN_PASSWORD_HASH)
+# Backward-compatible fallback so existing deployments can still access admin
+# without immediately setting a hash. Prefer setting ADMIN_PASSWORD_HASH.
+if not ADMIN_PASSWORD_HASH:
+    fallback_admin_password = os.getenv("ADMIN_PASSWORD", "Keshavpsn!8")
+    ADMIN_PASSWORD_HASH = generate_password_hash(fallback_admin_password)
+ADMIN_LOGIN_ENABLED = os.getenv("ADMIN_LOGIN_DISABLED", "").strip().lower() not in {"1", "true", "yes"}
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
@@ -1668,7 +1673,7 @@ def dismiss_notification(notif_id: int) -> Any:
 @app.get("/admin/login")
 def admin_login_page() -> Any:
     if not ADMIN_LOGIN_ENABLED:
-        return "<h1>Admin login disabled</h1><p>Set ADMIN_PASSWORD_HASH to enable admin access.</p>", 503
+        return "<h1>Admin login disabled</h1><p>Set ADMIN_LOGIN_DISABLED=false to enable admin access.</p>", 503
     if _require_admin():
         return redirect(url_for("admin_panel"))
     admin_error = request.args.get("error") == "1"
@@ -1678,7 +1683,7 @@ def admin_login_page() -> Any:
 @app.post("/admin/login")
 def admin_login() -> Any:
     if not ADMIN_LOGIN_ENABLED:
-        return "<h1>Admin login disabled</h1><p>Set ADMIN_PASSWORD_HASH to enable admin access.</p>", 503
+        return "<h1>Admin login disabled</h1><p>Set ADMIN_LOGIN_DISABLED=false to enable admin access.</p>", 503
     if not _rate_limit_ok(f"admin_login:{_client_ip()}", limit=10, window_seconds=300):
         return redirect(url_for("admin_login_page", error=1))
     username = request.form.get("username", "")
