@@ -22,3 +22,20 @@ This project was developed as part of a university coursework assignment to solv
 - **Frontend**: HTML, CSS (custom dark theme), vanilla JavaScript
 - **Deployment**: Vercel (serverless Python runtime)
 - **Authentication**: Werkzeug password hashing with session-based admin auth
+
+
+## Security Configuration
+
+- `FLASK_SECRET_KEY` **required in production**; app now refuses to boot without it outside local dev.
+- `ADMIN_PASSWORD_HASH` enables admin login (Werkzeug hash). If unset, admin login is disabled.
+- `FIREBASE_PROJECT_ID` expected Firebase project for verified ID tokens.
+- `HEALTHCHECK_TOKEN` optional token gate for `/health` endpoint (`/health?token=...`).
+
+Generate an admin hash locally:
+
+```bash
+python - <<'PY'
+from werkzeug.security import generate_password_hash
+print(generate_password_hash('replace-with-strong-password'))
+PY
+```

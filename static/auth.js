@@ -77,14 +77,11 @@ signinBtn?.addEventListener('click', async () => {
     }
 
     // Send to server to set session
+    const idToken = await user.getIdToken(true);
     const res = await fetch('/auth/firebase-callback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: email,
-        name: user.displayName || '',
-        uid: user.uid
-      })
+      body: JSON.stringify({ idToken })
     });
 
     const data = await res.json();

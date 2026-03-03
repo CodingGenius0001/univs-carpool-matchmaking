@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict, deque
 import json
 import os
+import secrets
 import re
 import sqlite3
 import ssl
@@ -22,21 +24,65 @@ except ImportError:
     pass
 
 from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
+
+try:
+    from google.auth.transport import requests as google_auth_requests
+    from google.oauth2 import id_token as google_id_token
+except Exception:  # optional dependency guard
+    google_auth_requests = None
+    google_id_token = None
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
+_env_secret = os.getenv("FLASK_SECRET_KEY", "")
+_is_dev = os.getenv("FLASK_ENV", "").lower() == "development" or os.getenv("VERCEL") is None
+if _env_secret:
+    app.secret_key = _env_secret
+elif _is_dev:
+    # Safe default for local development only; do not rely on this in deployed environments.
+    app.secret_key = secrets.token_hex(32)
+else:
+    raise RuntimeError("FLASK_SECRET_KEY must be set in non-development environments")
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=not _is_dev,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+ADMIN_LOGIN_ENABLED = bool(ADMIN_PASSWORD_HASH)
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
+TIME_HHMM_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+# In-memory rate-limiter store (best effort for single-process / warm instances).
+_RATE_LIMIT_STORE: dict[str, deque[datetime]] = defaultdict(deque)
+
+
+def _client_ip() -> str:
+    xff = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    return xff or request.remote_addr or "unknown"
+
+
+def _rate_limit_ok(bucket: str, limit: int, window_seconds: int) -> bool:
+    now = _now_utc()
+    window_start = now - timedelta(seconds=window_seconds)
+    q = _RATE_LIMIT_STORE[bucket]
+    while q and q[0] < window_start:
+        q.popleft()
+    if len(q) >= limit:
+        return False
+    q.append(now)
+    return True
 
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool")
 
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
@@ -764,6 +810,8 @@ def _serialize_entry(row: dict[str, Any], include_phone: bool = False) -> dict[s
 
 
 def _require_admin() -> bool:
+    if not ADMIN_LOGIN_ENABLED:
+        return False
     if not session.get("admin_authed"):
         return False
     login_time = session.get("admin_login_at")
@@ -812,8 +860,19 @@ def handle_exception(e: Exception) -> Any:
     tb = traceback.format_exc()
     app.logger.error(f"Unhandled exception: {e}\n{tb}")
     if request.path.startswith("/api/"):
-        return jsonify({"error": f"Server error: {e}"}), 500
-    return f"<h1>Internal Server Error</h1><pre>{e}</pre>", 500
+        return jsonify({"error": "Internal server error"}), 500
+    return "<h1>Internal Server Error</h1>", 500
+
+
+@app.after_request
+def _add_security_headers(response: Any) -> Any:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 
 def _cleanup_expired_entries() -> None:
@@ -929,13 +988,40 @@ def login_page() -> Any:
 @app.post("/auth/firebase-callback")
 def firebase_callback() -> Any:
     """Receive Firebase ID token from client, verify email domain, set session."""
+    if not _rate_limit_ok(f"firebase_callback:{_client_ip()}", limit=20, window_seconds=300):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+
     data = request.get_json(silent=True) or {}
-    email = str(data.get("email", "")).strip().lower()
-    name = str(data.get("name", "")).strip()
-    uid = str(data.get("uid", "")).strip()
+    raw_id_token = str(data.get("idToken", "")).strip()
+    if not raw_id_token:
+        return jsonify({"error": "Missing idToken"}), 400
+
+    if not google_id_token or not google_auth_requests:
+        return jsonify({"error": "Server auth verifier unavailable"}), 503
+
+    try:
+        request_adapter = google_auth_requests.Request()
+        claims = google_id_token.verify_firebase_token(raw_id_token, request_adapter)
+    except Exception:
+        return jsonify({"error": "Invalid authentication token"}), 401
+
+    if not claims:
+        return jsonify({"error": "Invalid authentication token"}), 401
+
+    email = str(claims.get("email", "")).strip().lower()
+    name = str(claims.get("name", "")).strip()
+    uid = str(claims.get("user_id") or claims.get("sub") or "").strip()
+    email_verified = bool(claims.get("email_verified"))
+    tenant_project = str(claims.get("aud", "")).strip()
+
+    if tenant_project and FIREBASE_PROJECT_ID and tenant_project != FIREBASE_PROJECT_ID:
+        return jsonify({"error": "Token project mismatch"}), 403
 
     if not email or not uid:
-        return jsonify({"error": "Missing authentication data"}), 400
+        return jsonify({"error": "Missing authentication identity"}), 400
+
+    if not email_verified:
+        return jsonify({"error": "Email must be verified"}), 403
 
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
@@ -993,10 +1079,12 @@ def create_carpool() -> Any:
         return _create_carpool_inner()
     except Exception as e:
         app.logger.error(f"create_carpool error: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": f"Server error: {e}"}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 def _create_carpool_inner() -> Any:
+    if not _rate_limit_ok(f"create:{_client_ip()}", limit=20, window_seconds=300):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
     _cleanup_expired_entries()
     data = request.get_json(silent=True) or request.form.to_dict()
 
@@ -1048,6 +1136,20 @@ def _create_carpool_inner() -> Any:
 
     destination_airport = str(data.get("destination_airport", "")).strip().upper()[:3]
     planned_departure_time = str(data.get("planned_departure_time", "")).strip()
+    if planned_departure_time and not TIME_HHMM_PATTERN.match(planned_departure_time):
+        return jsonify({"error": "planned_departure_time must be in HH:MM format"}), 400
+
+    notes = str(data.get("notes", "")).strip()
+    if len(notes) > 1000:
+        return jsonify({"error": "notes must be 1000 characters or fewer"}), 400
+
+    try:
+        seats = int(data.get("seats_available", 3) or 3)
+    except (ValueError, TypeError):
+        return jsonify({"error": "seats_available must be an integer"}), 400
+    if not 1 <= seats <= 7:
+        return jsonify({"error": "seats_available must be between 1 and 7"}), 400
+
     creator_email = session.get("user_email", "")
 
     p = db.placeholder
@@ -1069,8 +1171,8 @@ def _create_carpool_inner() -> Any:
             airport_location,
             "TBD",
             _to_api_flight_date(parsed_flight_date),
-            int(data.get("seats_available", 3) or 3),
-            str(data.get("notes", "")).strip(),
+            seats,
+            notes,
             "direct",
             "active",
             expires_at,
@@ -1198,6 +1300,8 @@ def carpool_details(entry_id: int) -> Any:
 
 @app.post("/api/carpools/<int:carpool_id>/join")
 def join_party(carpool_id: int) -> Any:
+    if not _rate_limit_ok(f"join:{_client_ip()}", limit=30, window_seconds=300):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
@@ -1560,6 +1664,8 @@ def dismiss_notification(notif_id: int) -> Any:
 
 @app.get("/admin/login")
 def admin_login_page() -> Any:
+    if not ADMIN_LOGIN_ENABLED:
+        return "<h1>Admin login disabled</h1><p>Set ADMIN_PASSWORD_HASH to enable admin access.</p>", 503
     if _require_admin():
         return redirect(url_for("admin_panel"))
     admin_error = request.args.get("error") == "1"
@@ -1568,6 +1674,10 @@ def admin_login_page() -> Any:
 
 @app.post("/admin/login")
 def admin_login() -> Any:
+    if not ADMIN_LOGIN_ENABLED:
+        return "<h1>Admin login disabled</h1><p>Set ADMIN_PASSWORD_HASH to enable admin access.</p>", 503
+    if not _rate_limit_ok(f"admin_login:{_client_ip()}", limit=10, window_seconds=300):
+        return redirect(url_for("admin_login_page", error=1))
     username = request.form.get("username", "")
     password = request.form.get("password", "")
     if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
@@ -1666,6 +1776,9 @@ def _add_admin_cache_headers(response: Any) -> Any:
 @app.get("/health")
 def health_check() -> Any:
     """Debug endpoint to check app status on Vercel."""
+    health_token = os.getenv("HEALTHCHECK_TOKEN", "").strip()
+    if health_token and request.args.get("token", "") != health_token:
+        return jsonify({"error": "Unauthorized"}), 401
     actual_engine = "sqlite" if db._mysql_failed else db.engine
     info: dict[str, Any] = {
         "status": "ok",
