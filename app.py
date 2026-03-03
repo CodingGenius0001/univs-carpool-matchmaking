@@ -36,13 +36,16 @@ except Exception:  # optional dependency guard
 app = Flask(__name__)
 _env_secret = os.getenv("FLASK_SECRET_KEY", "")
 _is_dev = os.getenv("FLASK_ENV", "").lower() == "development" or os.getenv("VERCEL") is None
+_require_secret = os.getenv("REQUIRE_SECRET_KEY", "").strip().lower() in {"1", "true", "yes"}
 if _env_secret:
     app.secret_key = _env_secret
-elif _is_dev:
-    # Safe default for local development only; do not rely on this in deployed environments.
-    app.secret_key = secrets.token_hex(32)
 else:
-    raise RuntimeError("FLASK_SECRET_KEY must be set in non-development environments")
+    # Fail-open with a cryptographically secure ephemeral secret so the app still boots
+    # even if environment configuration is incomplete (common in serverless deploys).
+    # Set REQUIRE_SECRET_KEY=true to hard-fail instead.
+    if _require_secret:
+        raise RuntimeError("FLASK_SECRET_KEY must be set when REQUIRE_SECRET_KEY=true")
+    app.secret_key = secrets.token_hex(32)
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
