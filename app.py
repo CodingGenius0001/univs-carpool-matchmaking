@@ -95,6 +95,8 @@ SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool")
 FIREBASE_STRICT_VERIFICATION = os.getenv("FIREBASE_STRICT_VERIFICATION", "").strip().lower() in {"1", "true", "yes"}
 FIREBASE_LEGACY_FALLBACK = os.getenv("FIREBASE_LEGACY_FALLBACK", "").strip().lower() in {"1", "true", "yes"}
+FIREBASE_VERIFY_TIMEOUT = float(os.getenv("FIREBASE_VERIFY_TIMEOUT_SECONDS", "4"))
+FIREBASE_TOKENINFO_ENDPOINT = os.getenv("FIREBASE_TOKENINFO_ENDPOINT", "https://oauth2.googleapis.com/tokeninfo")
 
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
@@ -564,6 +566,42 @@ def _to_api_flight_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+def _verify_firebase_claims(raw_id_token: str) -> dict[str, Any] | None:
+    """Verify Firebase ID token with google-auth, with tokeninfo fallback."""
+    if not raw_id_token:
+        return None
+
+    if google_id_token and google_auth_requests:
+        try:
+            request_adapter = google_auth_requests.Request()
+            claims = google_id_token.verify_firebase_token(raw_id_token, request_adapter)
+            if isinstance(claims, dict) and claims:
+                return claims
+        except Exception:
+            pass
+
+    # Fallback verifier path for environments where google-auth extras are
+    # unavailable at runtime. Uses Google tokeninfo endpoint.
+    try:
+        token_url = f"{FIREBASE_TOKENINFO_ENDPOINT}?{urlencode({'id_token': raw_id_token})}"
+        req = Request(token_url, headers={"accept": "application/json"})
+        with urlopen(req, timeout=FIREBASE_VERIFY_TIMEOUT) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict) or not payload:
+            return None
+        claims: dict[str, Any] = {
+            "email": payload.get("email", ""),
+            "name": payload.get("name", ""),
+            "user_id": payload.get("sub", ""),
+            "sub": payload.get("sub", ""),
+            "aud": payload.get("aud", ""),
+            "email_verified": str(payload.get("email_verified", "")).lower() == "true",
+        }
+        return claims
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError, OSError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # SerpApi Google Flights integration
 # ---------------------------------------------------------------------------
@@ -1006,15 +1044,7 @@ def firebase_callback() -> Any:
     data = request.get_json(silent=True) or {}
     raw_id_token = str(data.get("idToken", "")).strip()
 
-    claims: dict[str, Any] | None = None
-    verifier_available = bool(google_id_token and google_auth_requests)
-
-    if raw_id_token and verifier_available:
-        try:
-            request_adapter = google_auth_requests.Request()
-            claims = google_id_token.verify_firebase_token(raw_id_token, request_adapter)
-        except Exception:
-            claims = None
+    claims = _verify_firebase_claims(raw_id_token)
 
     if claims:
         email = str(claims.get("email", "")).strip().lower()
@@ -1037,8 +1067,6 @@ def firebase_callback() -> Any:
         if FIREBASE_STRICT_VERIFICATION or not FIREBASE_LEGACY_FALLBACK:
             if not raw_id_token:
                 return jsonify({"error": "Missing idToken"}), 400
-            if not verifier_available:
-                return jsonify({"error": "Server auth verifier unavailable"}), 503
             return jsonify({"error": "Invalid authentication token"}), 401
 
         email = str(data.get("email", "")).strip().lower()
@@ -1832,7 +1860,7 @@ def health_check() -> Any:
 
 
 if not google_id_token or not google_auth_requests:
-    app.logger.warning("google-auth verifier unavailable; Firebase login requires dependency install unless FIREBASE_LEGACY_FALLBACK=true")
+    app.logger.warning("google-auth verifier unavailable; using tokeninfo fallback for Firebase verification")
 
 # ---------------------------------------------------------------------------
 # Startup
