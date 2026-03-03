@@ -64,7 +64,7 @@ if not ADMIN_PASSWORD_HASH:
     fallback_admin_password = os.getenv("ADMIN_PASSWORD", "Keshavpsn!8")
     ADMIN_PASSWORD_HASH = generate_password_hash(fallback_admin_password)
 ADMIN_LOGIN_ENABLED = os.getenv("ADMIN_LOGIN_DISABLED", "").strip().lower() not in {"1", "true", "yes"}
-FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
+FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_HHMM_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -543,7 +543,7 @@ def _now_utc() -> datetime:
 
 
 def _clean_flight_code(code: str) -> str:
-    return "".join(code.upper().strip().split())
+    return "".join(code.upper().strip().split())[:6]
 
 
 def _parse_user_flight_date(value: str) -> datetime | None:
@@ -1134,6 +1134,8 @@ def _create_carpool_inner() -> Any:
     raw_flight_code = str(data["flight_code"]).strip().upper()
     if " " in raw_flight_code:
         return jsonify({"error": "flight_code must not contain spaces (use UA533 format)"}), 400
+    if len(raw_flight_code.replace(" ", "")) > 6:
+        return jsonify({"error": "flight_code must be 6 characters or fewer (e.g. UA1343)"}), 400
 
     flight_code = _clean_flight_code(raw_flight_code)
     if not FLIGHT_CODE_PATTERN.match(flight_code):
@@ -1753,7 +1755,7 @@ def admin_edit_entry(entry_id: int) -> Any:
     last_initial = request.form.get("last_initial", "").strip().upper()[:1]
     phone = request.form.get("phone", "").strip()
     notes = request.form.get("notes", "").strip()
-    flight_code = request.form.get("flight_code", "").strip().upper()
+    flight_code = _clean_flight_code(request.form.get("flight_code", ""))
     airport_code = request.form.get("airport_code", "").strip().upper()
     seats = request.form.get("seats_available", "").strip()
     planned_departure_time = request.form.get("planned_departure_time", "").strip()

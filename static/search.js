@@ -11,7 +11,7 @@ searchAirport?.addEventListener('input', () => {
 });
 
 searchFlight?.addEventListener('input', () => {
-  searchFlight.value = searchFlight.value.toUpperCase().replace(/\s+/g, '');
+  searchFlight.value = searchFlight.value.toUpperCase().replace(/\s+/g, '').slice(0, 6);
 });
 
 function buildAddUrl() {

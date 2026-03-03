@@ -77,6 +77,10 @@ airportCodeInput?.addEventListener('input', () => {
   airportCodeInput.value = airportCodeInput.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
 });
 
+flightCodeInput?.addEventListener('input', () => {
+  flightCodeInput.value = flightCodeInput.value.toUpperCase().replace(/\s+/g, '').slice(0, 6);
+});
+
 phoneInput?.addEventListener('input', () => {
   phoneInput.value = formatPhone(phoneInput.value);
 });
@@ -281,7 +285,7 @@ form?.addEventListener('submit', async (e) => {
   submitBtn.innerHTML = '<span class="spinner"></span> Saving...';
 
   const payload = Object.fromEntries(new FormData(form).entries());
-  payload.flight_code = String(payload.flight_code || '').toUpperCase().replace(/\s+/g, '');
+  payload.flight_code = String(payload.flight_code || '').toUpperCase().replace(/\s+/g, '').slice(0, 6);
 
   // Convert YYYY-MM-DD to MM-DD-YYYY for the backend
   if (payload.departure_date && payload.departure_date.includes('-')) {
