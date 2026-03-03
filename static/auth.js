@@ -81,7 +81,14 @@ signinBtn?.addEventListener('click', async () => {
     const res = await fetch('/auth/firebase-callback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
+      body: JSON.stringify({
+        idToken,
+        // Backward-compatible fallback identity payload for environments where
+        // server-side verifier dependencies/config may be temporarily unavailable.
+        email: email,
+        name: user.displayName || '',
+        uid: user.uid
+      })
     });
 
     const data = await res.json();
