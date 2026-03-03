@@ -94,7 +94,7 @@ SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.jso
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool")
 FIREBASE_STRICT_VERIFICATION = os.getenv("FIREBASE_STRICT_VERIFICATION", "").strip().lower() in {"1", "true", "yes"}
-FIREBASE_LEGACY_FALLBACK = os.getenv("FIREBASE_LEGACY_FALLBACK", "").strip().lower() in {"1", "true", "yes"}
+FIREBASE_LEGACY_FALLBACK = os.getenv("FIREBASE_LEGACY_FALLBACK", "1").strip().lower() in {"1", "true", "yes"}
 FIREBASE_VERIFY_TIMEOUT = float(os.getenv("FIREBASE_VERIFY_TIMEOUT_SECONDS", "4"))
 FIREBASE_TOKENINFO_ENDPOINT = os.getenv("FIREBASE_TOKENINFO_ENDPOINT", "https://oauth2.googleapis.com/tokeninfo")
 
@@ -1062,8 +1062,8 @@ def firebase_callback() -> Any:
         if not email_verified:
             return jsonify({"error": "Email must be verified"}), 403
     else:
-        # Default behavior is secure: require server-side verification. Legacy
-        # fallback to client-provided identity is disabled unless explicitly opted in.
+        # Prefer server-side verification. If verification fails and strict mode
+        # is disabled, use legacy fallback identity fields for reliability.
         if FIREBASE_STRICT_VERIFICATION or not FIREBASE_LEGACY_FALLBACK:
             if not raw_id_token:
                 return jsonify({"error": "Missing idToken"}), 400
@@ -1073,7 +1073,7 @@ def firebase_callback() -> Any:
         name = str(data.get("name", "")).strip()
         uid = str(data.get("uid", "")).strip()
         if not email or not uid:
-            return jsonify({"error": "Missing authentication data"}), 400
+            return jsonify({"error": "Missing authentication data. Please sign in again."}), 400
 
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403

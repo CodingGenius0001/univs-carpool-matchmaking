@@ -32,7 +32,7 @@ This project was developed as part of a university coursework assignment to solv
 - `ADMIN_LOGIN_DISABLED` optional kill switch (`true/1/yes`) to disable admin login entirely.
 - `FIREBASE_PROJECT_ID` expected Firebase project for verified ID tokens.
 - `FIREBASE_STRICT_VERIFICATION` optional hard-fail switch (`true/1/yes`) to require server-side ID token verification (recommended for production).
-- `FIREBASE_LEGACY_FALLBACK` optional emergency compatibility mode (`true/1/yes`) to allow legacy client-provided identity when verifier is unavailable (not recommended).
+- `FIREBASE_LEGACY_FALLBACK` compatibility mode for login resilience when verifier/network checks fail (default: enabled); set to `false/0/no` to disable.
 - `FIREBASE_VERIFY_TIMEOUT_SECONDS` optional timeout for Firebase token verification network fallback.
 - `FIREBASE_TOKENINFO_ENDPOINT` optional override for Google tokeninfo verifier endpoint.
 - `HEALTHCHECK_TOKEN` optional token gate for `/health` endpoint (`/health?token=...`).
