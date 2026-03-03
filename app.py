@@ -29,14 +29,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 try:
     from google.auth.transport import requests as google_auth_requests
     from google.oauth2 import id_token as google_id_token
-except Exception:  # optional dependency guard
+except ImportError:
     google_auth_requests = None
     google_id_token = None
 
 app = Flask(__name__)
 _env_secret = os.getenv("FLASK_SECRET_KEY", "")
-_is_dev = os.getenv("FLASK_ENV", "").lower() == "development" or os.getenv("VERCEL") is None
+_is_dev = os.getenv("FLASK_ENV", "").lower() == "development"
 _require_secret = os.getenv("REQUIRE_SECRET_KEY", "").strip().lower() in {"1", "true", "yes"}
+_force_secure_cookie = os.getenv("SESSION_COOKIE_SECURE", "").strip().lower()
 if _env_secret:
     app.secret_key = _env_secret
 else:
@@ -47,9 +48,10 @@ else:
         raise RuntimeError("FLASK_SECRET_KEY must be set when REQUIRE_SECRET_KEY=true")
     app.secret_key = secrets.token_hex(32)
 
+secure_cookie = (not _is_dev) if not _force_secure_cookie else _force_secure_cookie in {"1", "true", "yes"}
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SECURE=not _is_dev,
+    SESSION_COOKIE_SECURE=secure_cookie,
     SESSION_COOKIE_SAMESITE="Lax",
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
@@ -92,6 +94,7 @@ SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.jso
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool")
 FIREBASE_STRICT_VERIFICATION = os.getenv("FIREBASE_STRICT_VERIFICATION", "").strip().lower() in {"1", "true", "yes"}
+FIREBASE_LEGACY_FALLBACK = os.getenv("FIREBASE_LEGACY_FALLBACK", "").strip().lower() in {"1", "true", "yes"}
 
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
@@ -1029,10 +1032,9 @@ def firebase_callback() -> Any:
         if not email_verified:
             return jsonify({"error": "Email must be verified"}), 403
     else:
-        # Compatibility fallback for environments where verifier deps are not available
-        # or token verification transiently fails. Set FIREBASE_STRICT_VERIFICATION=true
-        # to enforce hard failure instead.
-        if FIREBASE_STRICT_VERIFICATION:
+        # Default behavior is secure: require server-side verification. Legacy
+        # fallback to client-provided identity is disabled unless explicitly opted in.
+        if FIREBASE_STRICT_VERIFICATION or not FIREBASE_LEGACY_FALLBACK:
             if not raw_id_token:
                 return jsonify({"error": "Missing idToken"}), 400
             if not verifier_available:
@@ -1043,11 +1045,7 @@ def firebase_callback() -> Any:
         name = str(data.get("name", "")).strip()
         uid = str(data.get("uid", "")).strip()
         if not email or not uid:
-            if not raw_id_token:
-                return jsonify({"error": "Missing authentication data"}), 400
-            if not verifier_available:
-                return jsonify({"error": "Server auth verifier unavailable"}), 503
-            return jsonify({"error": "Invalid authentication token"}), 401
+            return jsonify({"error": "Missing authentication data"}), 400
 
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
@@ -1829,6 +1827,10 @@ def health_check() -> Any:
         info["db_error"] = str(e)
     return jsonify(info)
 
+
+
+if not google_id_token or not google_auth_requests:
+    app.logger.warning("google-auth verifier unavailable; Firebase login requires dependency install unless FIREBASE_LEGACY_FALLBACK=true")
 
 # ---------------------------------------------------------------------------
 # Startup
