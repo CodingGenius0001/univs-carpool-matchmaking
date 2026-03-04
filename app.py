@@ -51,11 +51,8 @@ SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 
-SMTP_HOST = os.environ.get("SMTP_HOST")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USER
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+RESEND_FROM = os.environ.get("RESEND_FROM", "Campus2Air <onboarding@resend.dev>")
 
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
@@ -513,19 +510,24 @@ def _now_utc() -> datetime:
 
 
 def send_email_notification(to_email: str, message: str) -> None:
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD and to_email):
+    if not (RESEND_API_KEY and to_email):
         return
     try:
-        import smtplib
-        from email.mime.text import MIMEText
-        msg = MIMEText(message)
-        msg["Subject"] = "Campus2Air — Carpool Update"
-        msg["From"] = SMTP_FROM
-        msg["To"] = to_email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM, to_email, msg.as_string())
+        payload = json.dumps({
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": "Campus2Air — Carpool Update",
+            "text": message,
+        }).encode()
+        req = Request(
+            "https://api.resend.com/emails",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        urlopen(req, timeout=5)
     except Exception as e:
         app.logger.warning(f"Email notification failed to {to_email}: {e}")
 
