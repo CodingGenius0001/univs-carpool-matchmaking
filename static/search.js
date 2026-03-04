@@ -70,12 +70,12 @@ function renderResults(data) {
 
       let actionBtn;
       if (isMember) {
-        actionBtn = `<button data-id="${r.id}" class="leave-party-btn btn btn-secondary btn-sm">Leave Party</button>
+        actionBtn = `<button data-id="${r.id}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                       <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Carpool</a>`;
       } else if (isFull) {
-        actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Party Full</button>`;
+        actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Carpool Full</button>`;
       } else {
-        actionBtn = `<button data-id="${r.id}" class="join-party-btn btn btn-primary btn-sm">Join Party</button>`;
+        actionBtn = `<button data-id="${r.id}" class="join-carpool-btn btn btn-primary btn-sm">Join Carpool</button>`;
       }
 
       return `
@@ -105,7 +105,7 @@ function renderResults(data) {
               ${isFull ? '<span style="color:var(--danger)">Full</span>' : `${seatsRemaining} left`}
             </span>
             <span>
-              <span class="label">Party</span>
+              <span class="label">Carpool</span>
               ${r.member_count || 1} member${(r.member_count || 1) !== 1 ? 's' : ''}
             </span>
           </div>
@@ -177,9 +177,9 @@ searchForm?.addEventListener('submit', async (e) => {
   }
 });
 
-// Join party handler - shows phone prompt
+// Join carpool handler - shows phone prompt
 document.addEventListener('click', async (e) => {
-  const joinBtn = e.target.closest('.join-party-btn');
+  const joinBtn = e.target.closest('.join-carpool-btn');
   if (!joinBtn) return;
 
   const id = joinBtn.dataset.id;
@@ -198,7 +198,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
   modal.innerHTML = `
     <div class="card modal-card" style="max-width:400px">
       <h3>Enter Your Phone Number</h3>
-      <p class="text-muted text-sm">Your phone number helps party members coordinate. It will be saved for future use.</p>
+      <p class="text-muted text-sm">Your phone number helps carpool members coordinate. It will be saved for future use.</p>
       <form id="phone-join-form">
         <label class="mt-2">Phone Number
           <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${cachedUserPhone}" />
@@ -208,7 +208,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
           <span>&#10003; Send me email updates for this carpool</span>
         </label>
         <div class="modal-actions mt-2">
-          <button type="submit" class="btn btn-primary">Join Party</button>
+          <button type="submit" class="btn btn-primary">Join Carpool</button>
           <button type="button" class="btn btn-secondary" id="phone-cancel">Cancel</button>
         </div>
         <p id="phone-error" class="text-sm mt-1" style="color:var(--danger)"></p>
@@ -259,23 +259,23 @@ function showPhonePrompt(carpoolId, joinBtn) {
         setTimeout(() => searchForm?.requestSubmit(), 500);
         const myPartyBtn = document.getElementById('my-party-btn');
         if (myPartyBtn) myPartyBtn.style.display = '';
-        // Also show mobile party link
+        // Also show mobile carpool link
         const mobileLink = document.getElementById('mobile-my-party-link');
         if (mobileLink) mobileLink.style.display = '';
       } else {
         joinBtn.textContent = data.error || 'Failed';
-        setTimeout(() => { joinBtn.textContent = 'Join Party'; joinBtn.disabled = false; }, 2000);
+        setTimeout(() => { joinBtn.textContent = 'Join Carpool'; joinBtn.disabled = false; }, 2000);
       }
     } catch {
       joinBtn.textContent = 'Error';
-      setTimeout(() => { joinBtn.textContent = 'Join Party'; joinBtn.disabled = false; }, 2000);
+      setTimeout(() => { joinBtn.textContent = 'Join Carpool'; joinBtn.disabled = false; }, 2000);
     }
   });
 }
 
-// Leave party handler
+// Leave carpool handler
 document.addEventListener('click', async (e) => {
-  const leaveBtn = e.target.closest('.leave-party-btn');
+  const leaveBtn = e.target.closest('.leave-carpool-btn');
   if (!leaveBtn) return;
 
   const id = leaveBtn.dataset.id;
@@ -290,10 +290,10 @@ document.addEventListener('click', async (e) => {
     } else {
       const data = await res.json();
       leaveBtn.textContent = data.error || 'Failed';
-      setTimeout(() => { leaveBtn.textContent = 'Leave Party'; leaveBtn.disabled = false; }, 2000);
+      setTimeout(() => { leaveBtn.textContent = 'Leave Carpool'; leaveBtn.disabled = false; }, 2000);
     }
   } catch {
     leaveBtn.textContent = 'Error';
-    setTimeout(() => { leaveBtn.textContent = 'Leave Party'; leaveBtn.disabled = false; }, 2000);
+    setTimeout(() => { leaveBtn.textContent = 'Leave Carpool'; leaveBtn.disabled = false; }, 2000);
   }
 });

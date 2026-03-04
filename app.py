@@ -1013,7 +1013,7 @@ def join_party(carpool_id: int) -> Any:
         (carpool_id, email),
     )
     if existing:
-        return jsonify({"error": "Already in this party"}), 409
+        return jsonify({"error": "Already in this carpool"}), 409
 
     # Check seat cap: seats_available includes the creator seat
     members = db.query(
@@ -1023,7 +1023,7 @@ def join_party(carpool_id: int) -> Any:
     current_count = members[0]["c"] if members else 0
     max_members = int(carpool.get("seats_available", 3))
     if current_count >= max_members:
-        return jsonify({"error": "This carpool party is full"}), 409
+        return jsonify({"error": "This carpool is full"}), 409
 
     # Store phone number and SMS opt-in if provided
     data = request.get_json(silent=True) or {}
@@ -1077,7 +1077,7 @@ def join_party(carpool_id: int) -> Any:
     except Exception:
         pass
 
-    return jsonify({"ok": True, "message": "Joined the party!"})
+    return jsonify({"ok": True, "message": "Joined the carpool!"})
 
 
 @app.post("/api/carpools/<int:carpool_id>/leave")
@@ -1097,7 +1097,7 @@ def leave_party(carpool_id: int) -> Any:
         (carpool_id, email),
     )
     if not member_rows:
-        return jsonify({"error": "You are not a member of this party"}), 404
+        return jsonify({"error": "You are not a member of this carpool"}), 404
 
     carpool = carpool_rows[0]
     is_creator = carpool.get("creator_email") == email
@@ -1119,7 +1119,7 @@ def leave_party(carpool_id: int) -> Any:
                 notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} on {flight_date}.")
             except Exception:
                 pass
-        return jsonify({"ok": True, "message": "Left the party."})
+        return jsonify({"ok": True, "message": "Left the carpool."})
 
     # Creator is leaving: transfer ownership if members remain, otherwise disband.
     remaining_members = db.query(
@@ -1130,7 +1130,7 @@ def leave_party(carpool_id: int) -> Any:
     if not remaining_members:
         # Nobody is left -> auto-disband the party.
         db.execute(f"DELETE FROM carpools WHERE id = {p}", (carpool_id,))
-        return jsonify({"ok": True, "message": "You left and the party was disbanded because no members remained."})
+        return jsonify({"ok": True, "message": "You left and the carpool was disbanded because no members remained."})
 
     # Transfer to the earliest-joined remaining member.
     new_owner_email = remaining_members[0]["user_email"]
@@ -1161,7 +1161,7 @@ def leave_party(carpool_id: int) -> Any:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}. The previous creator left.")
     except Exception:
         pass
-    return jsonify({"ok": True, "message": f"Left the party. Ownership transferred to {new_owner_email}."})
+    return jsonify({"ok": True, "message": f"Left the carpool. Ownership transferred to {new_owner_email}."})
 
 
 @app.post("/api/carpools/<int:carpool_id>/transfer-and-leave")
@@ -1185,7 +1185,7 @@ def transfer_and_leave(carpool_id: int) -> Any:
         (carpool_id, new_owner_email),
     )
     if not member_check:
-        return jsonify({"error": "New owner must be a current party member"}), 400
+        return jsonify({"error": "New owner must be a current carpool member"}), 400
     profile = db.query(
         f"SELECT first_name, last_initial, phone FROM users WHERE user_email = {p}",
         (new_owner_email,),
@@ -1214,7 +1214,7 @@ def transfer_and_leave(carpool_id: int) -> Any:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}.")
     except Exception:
         pass
-    return jsonify({"ok": True, "message": "Ownership transferred. You have left the party."})
+    return jsonify({"ok": True, "message": "Ownership transferred. You have left the carpool."})
 
 
 @app.get("/api/my-parties")
@@ -1327,7 +1327,7 @@ def remove_member(carpool_id: int) -> Any:
     if not rows:
         return jsonify({"error": "Carpool not found"}), 404
     if rows[0]["creator_email"] != email:
-        return jsonify({"error": "Only the party creator can remove members"}), 403
+        return jsonify({"error": "Only the carpool creator can remove members"}), 403
     if target_email == email:
         return jsonify({"error": "Cannot remove yourself. Use disband instead."}), 400
     db.execute(
@@ -1347,31 +1347,35 @@ def remove_member(carpool_id: int) -> Any:
 
 @app.post("/api/carpools/<int:carpool_id>/edit")
 def edit_party(carpool_id: int) -> Any:
-    """Allow the party creator to edit party details."""
+    """Allow the carpool creator to edit carpool details."""
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
     p = db.placeholder
-    rows = db.query(f"SELECT creator_email FROM carpools WHERE id = {p}", (carpool_id,))
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
     if not rows:
         return jsonify({"error": "Carpool not found"}), 404
     if rows[0]["creator_email"] != email:
-        return jsonify({"error": "Only the party creator can edit details"}), 403
+        return jsonify({"error": "Only the carpool creator can edit details"}), 403
     data = request.get_json(silent=True) or {}
     updates = []
     params: list[Any] = []
+    changed: list[str] = []
     if "planned_departure_time" in data:
         updates.append(f"planned_departure_time = {p}")
         params.append(str(data["planned_departure_time"]).strip())
+        changed.append("departure time")
     if "notes" in data:
         updates.append(f"notes = {p}")
         params.append(str(data["notes"]).strip())
+        changed.append("notes")
     if "seats_available" in data:
         try:
             seats = int(data["seats_available"])
             if 1 <= seats <= 7:
                 updates.append(f"seats_available = {p}")
                 params.append(seats)
+                changed.append("seat count")
         except (ValueError, TypeError):
             pass
     if not updates:
@@ -1381,7 +1385,22 @@ def edit_party(carpool_id: int) -> Any:
         f"UPDATE carpools SET {', '.join(updates)} WHERE id = {p}",
         tuple(params),
     )
-    return jsonify({"ok": True, "message": "Party updated."})
+    # Notify all members except the creator
+    if changed:
+        carpool = rows[0]
+        flight_code = carpool.get("flight_code", "")
+        flight_date = carpool.get("requested_flight_date", "")
+        changed_str = ", ".join(changed)
+        members = db.query(
+            f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
+            (carpool_id, email),
+        )
+        for m in members:
+            try:
+                notify_user(m["user_email"], f"The carpool for {flight_code} on {flight_date} has been updated ({changed_str}) by the organizer.")
+            except Exception:
+                pass
+    return jsonify({"ok": True, "message": "Carpool updated."})
 
 
 @app.post("/api/carpools/<int:carpool_id>/disband")
@@ -1400,7 +1419,7 @@ def disband_party(carpool_id: int) -> Any:
         return jsonify({"error": "Carpool not found"}), 404
     carpool = rows[0]
     if carpool["creator_email"] != email:
-        return jsonify({"error": "Only the party creator can disband the party"}), 403
+        return jsonify({"error": "Only the carpool creator can disband the carpool"}), 403
     # Notify all members (except creator)
     members = db.query(
         f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
@@ -1416,7 +1435,7 @@ def disband_party(carpool_id: int) -> Any:
     # Delete all party members and the carpool
     db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (carpool_id,))
     db.execute(f"DELETE FROM carpools WHERE id = {p}", (carpool_id,))
-    return jsonify({"ok": True, "message": "Party disbanded."})
+    return jsonify({"ok": True, "message": "Carpool disbanded."})
 
 
 @app.get("/api/notifications")
