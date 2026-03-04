@@ -98,7 +98,7 @@
                 <td>{{ entry.seats_available }}</td>
                 <td>{{ entry.status }}</td>
                 <td title="{{ entry.notes or '' }}">{{ (entry.notes or '')[:30] }}{{ '...' if (entry.notes or '')|length > 30 else '' }}</td>
-                <td>{{ (entry.created_at or '')[:16] }}</td>
+                <td>{{ entry.created_at | to_pst }}</td>
                 <td style="white-space: nowrap;">
                   <button type="button" class="btn btn-secondary btn-sm edit-btn"
                     data-id="{{ entry.id }}"
@@ -156,7 +156,7 @@
               </div>
               <div class="entry-field">
                 <span class="label">Created</span>
-                <span>{{ entry.created_at[:16] }}</span>
+                <span>{{ entry.created_at | to_pst }}</span>
               </div>
             </div>
             <div class="entry-actions">

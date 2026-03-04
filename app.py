@@ -28,6 +28,19 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 
+
+@app.template_filter("to_pst")
+def to_pst_filter(utc_str: str) -> str:
+    """Convert a UTC ISO string to Pacific Standard Time (UTC-8) for display."""
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
+        pst = dt.astimezone(timezone(timedelta(hours=-8)))
+        return pst.strftime("%m/%d/%Y %I:%M %p PST")
+    except Exception:
+        return str(utc_str)[:16]
+
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
@@ -1073,7 +1086,7 @@ def _create_carpool_inner() -> Any:
             airport_location,
             "TBD",
             _to_api_flight_date(parsed_flight_date),
-            int(data.get("seats_available", 3) or 3),
+            int(data.get("seats_available", 4) or 4),
             str(data.get("notes", "")).strip(),
             "direct",
             "active",
@@ -1331,6 +1344,52 @@ def leave_party(carpool_id: int) -> Any:
         )
 
     return jsonify({"ok": True, "message": f"Left the party. Ownership transferred to {new_owner_email}."})
+
+
+@app.post("/api/carpools/<int:carpool_id>/transfer-and-leave")
+def transfer_and_leave(carpool_id: int) -> Any:
+    """Creator picks a specific member to receive ownership, then leaves."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    data = request.get_json(silent=True) or {}
+    new_owner_email = str(data.get("new_owner_email", "")).strip()
+    if not new_owner_email:
+        return jsonify({"error": "new_owner_email is required"}), 400
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    if rows[0].get("creator_email") != email:
+        return jsonify({"error": "Only the creator can transfer ownership"}), 403
+    member_check = db.query(
+        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, new_owner_email),
+    )
+    if not member_check:
+        return jsonify({"error": "New owner must be a current party member"}), 400
+    profile = db.query(
+        f"SELECT first_name, last_initial, phone FROM users WHERE user_email = {p}",
+        (new_owner_email,),
+    )
+    if profile:
+        fn = str(profile[0].get("first_name") or "").strip() or new_owner_email.split("@")[0]
+        li = str(profile[0].get("last_initial") or "").strip()[:1].upper()
+        ph = str(profile[0].get("phone") or "").strip()
+        db.execute(
+            f"UPDATE carpools SET creator_email = {p}, first_name = {p}, last_initial = {p}, phone = {p} WHERE id = {p}",
+            (new_owner_email, fn, li, ph, carpool_id),
+        )
+    else:
+        db.execute(
+            f"UPDATE carpools SET creator_email = {p} WHERE id = {p}",
+            (new_owner_email, carpool_id),
+        )
+    db.execute(
+        f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, email),
+    )
+    return jsonify({"ok": True, "message": "Ownership transferred. You have left the party."})
 
 
 @app.get("/api/my-parties")

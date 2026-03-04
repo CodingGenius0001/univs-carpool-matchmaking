@@ -32,32 +32,23 @@ googleProvider.setCustomParameters({
   hd: 'ucr.edu'
 });
 
-// --- EULA + Privacy Policy checkbox gate ---
-const eulaCheckbox = document.getElementById('eula-agree');
-const privacyCheckbox = document.getElementById('privacy-agree');
+// --- Terms checkbox gate ---
+const termsCheckbox = document.getElementById('terms-agree');
 const signinBtn = document.getElementById('google-signin-btn');
 const statusEl = document.getElementById('login-status');
 
 function _bothChecked() {
-  return !!(eulaCheckbox?.checked && privacyCheckbox?.checked);
+  return !!termsCheckbox?.checked;
 }
 
-eulaCheckbox?.addEventListener('change', () => {
-  signinBtn.disabled = !_bothChecked();
-});
-
-privacyCheckbox?.addEventListener('change', () => {
+termsCheckbox?.addEventListener('change', () => {
   signinBtn.disabled = !_bothChecked();
 });
 
 // --- Sign in handler ---
 signinBtn?.addEventListener('click', async () => {
-  if (!eulaCheckbox?.checked) {
-    if (statusEl) statusEl.textContent = 'You must agree to the Terms of Service & EULA to continue.';
-    return;
-  }
-  if (!privacyCheckbox?.checked) {
-    if (statusEl) statusEl.textContent = 'You must agree to the Privacy Policy to continue.';
+  if (!termsCheckbox?.checked) {
+    if (statusEl) statusEl.textContent = 'You must agree to the Terms of Service, EULA, and Privacy Policy to continue.';
     return;
   }
   signinBtn.disabled = true;
