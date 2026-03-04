@@ -8,7 +8,6 @@ import sqlite3
 import ssl
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 import traceback
@@ -47,9 +46,6 @@ FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
-SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
-SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 RESEND_FROM = os.environ.get("RESEND_FROM", "Campus2Air <onboarding@resend.dev>")
@@ -72,22 +68,6 @@ AIRLINE_CODES: dict[str, str] = {
     "MX": "Breeze Airways", "QX": "Horizon Air",
     "OO": "SkyWest Airlines", "YX": "Republic Airways",
     "9K": "Cape Air", "MQ": "Envoy Air",
-}
-
-# Airline hub airports for smarter flight suggestions
-AIRLINE_HUBS: dict[str, list[str]] = {
-    "AA": ["DFW", "CLT", "MIA", "PHL", "ORD"],
-    "UA": ["ORD", "EWR", "IAH", "SFO", "DEN"],
-    "DL": ["ATL", "MSP", "DTW", "JFK", "LAX"],
-    "WN": ["LAS", "DEN", "PHX", "MCO"],
-    "B6": ["JFK", "BOS", "FLL", "MCO"],
-    "AS": ["SEA", "PDX", "SFO", "LAX"],
-    "NK": ["FLL", "LAS", "DTW", "MCO"],
-    "F9": ["DEN", "LAS", "MCO"],
-    "G4": ["LAS", "SFO", "LAX"],
-    "SY": ["MSP", "DFW"],
-    "HA": ["HNL", "LAX", "SFO"],
-    "MX": ["TPA", "MCO", "CHS", "RIC", "BDL", "MSY"],
 }
 
 
@@ -565,247 +545,6 @@ def _to_api_flight_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-# ---------------------------------------------------------------------------
-# SerpApi Google Flights integration
-# ---------------------------------------------------------------------------
-# NOTE: SerpApi google_flights engine searches by route (departure_id +
-# arrival_id), NOT by flight number.  We use it to find flights on a given
-# date from a given airport pair, which is what the suggest endpoint returns.
-# For flight-number-based lookup we extract matching legs from the results.
-# ---------------------------------------------------------------------------
-
-def _serpapi_search_flights(departure_id: str, arrival_id: str, outbound_date: str) -> dict[str, Any]:
-    """Search SerpApi Google Flights by route and date."""
-    if not SERPAPI_API_KEY:
-        return {}
-
-    params = {
-        "engine": "google_flights",
-        "hl": "en",
-        "gl": "us",
-        "type": "2",
-        "departure_id": departure_id,
-        "arrival_id": arrival_id,
-        "outbound_date": outbound_date,
-        "currency": "USD",
-        "api_key": SERPAPI_API_KEY,
-    }
-    url = f"{SERPAPI_ENDPOINT}?{urlencode(params)}"
-    req = Request(url, headers={"accept": "application/json"})
-
-    try:
-        with urlopen(req, timeout=SERPAPI_TIMEOUT) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError, OSError):
-        return {}
-
-    return payload if isinstance(payload, dict) else {}
-
-
-def _extract_flights_from_serpapi(payload: dict, flight_code_filter: str | None = None) -> list[dict[str, str]]:
-    """Extract normalized flight info from SerpApi response."""
-    collected: list[dict[str, str]] = []
-
-    for bucket in ("best_flights", "other_flights", "flights"):
-        items = payload.get(bucket) or []
-        if not isinstance(items, list):
-            continue
-        for itinerary in items:
-            if not isinstance(itinerary, dict):
-                continue
-            flights = itinerary.get("flights") or []
-            if not isinstance(flights, list) or not flights:
-                continue
-
-            first = flights[0] if isinstance(flights[0], dict) else {}
-            departure = first.get("departure_airport") or {}
-            arrival = first.get("arrival_airport") or {}
-            airline = first.get("airline") or ""
-            flight_number = first.get("flight_number") or ""
-
-            full_code = f"{airline}{flight_number}".replace(" ", "").upper() if airline and flight_number else ""
-            if not full_code:
-                # Try to build from other fields
-                operating = first.get("operating_airline") or ""
-                if operating and flight_number:
-                    full_code = f"{operating}{flight_number}".replace(" ", "").upper()
-
-            dep_code = departure.get("id") or ""
-            arr_code = arrival.get("id") or ""
-
-            raw_time = departure.get("time") or ""
-            dep_date = ""
-            dep_time = ""
-            if raw_time:
-                try:
-                    dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-                    dep_time = dt.strftime("%H:%M")
-                    dep_date = dt.strftime("%Y-%m-%d")
-                except ValueError:
-                    pass
-
-            # If filtering by flight code, check match
-            if flight_code_filter:
-                clean_filter = _clean_flight_code(flight_code_filter)
-                if full_code and clean_filter not in full_code and full_code not in clean_filter:
-                    continue
-
-            entry = {
-                "flight_code": full_code or (flight_code_filter or "UNKNOWN"),
-                "airline": airline,
-                "time_utc": dep_time or "TBD",
-                "date_utc": dep_date or "",
-                "departure": dep_code,
-                "departure_name": departure.get("name") or "",
-                "destination": arr_code,
-                "destination_name": arrival.get("name") or "",
-                "status": str(itinerary.get("type") or "scheduled").lower(),
-                "source": "serpapi_google_flights",
-                "duration": str(first.get("duration") or ""),
-            }
-            collected.append(entry)
-
-    return collected
-
-
-def _build_hub_pairs(airline_prefix: str) -> list[tuple[str, str]]:
-    """Build hub pairs prioritizing airline-specific hubs."""
-    major_dests = ["JFK", "LAX", "ORD", "SFO", "ATL", "DEN", "MCO", "SEA"]
-    pairs: list[tuple[str, str]] = []
-
-    # Add airline-specific hub pairs first
-    hubs = AIRLINE_HUBS.get(airline_prefix, [])
-    for hub in hubs[:3]:
-        for dest in major_dests:
-            if dest != hub:
-                pairs.append((hub, dest))
-                break
-
-    # Add generic hub pairs as fallback
-    generic = [
-        ("SFO", "JFK"), ("LAX", "JFK"), ("ORD", "LAX"), ("ATL", "LAX"),
-        ("DFW", "JFK"), ("DEN", "ORD"), ("SEA", "LAX"), ("BOS", "MIA"),
-        ("MCO", "JFK"), ("JFK", "SFO"), ("EWR", "LAX"), ("MIA", "ORD"),
-    ]
-    for pair in generic:
-        if pair not in pairs:
-            pairs.append(pair)
-
-    return pairs
-
-
-def _lookup_present_or_future_flights(flight_code: str, flight_date_user: str | None = None) -> list[dict[str, str]]:
-    """Look up flights. Returns a list of matching flights."""
-    if not SERPAPI_API_KEY:
-        return []
-
-    dates_api: list[str] = []
-    if flight_date_user:
-        parsed = _parse_user_flight_date(flight_date_user)
-        if parsed:
-            dates_api.append(_to_api_flight_date(parsed))
-        else:
-            return []
-    else:
-        base = _now_utc().date()
-        dates_api.extend([(base + timedelta(days=i)).isoformat() for i in range(0, 3)])
-
-    airline_prefix = re.match(r"^[A-Z]{2,3}", flight_code)
-    if not airline_prefix:
-        return []
-
-    hub_pairs = _build_hub_pairs(airline_prefix.group())
-
-    collected: list[dict[str, str]] = []
-    for date_item in dates_api:
-        if collected:
-            break
-        for dep, arr in hub_pairs[:4]:
-            if collected:
-                break
-            payload = _serpapi_search_flights(dep, arr, date_item)
-            if payload:
-                results = _extract_flights_from_serpapi(payload, flight_code)
-                collected.extend(results)
-
-    # Deduplicate
-    seen: set[tuple[str, str, str, str]] = set()
-    unique: list[dict[str, str]] = []
-    for item in collected:
-        key = (item["flight_code"], item["date_utc"], item["time_utc"], item["destination"])
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(item)
-
-    return unique[:10]
-
-
-def _suggest_flights_for_airline(flight_code: str, flight_date_user: str | None = None) -> list[dict[str, str]]:
-    """Suggest flights matching an airline prefix. Less strict than verification lookup."""
-    if not SERPAPI_API_KEY:
-        return []
-
-    dates_api: list[str] = []
-    if flight_date_user:
-        parsed = _parse_user_flight_date(flight_date_user)
-        if parsed:
-            dates_api.append(_to_api_flight_date(parsed))
-        else:
-            return []
-    else:
-        base = _now_utc().date()
-        dates_api.append(base.isoformat())
-
-    airline_prefix = re.match(r"^[A-Z]{2,3}", flight_code)
-    if not airline_prefix:
-        return []
-    prefix = airline_prefix.group()
-
-    hub_pairs = _build_hub_pairs(prefix)
-
-    collected: list[dict[str, str]] = []
-    for date_item in dates_api:
-        for dep, arr in hub_pairs[:5]:
-            payload = _serpapi_search_flights(dep, arr, date_item)
-            if payload:
-                # Filter by airline prefix only for broader results
-                results = _extract_flights_from_serpapi(payload, prefix)
-                collected.extend(results)
-            if len(collected) >= 10:
-                break
-        if collected:
-            break
-
-    # Deduplicate
-    seen: set[tuple[str, str, str, str]] = set()
-    unique: list[dict[str, str]] = []
-    for item in collected:
-        key = (item["flight_code"], item["date_utc"], item["time_utc"], item["destination"])
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(item)
-
-    return unique[:10]
-
-
-def _fetch_flight_live_or_future(flight_code: str, flight_date_user: str | None = None) -> dict[str, str]:
-    results = _lookup_present_or_future_flights(flight_code, flight_date_user)
-    if not results:
-        return {"status": "unverified", "source": "user_entered"}
-
-    best = results[0]
-    expires_at = (_now_utc() + timedelta(hours=6)).isoformat()
-    return {
-        "status": best.get("status", "scheduled"),
-        "source": best["source"],
-        "flight_time_utc": best["time_utc"],
-        "flight_date_utc": best["date_utc"],
-        "departure": best["departure"],
-        "destination": best["destination"],
-        "expires_at": expires_at,
-    }
 
 
 def _resolve_airport(code: str) -> tuple[str, str]:
@@ -1177,21 +916,6 @@ def suggest_airlines() -> Any:
     matches.sort(key=lambda x: x["code"])
     return jsonify({"results": matches[:10]})
 
-
-@app.get("/api/flights/suggest")
-def suggest_flights() -> Any:
-    query = request.args.get("query", "")
-    cleaned = _clean_flight_code(query)
-    if len(cleaned) < 2:
-        return jsonify({"query": cleaned, "count": 0, "results": []})
-    departure_date = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip() or None
-    # Use broader suggestion for short queries (just airline prefix)
-    has_digits = any(c.isdigit() for c in cleaned)
-    if has_digits:
-        suggestions = _suggest_flights_for_airline(cleaned, departure_date)
-    else:
-        suggestions = _suggest_flights_for_airline(cleaned, departure_date)
-    return jsonify({"query": cleaned, "count": len(suggestions), "results": suggestions})
 
 
 @app.get("/api/carpools/search")
@@ -1823,8 +1547,7 @@ def health_check() -> Any:
         "db_engine_active": actual_engine,
         "mysql_fallback_active": db._mysql_failed,
         "db_path": DATABASE_PATH if actual_engine == "sqlite" else "(mysql)",
-        "serpapi_key_set": bool(SERPAPI_API_KEY),
-        "db_initialized": _db_initialized,
+"db_initialized": _db_initialized,
     }
     if db._mysql_failed:
         info["mysql_note"] = (
