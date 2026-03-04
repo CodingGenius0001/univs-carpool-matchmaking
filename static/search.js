@@ -71,7 +71,7 @@ function renderResults(data) {
       let actionBtn;
       if (isMember) {
         actionBtn = `<button data-id="${r.id}" class="leave-party-btn btn btn-secondary btn-sm">Leave Party</button>
-                      <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Party</a>`;
+                      <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Carpool</a>`;
       } else if (isFull) {
         actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Party Full</button>`;
       } else {
