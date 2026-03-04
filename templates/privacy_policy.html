@@ -60,7 +60,7 @@
         <a href="{% if user_email %}/start-now{% else %}/{% endif %}" class="eula-close-btn eula-panel-close" aria-label="Close">✕</a>
         <h2>Privacy Policy</h2>
         <p class="card-subtitle">How Campus2Air collects, uses, and protects your information.</p>
-        <p class="policy-meta">Effective Date: January 1, 2025 &nbsp;|&nbsp; Last Updated: January 1, 2025</p>
+        <p class="policy-meta">Effective Date: January 1, 2025 &nbsp;|&nbsp; Last Updated: March 4, 2026</p>
 
         <div class="policy-body">
           <h3>1. Who We Are</h3>
@@ -70,7 +70,8 @@
           <p>We collect the following information when you use Campus2Air:</p>
           <ul>
             <li><strong>Account information:</strong> Your UCR Google account email address, provided through Google Sign-In (Firebase Authentication). We only accept <code>@ucr.edu</code> addresses.</li>
-            <li><strong>Carpool listing data:</strong> First name, last initial, phone number, flight code, departure airport, departure date, planned departure time, seat count, and any optional notes you enter.</li>
+            <li><strong>User profile:</strong> Your full name (first name and last initial), email address, and phone number. This information is saved to your profile when you join or create a carpool and is used to coordinate party communication.</li>
+            <li><strong>Carpool listing data:</strong> Flight code, departure airport, departure date, planned departure time, seat count, and any optional notes you enter.</li>
             <li><strong>Party membership:</strong> Records of which carpools you have joined or created.</li>
             <li><strong>Notifications:</strong> In-app messages (e.g., party disbandment notices) that you can dismiss.</li>
           </ul>
@@ -82,6 +83,7 @@
             <li>Connecting you with other students on the same or similar flights.</li>
             <li>Enabling party features (join, leave, manage carpool groups).</li>
             <li>Sending in-app notifications about your parties.</li>
+            <li>Sending SMS text notifications about your carpool party (only if you opted in when joining).</li>
           </ul>
           <p>We do not use your information for advertising, marketing, or any purpose beyond operating the carpool service.</p>
 
@@ -93,6 +95,7 @@
             <li><strong>Firebase (Google):</strong> Handles Google Sign-In authentication. Subject to Google's Privacy Policy.</li>
             <li><strong>SerpApi:</strong> Used to look up real-time flight information. Only flight codes and airport codes are sent — no personal information.</li>
             <li><strong>Vercel:</strong> Hosts the application. Subject to Vercel's Privacy Policy.</li>
+            <li><strong>Twilio:</strong> Used to send SMS text notifications when you opt in. Your phone number is transmitted to Twilio solely to deliver these messages. Subject to Twilio's Privacy Policy.</li>
             <li><strong>TiDB Cloud / MySQL provider:</strong> Stores carpool and party data securely.</li>
           </ul>
 

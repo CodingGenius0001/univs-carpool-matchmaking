@@ -51,6 +51,10 @@ SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", os.getenv("SERPAPI_KEY", ""))
 SERPAPI_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search.json")
 SERPAPI_TIMEOUT = float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "4"))
 
+TWILIO_SID   = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_FROM  = os.environ.get("TWILIO_FROM_NUMBER")
+
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
     "AA": "American Airlines", "UA": "United Airlines", "DL": "Delta Air Lines",
@@ -409,6 +413,7 @@ class DBAdapter:
                     first_name VARCHAR(120) NOT NULL DEFAULT '',
                     last_initial VARCHAR(1) NOT NULL DEFAULT '',
                     phone VARCHAR(32) NOT NULL DEFAULT '',
+                    sms_opt_in TINYINT NOT NULL DEFAULT 0,
                     created_at VARCHAR(64) NOT NULL DEFAULT ''
                 )
                 """
@@ -421,6 +426,7 @@ class DBAdapter:
                     first_name TEXT NOT NULL DEFAULT '',
                     last_initial TEXT NOT NULL DEFAULT '',
                     phone TEXT NOT NULL DEFAULT '',
+                    sms_opt_in INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT ''
                 )
                 """
@@ -474,6 +480,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'creator_email'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM users LIKE 'sms_opt_in'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE users ADD COLUMN sms_opt_in TINYINT NOT NULL DEFAULT 0")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -485,6 +494,10 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
                 if "creator_email" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
+                cur.execute("PRAGMA table_info(users)")
+                user_cols = [row[1] for row in cur.fetchall()]
+                if "sms_opt_in" not in user_cols:
+                    cur.execute("ALTER TABLE users ADD COLUMN sms_opt_in INTEGER NOT NULL DEFAULT 0")
             conn.commit()
         finally:
             cur.close()
@@ -495,6 +508,29 @@ db = DBAdapter()
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def send_sms(to_phone: str, message: str) -> None:
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM and to_phone):
+        return
+    try:
+        from twilio.rest import Client
+        Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
+            body=message, from_=TWILIO_FROM, to=to_phone
+        )
+    except Exception as e:
+        app.logger.warning(f"SMS failed to {to_phone}: {e}")
+
+
+def notify_user(email: str, message: str) -> None:
+    p = db.placeholder
+    db.execute(
+        f"INSERT INTO notifications (user_email, message, created_at) VALUES ({p}, {p}, {p})",
+        (email, message, _now_utc().isoformat()),
+    )
+    rows = db.query(f"SELECT phone, sms_opt_in FROM users WHERE user_email = {p}", (email,))
+    if rows and rows[0].get("sms_opt_in") and rows[0].get("phone"):
+        send_sms(rows[0]["phone"], f"Campus2Air: {message}")
 
 
 def _clean_flight_code(code: str) -> str:
@@ -1248,32 +1284,58 @@ def join_party(carpool_id: int) -> Any:
     if current_count >= max_members:
         return jsonify({"error": "This carpool party is full"}), 409
 
-    # Store phone number if provided
+    # Store phone number and SMS opt-in if provided
     data = request.get_json(silent=True) or {}
     raw_phone = str(data.get("phone", "")).strip()
+    sms_opt_in = 1 if data.get("sms_opt_in") else 0
     if raw_phone:
         raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
         if PHONE_PATTERN.match(raw_phone):
             try:
                 existing_user = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
                 if existing_user:
-                    db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
+                    db.execute(f"UPDATE users SET phone = {p}, sms_opt_in = {p} WHERE user_email = {p}", (raw_phone, sms_opt_in, email))
                 else:
                     name = session.get("user_name", "")
                     parts = name.strip().split() if name else []
                     first_name = parts[0] if parts else email.split("@")[0]
                     last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
                     db.execute(
-                        f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
-                        (email, first_name, last_initial, raw_phone, _now_utc().isoformat()),
+                        f"INSERT INTO users (user_email, first_name, last_initial, phone, sms_opt_in, created_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
+                        (email, first_name, last_initial, raw_phone, sms_opt_in, _now_utc().isoformat()),
                     )
             except Exception:
                 pass
+
+    # Fetch existing members before inserting, to notify them
+    existing_members = db.query(
+        f"SELECT user_email FROM party_members WHERE carpool_id = {p}",
+        (carpool_id,),
+    )
 
     db.execute(
         f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
         (carpool_id, email, _now_utc().isoformat()),
     )
+
+    # Notify creator and all existing members that someone joined
+    joiner_name = session.get("user_name", email.split("@")[0])
+    flight_code = carpool.get("flight_code", "")
+    flight_date = carpool.get("requested_flight_date", "")
+    msg = f"{joiner_name} joined your carpool for {flight_code} on {flight_date}."
+    creator_email = carpool.get("creator_email", "")
+    notified = {email}  # don't notify the joiner themselves
+    try:
+        for member in existing_members:
+            mem_email = member["user_email"]
+            if mem_email not in notified:
+                notify_user(mem_email, msg)
+                notified.add(mem_email)
+        if creator_email and creator_email not in notified:
+            notify_user(creator_email, msg)
+    except Exception:
+        pass
+
     return jsonify({"ok": True, "message": "Joined the party!"})
 
 
@@ -1389,6 +1451,13 @@ def transfer_and_leave(carpool_id: int) -> Any:
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, email),
     )
+    carpool_row = rows[0]
+    flight_code = carpool_row.get("flight_code", "")
+    flight_date = carpool_row.get("requested_flight_date", "")
+    try:
+        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}.")
+    except Exception:
+        pass
     return jsonify({"ok": True, "message": "Ownership transferred. You have left the party."})
 
 
@@ -1498,7 +1567,7 @@ def remove_member(carpool_id: int) -> Any:
         return jsonify({"error": "Missing member email"}), 400
     p = db.placeholder
     # Verify caller is the creator
-    rows = db.query(f"SELECT creator_email FROM carpools WHERE id = {p}", (carpool_id,))
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
     if not rows:
         return jsonify({"error": "Carpool not found"}), 404
     if rows[0]["creator_email"] != email:
@@ -1509,6 +1578,14 @@ def remove_member(carpool_id: int) -> Any:
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, target_email),
     )
+    carpool = rows[0]
+    creator_name = f"{carpool.get('first_name', '')} {carpool.get('last_initial', '')}."
+    flight_code = carpool.get("flight_code", "")
+    flight_date = carpool.get("requested_flight_date", "")
+    try:
+        notify_user(target_email, f"You were removed from the carpool for {flight_code} on {flight_date} by {creator_name}.")
+    except Exception:
+        pass
     return jsonify({"ok": True, "message": "Member removed."})
 
 
@@ -1573,15 +1650,11 @@ def disband_party(carpool_id: int) -> Any:
         f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
         (carpool_id, email),
     )
-    now = _now_utc().isoformat()
     creator_name = f"{carpool['first_name']} {carpool['last_initial']}."
     flight = carpool["flight_code"]
     for m in members:
         try:
-            db.execute(
-                f"INSERT INTO notifications (user_email, message, created_at) VALUES ({p}, {p}, {p})",
-                (m["user_email"], f"The carpool for flight {flight} created by {creator_name} has been disbanded. Reason: {reason}", now),
-            )
+            notify_user(m["user_email"], f"The carpool for flight {flight} created by {creator_name} has been disbanded. Reason: {reason}")
         except Exception:
             pass
     # Delete all party members and the carpool
