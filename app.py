@@ -519,7 +519,9 @@ def notify_user(email: str, message: str) -> None:
         (email, message, _now_utc().isoformat()),
     )
     rows = db.query(f"SELECT email_notif_opt_in FROM users WHERE user_email = {p}", (email,))
-    if rows and rows[0].get("email_notif_opt_in"):
+    # No row means user hasn't joined a carpool yet — treat as opted in (default is 1)
+    opt_in = rows[0].get("email_notif_opt_in", 1) if rows else 1
+    if opt_in:
         send_email_notification(email, message)
 
 
