@@ -77,6 +77,36 @@
       </div>
     </div>
 
+    <!-- Transfer Ownership Modal -->
+    <div id="transfer-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card">
+        <h3>Transfer Ownership</h3>
+        <p class="text-muted text-sm">Choose a member to become the new carpool creator. You will leave the party.</p>
+        <form id="transfer-form">
+          <input type="hidden" id="transfer-carpool-id" />
+          <label class="mt-2">New Owner
+            <select id="transfer-select" style="width:100%;padding:0.5rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:0.25rem;"></select>
+          </label>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-primary">Transfer &amp; Leave</button>
+            <button type="button" class="btn btn-secondary" id="transfer-cancel">Cancel</button>
+          </div>
+          <p id="transfer-message" class="text-sm mt-1"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Notes Popup Modal -->
+    <div id="notes-popup-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card">
+        <h3>Full Notes</h3>
+        <p id="notes-popup-text" style="white-space:pre-wrap;margin-top:0.5rem;"></p>
+        <div class="modal-actions mt-2">
+          <button type="button" class="btn btn-secondary" id="notes-popup-close">Close</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Disband Party Modal -->
     <div id="disband-modal" class="modal-overlay" style="display:none">
       <div class="card modal-card">
@@ -103,6 +133,7 @@
     <script>
       const content = document.getElementById('party-content');
       const currentUserEmail = '{{ user_email }}';
+      let currentParties = [];
 
       // Load notifications
       async function loadNotifications() {
@@ -136,6 +167,7 @@
           const res = await fetch('/api/my-parties');
           const data = await res.json();
 
+          currentParties = data.parties || [];
           if (!data.parties?.length) {
             content.innerHTML = `
               <section class="card text-center" style="margin-top:3rem;">
@@ -197,7 +229,12 @@
                   <span><span class="label">Airport</span>${c.airport_code}</span>
                   <span><span class="label">Date</span>${c.requested_flight_date || c.flight_date_utc || '\u2014'}</span>
                   <span><span class="label">Departure Time</span>${c.planned_departure_time || '\u2014'}</span>
-                  <span><span class="label">Notes</span>${c.notes || 'None'}</span>
+                  <span><span class="label">Notes</span>${(() => {
+                    const n = c.notes || '';
+                    if (!n) return 'None';
+                    if (n.length <= 15) return n;
+                    return `${n.slice(0, 15)}... <button class="see-more-notes-btn" data-notes="${n.replace(/"/g, '&quot;')}" style="font-size:0.75rem;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline;">See more</button>`;
+                  })()}</span>
                 </div>
                 <div class="party-members">
                   <h3>Party Members</h3>
@@ -223,8 +260,30 @@
       document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.leave-btn');
         if (!btn) return;
-        const id = btn.dataset.id;
-        if (!confirm('Are you sure you want to leave this party?')) return;
+        const id = parseInt(btn.dataset.id);
+        const party = currentParties.find(p => p.carpool?.id === id);
+        const isCreator = party?.is_creator;
+        const otherMembers = (party?.members || []).filter(m => m.user_email !== currentUserEmail);
+
+        if (isCreator && otherMembers.length > 0) {
+          // Show transfer ownership modal
+          const select = document.getElementById('transfer-select');
+          select.innerHTML = otherMembers.map(m => {
+            const name = m.first_name ? `${m.first_name} ${m.last_initial ? m.last_initial + '.' : ''}` : m.user_email.split('@')[0];
+            return `<option value="${m.user_email}">${name}</option>`;
+          }).join('');
+          document.getElementById('transfer-carpool-id').value = id;
+          document.getElementById('transfer-message').textContent = '';
+          document.getElementById('transfer-modal').style.display = '';
+          return;
+        }
+
+        if (isCreator && otherMembers.length === 0) {
+          if (!confirm('You are the only member. Leaving will permanently delete this carpool. Continue?')) return;
+        } else {
+          if (!confirm('Are you sure you want to leave this party?')) return;
+        }
+
         btn.disabled = true;
         btn.textContent = 'Leaving...';
         try {
@@ -237,6 +296,55 @@
           btn.textContent = 'Error';
           setTimeout(() => { btn.textContent = 'Leave Party'; btn.disabled = false; }, 2000);
         }
+      });
+
+      // Transfer ownership form submit
+      document.getElementById('transfer-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('transfer-carpool-id').value;
+        const newOwner = document.getElementById('transfer-select').value;
+        const msgEl = document.getElementById('transfer-message');
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Transferring...';
+        try {
+          const res = await fetch(`/api/carpools/${id}/transfer-and-leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_owner_email: newOwner })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            document.getElementById('transfer-modal').style.display = 'none';
+            setTimeout(() => loadParties(), 300);
+          } else {
+            msgEl.textContent = data.error || 'Failed to transfer';
+            msgEl.style.color = 'var(--danger)';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Transfer & Leave';
+          }
+        } catch {
+          msgEl.textContent = 'Network error';
+          msgEl.style.color = 'var(--danger)';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Transfer & Leave';
+        }
+      });
+
+      document.getElementById('transfer-cancel').addEventListener('click', () => {
+        document.getElementById('transfer-modal').style.display = 'none';
+      });
+
+      // See more notes handler
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.see-more-notes-btn');
+        if (!btn) return;
+        document.getElementById('notes-popup-text').textContent = btn.dataset.notes;
+        document.getElementById('notes-popup-modal').style.display = '';
+      });
+
+      document.getElementById('notes-popup-close').addEventListener('click', () => {
+        document.getElementById('notes-popup-modal').style.display = 'none';
       });
 
       // Remove member handler
@@ -366,7 +474,7 @@
         }
       });
 
-      // Close modals on overlay click
+      // Close any modal on overlay click
       document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', (e) => {
           if (e.target === modal) modal.style.display = 'none';
