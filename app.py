@@ -1026,6 +1026,8 @@ def _create_carpool_inner() -> Any:
     flight_code = _clean_flight_code(raw_flight_code)
     if not FLIGHT_CODE_PATTERN.match(flight_code):
         return jsonify({"error": "Invalid flight_code format. Example: UA533"}), 400
+    if len(flight_code) > 6:
+        return jsonify({"error": "Flight code must be 6 characters or fewer (e.g. UA1343)"}), 400
 
     # Normalize phone: collapse all whitespace types (including non-breaking
     # spaces from mobile browsers) into single regular spaces, then strip.
@@ -1092,8 +1094,12 @@ def _create_carpool_inner() -> Any:
         except Exception:
             pass  # Ignore duplicate
 
-    row = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))[0]
-    return jsonify({"message": "Carpool created!", "entry": _serialize_entry(row)}), 201
+    # Re-read placeholder in case MySQL failed during INSERT and fell back to SQLite
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))
+    if not rows:
+        return jsonify({"error": "Carpool was saved but could not be retrieved"}), 500
+    return jsonify({"message": "Carpool created!", "entry": _serialize_entry(rows[0])}), 201
 
 
 @app.get("/api/airlines/suggest")
