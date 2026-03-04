@@ -310,10 +310,15 @@ form?.addEventListener('submit', async (e) => {
       return;
     }
 
-    msg.textContent = 'Carpool created! Others can now find and join your party.';
+    msg.textContent = 'Carpool created! Redirecting to your carpool...';
     msg.className = '';
     form.reset();
     if (airlineNameInput) airlineNameInput.value = '';
+    const myCarPoolBtn = document.getElementById('my-party-btn');
+    if (myCarPoolBtn) myCarPoolBtn.style.display = '';
+    const mobileCarPoolLink = document.getElementById('mobile-my-party-link');
+    if (mobileCarPoolLink) mobileCarPoolLink.style.display = '';
+    setTimeout(() => { window.location.href = '/my-party'; }, 1200);
   } catch (err) {
     if (err.name === 'AbortError') {
       msg.textContent = 'Request timed out. Please try again.';

@@ -18,9 +18,7 @@
         <a href="/find-a-carpool">Find a Carpool</a>
         <a href="/create-a-carpool" class="active">Create Carpool</a>
       </nav>
-      {% if has_party %}
-      <a href="/my-party" class="my-party-btn" id="my-party-btn">My Party</a>
-      {% endif %}
+      <a href="/my-party" class="my-party-btn" id="my-party-btn" {% if not has_party %}style="display:none"{% endif %}>My Carpool</a>
       <div class="hamburger-wrap">
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
@@ -29,9 +27,7 @@
           <a href="/start-now" class="mobile-nav-link">Home</a>
           <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
           <a href="/create-a-carpool" class="mobile-nav-link active">Create Carpool</a>
-          {% if has_party %}
-          <a href="/my-party" class="mobile-party-link">My Party</a>
-          {% endif %}
+          <a href="/my-party" class="mobile-party-link" id="mobile-my-party-link" {% if not has_party %}style="display:none"{% endif %}>My Carpool</a>
           <div class="menu-divider"></div>
           <a href="/eula">EULA &amp; ToS</a>
           <a href="/privacy">Privacy Policy</a>
