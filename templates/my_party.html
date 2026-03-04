@@ -43,9 +43,6 @@
     </header>
 
     <main class="container">
-      <!-- Notifications banner -->
-      <div id="notifications-banner"></div>
-
       <div id="party-content">
         <p class="text-muted text-center mt-3"><span class="spinner"></span> Loading your parties...</p>
       </div>
@@ -134,33 +131,6 @@
       const content = document.getElementById('party-content');
       const currentUserEmail = '{{ user_email }}';
       let currentParties = [];
-
-      // Load notifications
-      async function loadNotifications() {
-        try {
-          const res = await fetch('/api/notifications');
-          const data = await res.json();
-          const banner = document.getElementById('notifications-banner');
-          if (data.notifications?.length) {
-            banner.innerHTML = data.notifications.map(n => `
-              <div class="message message-warning" style="margin-top:0.75rem;display:flex;align-items:flex-start;gap:0.75rem;">
-                <div style="flex:1">${n.message}</div>
-                <button class="dismiss-notif-btn btn btn-sm btn-secondary" data-id="${n.id}" style="flex-shrink:0">Dismiss</button>
-              </div>
-            `).join('');
-          }
-        } catch {}
-      }
-
-      // Dismiss notification
-      document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.dismiss-notif-btn');
-        if (!btn) return;
-        try {
-          await fetch(`/api/notifications/${btn.dataset.id}/dismiss`, { method: 'POST' });
-          btn.closest('.message').remove();
-        } catch {}
-      });
 
       async function loadParties() {
         try {
@@ -254,7 +224,6 @@
       }
 
       loadParties();
-      loadNotifications();
 
       // Leave party handler
       document.addEventListener('click', async (e) => {
@@ -491,5 +460,6 @@
 
     </script>
       <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
   </body>
 </html>
