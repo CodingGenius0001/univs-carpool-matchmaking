@@ -1044,8 +1044,11 @@ def _create_carpool_inner() -> Any:
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
 
-    # Expire at 11:59 PM UTC on the departure date
-    expires_at = parsed_flight_date.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
+    # Expire at 11:59 PM UTC the day AFTER the departure date.
+    # +1 day buffer prevents users in UTC-offset timezones (e.g. California, UTC-8)
+    # from having their carpool instantly cleaned up when their local "today"
+    # is already "yesterday" in UTC.
+    expires_at = (parsed_flight_date + timedelta(days=1)).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
     destination_airport = str(data.get("destination_airport", "")).strip().upper()[:3]
     planned_departure_time = str(data.get("planned_departure_time", "")).strip()
