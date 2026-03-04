@@ -42,7 +42,7 @@ def to_pst_filter(utc_str: str) -> str:
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
-FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}\d{1,4}[A-Z]?$")
+FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 
@@ -899,6 +899,13 @@ def _create_carpool_inner() -> Any:
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))
     if not rows:
         return jsonify({"error": "Carpool was saved but could not be retrieved"}), 500
+
+    if creator_email:
+        try:
+            notify_user(creator_email, f"Your carpool for {flight_code} on {flight_date_user} has been created! Share your carpool to find ride partners.")
+        except Exception:
+            pass
+
     return jsonify({"message": "Carpool created!", "entry": _serialize_entry(rows[0])}), 201
 
 
@@ -1103,6 +1110,15 @@ def leave_party(carpool_id: int) -> Any:
 
     # Non-creators can leave immediately.
     if not is_creator:
+        creator_email = carpool.get("creator_email", "")
+        flight_code = carpool.get("flight_code", "")
+        flight_date = carpool.get("requested_flight_date", "")
+        leaver_name = session.get("user_name", email.split("@")[0])
+        if creator_email:
+            try:
+                notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} on {flight_date}.")
+            except Exception:
+                pass
         return jsonify({"ok": True, "message": "Left the party."})
 
     # Creator is leaving: transfer ownership if members remain, otherwise disband.
@@ -1139,6 +1155,12 @@ def leave_party(carpool_id: int) -> Any:
             (new_owner_email, carpool_id),
         )
 
+    flight_code = carpool.get("flight_code", "")
+    flight_date = carpool.get("requested_flight_date", "")
+    try:
+        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}. The previous creator left.")
+    except Exception:
+        pass
     return jsonify({"ok": True, "message": f"Left the party. Ownership transferred to {new_owner_email}."})
 
 
