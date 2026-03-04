@@ -1092,8 +1092,12 @@ def _create_carpool_inner() -> Any:
         except Exception:
             pass  # Ignore duplicate
 
-    row = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))[0]
-    return jsonify({"message": "Carpool created!", "entry": _serialize_entry(row)}), 201
+    # Re-read placeholder in case MySQL failed during INSERT and fell back to SQLite
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))
+    if not rows:
+        return jsonify({"error": "Carpool was saved but could not be retrieved"}), 500
+    return jsonify({"message": "Carpool created!", "entry": _serialize_entry(rows[0])}), 201
 
 
 @app.get("/api/airlines/suggest")
