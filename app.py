@@ -1148,7 +1148,7 @@ def search_carpools() -> Any:
     current_user = session.get("user_email", "")
     p = db.placeholder
 
-    rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
+    rows = db.query(f"SELECT * FROM carpools WHERE status = {p} ORDER BY created_at DESC", ("active",))
 
     # Get member counts for all carpools
     member_counts: dict[int, int] = {}
