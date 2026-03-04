@@ -43,15 +43,15 @@
     </header>
 
     <main class="container">
-      <div id="party-content">
-        <p class="text-muted text-center mt-3"><span class="spinner"></span> Loading your parties...</p>
+      <div id="carpool-content">
+        <p class="text-muted text-center mt-3"><span class="spinner"></span> Loading your carpools...</p>
       </div>
     </main>
 
-    <!-- Edit Party Modal -->
+    <!-- Edit Carpool Modal -->
     <div id="edit-modal" class="modal-overlay" style="display:none">
       <div class="card modal-card">
-        <h3>Edit Party Details</h3>
+        <h3>Edit Carpool Details</h3>
         <form id="edit-form">
           <input type="hidden" id="edit-carpool-id" />
           <div class="modal-grid">
@@ -78,7 +78,7 @@
     <div id="transfer-modal" class="modal-overlay" style="display:none">
       <div class="card modal-card">
         <h3>Transfer Ownership</h3>
-        <p class="text-muted text-sm">Choose a member to become the new carpool creator. You will leave the party.</p>
+        <p class="text-muted text-sm">Choose a member to become the new carpool creator. You will leave the carpool.</p>
         <form id="transfer-form">
           <input type="hidden" id="transfer-carpool-id" />
           <label class="mt-2">New Owner
@@ -104,10 +104,10 @@
       </div>
     </div>
 
-    <!-- Disband Party Modal -->
+    <!-- Disband Carpool Modal -->
     <div id="disband-modal" class="modal-overlay" style="display:none">
       <div class="card modal-card">
-        <h3>Disband Party</h3>
+        <h3>Disband Carpool</h3>
         <p class="text-muted text-sm">This will permanently delete the party and notify all members.</p>
         <form id="disband-form">
           <input type="hidden" id="disband-carpool-id" />
@@ -115,7 +115,7 @@
             <textarea id="disband-reason" rows="3" required placeholder="e.g. Flight cancelled, plans changed..."></textarea>
           </label>
           <div class="modal-actions mt-2">
-            <button type="submit" class="btn btn-danger">Disband Party</button>
+            <button type="submit" class="btn btn-danger">Disband Carpool</button>
             <button type="button" class="btn btn-secondary" id="disband-cancel">Cancel</button>
           </div>
           <p id="disband-message" class="text-sm mt-1"></p>
@@ -128,7 +128,7 @@
     </footer>
 
     <script>
-      const content = document.getElementById('party-content');
+      const content = document.getElementById('carpool-content');
       const currentUserEmail = '{{ user_email }}';
       let currentParties = [];
 
@@ -141,8 +141,8 @@
           if (!data.parties?.length) {
             content.innerHTML = `
               <section class="card text-center" style="margin-top:3rem;">
-                <h2>No Parties Yet</h2>
-                <p class="card-subtitle">You haven't joined or created any carpool parties.</p>
+                <h2>No Carpools Yet</h2>
+                <p class="card-subtitle">You haven't joined or created any carpools.</p>
                 <div style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
                   <a href="/find-a-carpool" class="btn btn-primary">Find a Carpool</a>
                   <a href="/create-a-carpool" class="btn btn-secondary">Create a Carpool</a>
@@ -181,16 +181,16 @@
             }).join('');
 
             const creatorActions = isCreator ? `
-              <button data-id="${c.id}" class="edit-party-btn btn btn-secondary btn-sm"
+              <button data-id="${c.id}" class="edit-carpool-btn btn btn-secondary btn-sm"
                 data-time="${c.planned_departure_time || ''}"
                 data-notes="${(c.notes || '').replace(/"/g, '&quot;')}"
                 data-seats="${c.seats_available || 3}">Edit Details</button>
-              <button data-id="${c.id}" class="disband-btn btn btn-danger btn-sm">Disband Party</button>
+              <button data-id="${c.id}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
             ` : '';
 
             return `
-              <section class="card party-card">
-                <div class="party-header">
+              <section class="card carpool-card">
+                <div class="carpool-header">
                   <h2>${c.first_name} ${c.last_initial}.'s Carpool</h2>
                   <span class="result-badge score-high">${members.length} member${members.length !== 1 ? 's' : ''}</span>
                 </div>
@@ -206,20 +206,20 @@
                     return `${n.slice(0, 15)}... <button class="see-more-notes-btn" data-notes="${n.replace(/"/g, '&quot;')}" style="font-size:0.75rem;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline;">See more</button>`;
                   })()}</span>
                 </div>
-                <div class="party-members">
-                  <h3>Party Members</h3>
+                <div class="carpool-members">
+                  <h3>Carpool Members</h3>
                   <ul class="member-list">
                     ${membersList}
                   </ul>
                 </div>
-                <div class="party-actions">
-                  <button data-id="${c.id}" class="leave-btn btn btn-secondary btn-sm">Leave Party</button>
+                <div class="carpool-actions">
+                  <button data-id="${c.id}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
                 </div>
               </section>`;
           }).join('');
         } catch (err) {
-          content.innerHTML = '<p class="text-muted text-center mt-3">Failed to load parties. Please refresh.</p>';
+          content.innerHTML = '<p class="text-muted text-center mt-3">Failed to load carpools. Please refresh.</p>';
         }
       }
 
@@ -227,7 +227,7 @@
 
       // Leave party handler
       document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.leave-btn');
+        const btn = e.target.closest('.leave-carpool-btn');
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
         const party = currentParties.find(p => p.carpool?.id === id);
@@ -250,7 +250,7 @@
         if (isCreator && otherMembers.length === 0) {
           if (!confirm('You are the only member. Leaving will permanently delete this carpool. Continue?')) return;
         } else {
-          if (!confirm('Are you sure you want to leave this party?')) return;
+          if (!confirm('Are you sure you want to leave this carpool?')) return;
         }
 
         btn.disabled = true;
@@ -263,7 +263,7 @@
           }
         } catch {
           btn.textContent = 'Error';
-          setTimeout(() => { btn.textContent = 'Leave Party'; btn.disabled = false; }, 2000);
+          setTimeout(() => { btn.textContent = 'Leave Carpool'; btn.disabled = false; }, 2000);
         }
       });
 
@@ -322,7 +322,7 @@
         if (!btn) return;
         const carpoolId = btn.dataset.carpool;
         const email = btn.dataset.email;
-        if (!confirm(`Remove this member from the party?`)) return;
+        if (!confirm(`Remove this member from the carpool?`)) return;
         btn.disabled = true;
         btn.textContent = 'Removing...';
         try {
@@ -347,7 +347,7 @@
 
       // Edit party modal
       document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.edit-party-btn');
+        const btn = e.target.closest('.edit-carpool-btn');
         if (!btn) return;
         document.getElementById('edit-carpool-id').value = btn.dataset.id;
         document.getElementById('edit-departure-time').value = btn.dataset.time;
@@ -396,7 +396,7 @@
 
       // Disband party modal
       document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.disband-btn');
+        const btn = e.target.closest('.disband-carpool-btn');
         if (!btn) return;
         document.getElementById('disband-carpool-id').value = btn.dataset.id;
         document.getElementById('disband-reason').value = '';
@@ -418,7 +418,7 @@
           msgEl.style.color = 'var(--danger)';
           return;
         }
-        if (!confirm('Are you sure you want to disband this party? This cannot be undone.')) return;
+        if (!confirm('Are you sure you want to disband this carpool? This cannot be undone.')) return;
         try {
           const res = await fetch(`/api/carpools/${id}/disband`, {
             method: 'POST',
@@ -427,7 +427,7 @@
           });
           const data = await res.json();
           if (res.ok) {
-            msgEl.textContent = 'Party disbanded.';
+            msgEl.textContent = 'Carpool disbanded.';
             msgEl.style.color = 'var(--success)';
             setTimeout(() => {
               document.getElementById('disband-modal').style.display = 'none';
