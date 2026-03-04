@@ -1230,11 +1230,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* ===== Party Card (My Party page) ===== */
-.party-card {
+.carpool-card {
   margin-top: 1.5rem;
 }
 
-.party-header {
+.carpool-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1243,17 +1243,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   gap: 0.5rem;
 }
 
-.party-header h2 {
+.carpool-header h2 {
   margin: 0;
 }
 
-.party-members {
+.carpool-members {
   margin-top: 1.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--card-border);
 }
 
-.party-members h3 {
+.carpool-members h3 {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 0.75rem;
@@ -1293,7 +1293,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--accent);
 }
 
-.party-actions {
+.carpool-actions {
   margin-top: 1.25rem;
   display: flex;
   gap: 0.5rem;
