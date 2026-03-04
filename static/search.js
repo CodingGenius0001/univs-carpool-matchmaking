@@ -204,8 +204,8 @@ function showPhonePrompt(carpoolId, joinBtn) {
           <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${cachedUserPhone}" />
         </label>
         <label class="mt-2" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
-          <input type="checkbox" id="sms-opt-in" checked style="width:auto;" />
-          <span>&#10003; Send me text updates for this carpool</span>
+          <input type="checkbox" id="email-notif-opt-in" checked style="width:auto;" />
+          <span>&#10003; Send me email updates for this carpool</span>
         </label>
         <div class="modal-actions mt-2">
           <button type="submit" class="btn btn-primary">Join Party</button>
@@ -249,7 +249,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
       const res = await fetch(`/api/carpools/${carpoolId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, sms_opt_in: document.getElementById('sms-opt-in').checked })
+        body: JSON.stringify({ phone, email_notif_opt_in: document.getElementById('email-notif-opt-in').checked })
       });
       const data = await res.json();
       if (res.ok) {
