@@ -392,7 +392,7 @@ class DBAdapter:
                     first_name VARCHAR(120) NOT NULL DEFAULT '',
                     last_initial VARCHAR(1) NOT NULL DEFAULT '',
                     phone VARCHAR(32) NOT NULL DEFAULT '',
-                    email_notif_opt_in TINYINT NOT NULL DEFAULT 0,
+                    email_notif_opt_in TINYINT NOT NULL DEFAULT 1,
                     created_at VARCHAR(64) NOT NULL DEFAULT ''
                 )
                 """
@@ -405,7 +405,7 @@ class DBAdapter:
                     first_name TEXT NOT NULL DEFAULT '',
                     last_initial TEXT NOT NULL DEFAULT '',
                     phone TEXT NOT NULL DEFAULT '',
-                    email_notif_opt_in INTEGER NOT NULL DEFAULT 0,
+                    email_notif_opt_in INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL DEFAULT ''
                 )
                 """
@@ -461,7 +461,7 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
                 cur.execute("SHOW COLUMNS FROM users LIKE 'email_notif_opt_in'")
                 if not cur.fetchone():
-                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in TINYINT NOT NULL DEFAULT 0")
+                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in TINYINT NOT NULL DEFAULT 1")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -476,7 +476,7 @@ class DBAdapter:
                 cur.execute("PRAGMA table_info(users)")
                 user_cols = [row[1] for row in cur.fetchall()]
                 if "email_notif_opt_in" not in user_cols:
-                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in INTEGER NOT NULL DEFAULT 0")
+                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in INTEGER NOT NULL DEFAULT 1")
             conn.commit()
         finally:
             cur.close()
