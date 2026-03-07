@@ -65,14 +65,19 @@
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
 
-      // Sync subscription state from Stripe (fallback if webhook hasn't fired yet)
+      // Sync subscription state from Stripe then refresh so account page shows updated plan
       const sessionId = new URLSearchParams(window.location.search).get('session_id');
       if (sessionId) {
         fetch('/api/subscription/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: sessionId }),
-        }).catch(() => {});
+        })
+        .then(r => r.json())
+        .then(data => {
+          console.log('Sync result:', data);
+        })
+        .catch(err => console.error('Sync error:', err));
       }
     </script>
     <script src="{{ url_for('static', filename='theme-global.js') }}"></script>

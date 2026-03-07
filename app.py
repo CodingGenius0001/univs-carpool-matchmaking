@@ -1844,11 +1844,9 @@ def subscription_cancel_return() -> Any:
 
 @app.post("/api/subscription/sync")
 def sync_subscription() -> Any:
-    """Called from the success page to sync subscription state directly from Stripe,
-    as a fallback in case the webhook hasn't fired yet."""
-    email = session.get("user_email")
-    if not email:
-        return jsonify({"error": "Login required"}), 401
+    """Called from the success page to sync subscription state directly from Stripe.
+    Identifies the user from Stripe customer metadata so it works even if the
+    Flask session cookie isn't available after a Stripe redirect."""
     if not stripe_lib or not STRIPE_SECRET_KEY:
         return jsonify({"ok": True, "skipped": True})
 
@@ -1866,6 +1864,21 @@ def sync_subscription() -> Any:
         mode = cs.get("mode")
         customer_id = cs.get("customer", "")
 
+        # Identify user: prefer Stripe customer metadata, fall back to Flask session
+        email = ""
+        if customer_id:
+            try:
+                customer = stripe_lib.Customer.retrieve(customer_id)
+                email = (customer.get("metadata") or {}).get("app_email", "") or customer.get("email", "")
+            except Exception:
+                pass
+        if not email:
+            email = session.get("user_email", "")
+        if not email:
+            return jsonify({"error": "Could not identify user from Stripe session"}), 400
+
+        email = email.lower().strip()
+
         # Ensure subscription row exists
         existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
         if not existing:
@@ -1880,7 +1893,6 @@ def sync_subscription() -> Any:
             )
 
         if mode == "payment":
-            # Only add credits if not already added (idempotency: check session not already processed)
             db.execute(
                 f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
                 (now_iso, email),
@@ -1896,7 +1908,7 @@ def sync_subscription() -> Any:
                     (sub_id, plan_type, period_end, now_iso, email),
                 )
 
-        return jsonify({"ok": True, "mode": mode})
+        return jsonify({"ok": True, "mode": mode, "email": email})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
