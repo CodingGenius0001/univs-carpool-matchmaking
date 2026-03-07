@@ -1749,6 +1749,24 @@ def admin_edit_entry(entry_id: int) -> Any:
     return redirect(url_for("admin_panel"))
 
 
+@app.post("/admin/set-user-created")
+def admin_set_user_created() -> Any:
+    """Dev/test helper: manually set a user's created_at to expire their trial."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.form.get("email", "").strip()
+    created_at = request.form.get("created_at", "").strip()
+    if not email or not created_at:
+        return jsonify({"error": "email and created_at required"}), 400
+    p = db.placeholder
+    db.execute(
+        f"UPDATE users SET created_at = {p} WHERE user_email = {p}",
+        (created_at, email),
+    )
+    rows = db.query(f"SELECT user_email, created_at FROM users WHERE user_email = {p}", (email,))
+    return jsonify({"ok": True, "user": rows[0] if rows else None})
+
+
 @app.route("/admin/logout", methods=["GET", "POST"])
 def admin_logout() -> Any:
     session.clear()
