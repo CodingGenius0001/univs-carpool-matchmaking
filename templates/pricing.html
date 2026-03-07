@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pricing - Campus2Air</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header app-header">
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <nav class="nav-links">
+        {% if user_email %}
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/create-a-carpool">Create Carpool</a>
+        {% endif %}
+        <a href="/pricing" class="active">Pricing</a>
+      </nav>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          {% if user_email %}
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
+          <div class="menu-divider"></div>
+          <a href="/eula">EULA &amp; ToS</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/account">My Subscription</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+          {% else %}
+          <a href="/login" class="mobile-nav-link">Login</a>
+          <div class="menu-divider"></div>
+          <a href="/eula">EULA &amp; ToS</a>
+          <a href="/privacy">Privacy Policy</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card" style="text-align:center; padding-top: 2.5rem;">
+        <h2>Simple, Student-Friendly Pricing</h2>
+        <p class="card-subtitle">Start with a 30-day free trial &mdash; no credit card required. Cancel anytime.</p>
+
+        <div class="pricing-grid">
+
+          <!-- Search Pack -->
+          <div class="pricing-card">
+            <div class="plan-name">Search Pack</div>
+            <div class="price">$2.99 <span>one-time</span></div>
+            <ul class="plan-features">
+              <li>3 carpool searches</li>
+              <li>Join existing carpools</li>
+              <li>Credits never expire</li>
+              <li>Stack multiple packs</li>
+            </ul>
+            <div class="plan-cta">
+              {% if user_email and price_search_pack %}
+              <button class="btn btn-secondary btn-block" onclick="C2ASub.startCheckout('{{ price_search_pack }}', 'payment')">
+                Buy Search Pack
+              </button>
+              {% else %}
+              <a href="/login" class="btn btn-secondary btn-block">Login to Buy</a>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Monthly -->
+          <div class="pricing-card featured">
+            <div class="plan-name">Monthly</div>
+            <div class="price">$0.99 <span>/ month</span></div>
+            <ul class="plan-features">
+              <li>Unlimited searches</li>
+              <li>Create carpools</li>
+              <li>Join carpools</li>
+              <li>Cancel anytime</li>
+            </ul>
+            <div class="plan-cta">
+              {% if user_email and price_monthly %}
+              <button class="btn btn-primary btn-block" onclick="C2ASub.startCheckout('{{ price_monthly }}', 'subscription')">
+                Subscribe Monthly
+              </button>
+              {% else %}
+              <a href="/login" class="btn btn-primary btn-block">Login to Subscribe</a>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Annual -->
+          <div class="pricing-card">
+            <div class="plan-name">Annual</div>
+            <div class="price">$0.69 <span>/ month</span></div>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:0;">Billed $8.28 / year &mdash; save 30%</p>
+            <ul class="plan-features">
+              <li>Unlimited searches</li>
+              <li>Create carpools</li>
+              <li>Join carpools</li>
+              <li>Best value for regulars</li>
+            </ul>
+            <div class="plan-cta">
+              {% if user_email and price_annual %}
+              <button class="btn btn-secondary btn-block" onclick="C2ASub.startCheckout('{{ price_annual }}', 'subscription')">
+                Subscribe Annually
+              </button>
+              {% else %}
+              <a href="/login" class="btn btn-secondary btn-block">Login to Subscribe</a>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
+
+        <p style="margin-top:2rem;color:var(--text-muted);font-size:0.85rem;">
+          All new accounts include a <strong>30-day free trial</strong> with full access &mdash; no payment info needed.
+          {% if user_email %}<a href="/account" style="color:var(--accent)">View your current plan</a>.{% endif %}
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+    </script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
+    {% if user_email %}
+    <script>C2ASub.initSubscriptionBadge();</script>
+    {% endif %}
+  </body>
+</html>

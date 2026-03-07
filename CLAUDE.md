@@ -28,6 +28,13 @@ There are no tests or linting configured in this project.
 - `FLASK_SECRET_KEY` — session secret
 - `SERPAPI_API_KEY` / `SERPAPI_KEY` — for Google Flights lookup via SerpApi
 - MySQL: `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_PORT`, `MYSQL_SSL`
+- **Stripe** (subscription billing):
+  - `STRIPE_SECRET_KEY` — Stripe secret API key
+  - `STRIPE_PUBLISHABLE_KEY` — Stripe publishable key (used in frontend templates)
+  - `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (from dashboard)
+  - `STRIPE_PRICE_MONTHLY` — Stripe price ID for $0.99/month recurring plan
+  - `STRIPE_PRICE_ANNUAL` — Stripe price ID for $8.28/year recurring plan
+  - `STRIPE_PRICE_SEARCH_PACK` — Stripe price ID for $2.99 one-time search pack
 
 ## Architecture
 
@@ -35,11 +42,12 @@ There are no tests or linting configured in this project.
 
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
-**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. It auto-falls back to SQLite if MySQL connection fails. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Four tables:
+**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. It auto-falls back to SQLite if MySQL connection fails. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Five tables:
 - `carpools` — main ride entries (flight details, contact info, seats, expiration)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, name, phone)
 - `notifications` — dismissible messages (e.g., disband notifications)
+- `subscriptions` — Stripe billing state (customer_id, subscription_id, plan_type, sub_status, search_credits)
 
 **Authentication**: Two separate auth systems:
 1. **User auth** — Firebase-based (client-side), email stored in session via `/auth/firebase-callback`

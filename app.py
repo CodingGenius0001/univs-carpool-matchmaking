@@ -20,9 +20,24 @@ except ImportError:
 from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+try:
+    import stripe as stripe_lib
+except ImportError:
+    stripe_lib = None  # type: ignore[assignment]
+
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+
+# ---------------------------------------------------------------------------
+# Stripe configuration
+# ---------------------------------------------------------------------------
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_MONTHLY = os.getenv("STRIPE_PRICE_MONTHLY", "")    # $0.99/mo
+STRIPE_PRICE_ANNUAL = os.getenv("STRIPE_PRICE_ANNUAL", "")      # $8.28/yr
+STRIPE_PRICE_SEARCH_PACK = os.getenv("STRIPE_PRICE_SEARCH_PACK", "")  # $2.99 one-time
 
 
 @app.template_filter("to_pst")
@@ -429,6 +444,42 @@ class DBAdapter:
                 """
             )
 
+        # Create subscriptions table for Stripe billing
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_email VARCHAR(255) NOT NULL UNIQUE,
+                    stripe_customer_id VARCHAR(255) NOT NULL DEFAULT '',
+                    stripe_subscription_id VARCHAR(255) NOT NULL DEFAULT '',
+                    plan_type VARCHAR(32) NOT NULL DEFAULT '',
+                    sub_status VARCHAR(32) NOT NULL DEFAULT '',
+                    current_period_end VARCHAR(64) NOT NULL DEFAULT '',
+                    search_credits INT NOT NULL DEFAULT 0,
+                    created_at VARCHAR(64) NOT NULL DEFAULT '',
+                    updated_at VARCHAR(64) NOT NULL DEFAULT ''
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL UNIQUE,
+                    stripe_customer_id TEXT NOT NULL DEFAULT '',
+                    stripe_subscription_id TEXT NOT NULL DEFAULT '',
+                    plan_type TEXT NOT NULL DEFAULT '',
+                    sub_status TEXT NOT NULL DEFAULT '',
+                    current_period_end TEXT NOT NULL DEFAULT '',
+                    search_credits INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+
         conn.commit()
         cur.close()
         conn.close()
@@ -468,6 +519,98 @@ class DBAdapter:
 
 
 db = DBAdapter()
+
+
+# ---------------------------------------------------------------------------
+# Subscription access control
+# ---------------------------------------------------------------------------
+
+def _get_plan_type_from_stripe_sub(sub: Any) -> str:
+    """Derive 'monthly' or 'annual' from a Stripe Subscription object."""
+    try:
+        interval = sub["items"]["data"][0]["price"]["recurring"]["interval"]
+        return "annual" if interval == "year" else "monthly"
+    except Exception:
+        return "monthly"
+
+
+def get_user_access(user_email: str) -> dict[str, Any]:
+    """Return the user's current subscription tier and access rights.
+
+    Checks in order:
+      1. 30-day free trial (from users.created_at)
+      2. Active recurring subscription (monthly / annual)
+      3. Search credit pack (one-time $2.99 purchase)
+    """
+    # 1. Check 30-day trial
+    try:
+        user_rows = db.query(
+            f"SELECT created_at FROM users WHERE user_email = {db.placeholder}",
+            (user_email,),
+        )
+        if user_rows and user_rows[0].get("created_at"):
+            created_str = user_rows[0]["created_at"]
+            created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            if created_dt.tzinfo is None:
+                created_dt = created_dt.replace(tzinfo=timezone.utc)
+            trial_end = created_dt + timedelta(days=30)
+            if _now_utc() < trial_end:
+                days_left = max(1, (trial_end - _now_utc()).days + 1)
+                return {
+                    "tier": "trial",
+                    "can_search": True,
+                    "can_create": True,
+                    "can_join": True,
+                    "trial_ends_at": trial_end.isoformat(),
+                    "trial_days_left": days_left,
+                }
+    except Exception:
+        pass
+
+    # 2. Check active recurring subscription or search credits
+    try:
+        sub_rows = db.query(
+            f"SELECT * FROM subscriptions WHERE user_email = {db.placeholder}",
+            (user_email,),
+        )
+        if sub_rows:
+            s = sub_rows[0]
+            if s.get("sub_status") == "active" and s.get("current_period_end"):
+                try:
+                    period_end = datetime.fromisoformat(
+                        s["current_period_end"].replace("Z", "+00:00")
+                    )
+                    if period_end.tzinfo is None:
+                        period_end = period_end.replace(tzinfo=timezone.utc)
+                    if _now_utc() < period_end:
+                        return {
+                            "tier": s["plan_type"],
+                            "can_search": True,
+                            "can_create": True,
+                            "can_join": True,
+                            "current_period_end": s["current_period_end"],
+                        }
+                except Exception:
+                    pass
+            # 3. Check search credits (one-time pack)
+            credits = int(s.get("search_credits", 0) or 0)
+            if credits > 0:
+                return {
+                    "tier": "search_pack",
+                    "can_search": True,
+                    "can_create": False,
+                    "can_join": True,
+                    "search_credits": credits,
+                }
+    except Exception:
+        pass
+
+    return {
+        "tier": "none",
+        "can_search": False,
+        "can_create": False,
+        "can_join": False,
+    }
 
 
 def _now_utc() -> datetime:
@@ -733,6 +876,19 @@ def firebase_callback() -> Any:
         except Exception:
             pass
 
+        # Ensure subscription row exists for new users
+        try:
+            existing_sub = db.query(
+                f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,)
+            )
+            if not existing_sub:
+                db.execute(
+                    f"INSERT INTO subscriptions (user_email, search_credits, created_at, updated_at) VALUES ({p}, 0, {p}, {p})",
+                    (email, _now_utc().isoformat(), _now_utc().isoformat()),
+                )
+        except Exception:
+            pass
+
     return jsonify({"ok": True, "redirect": url_for("start_now_page")})
 
 
@@ -764,6 +920,19 @@ def create_carpool() -> Any:
 
 def _create_carpool_inner() -> Any:
     _cleanup_expired_entries()
+
+    # Subscription gate: only monthly/annual/trial users can create carpools
+    creator_email = session.get("user_email", "")
+    if not creator_email:
+        return jsonify({"error": "Login required"}), 401
+    access = get_user_access(creator_email)
+    if not access.get("can_create"):
+        return jsonify({
+            "error": "subscription_required",
+            "message": "Creating a carpool requires a Monthly or Annual subscription.",
+            "tier_needed": "monthly",
+        }), 403
+
     data = request.get_json(silent=True) or request.form.to_dict()
 
     required = ["phone", "flight_code", "airport_code"]
@@ -897,6 +1066,27 @@ def suggest_airlines() -> Any:
 @app.get("/api/carpools/search")
 def search_carpools() -> Any:
     _cleanup_expired_entries()
+
+    # Subscription gate: require login + active access to search
+    search_user = session.get("user_email", "")
+    if not search_user:
+        return jsonify({"error": "Login required", "subscription_required": True}), 401
+    access = get_user_access(search_user)
+    if not access.get("can_search"):
+        return jsonify({
+            "error": "subscription_required",
+            "message": "Searching carpools requires an active subscription or Search Pack.",
+            "tier_needed": "search_pack",
+        }), 403
+
+    # Decrement search credit for one-time pack users (atomic update)
+    if access.get("tier") == "search_pack":
+        p_tmp = db.placeholder
+        db.execute(
+            f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p_tmp} WHERE user_email = {p_tmp} AND search_credits > 0",
+            (_now_utc().isoformat(), search_user),
+        )
+
     flight_code = _clean_flight_code(request.args.get("flight_code", ""))
     airport_code = request.args.get("airport_code", "").upper().strip()
     flight_date_raw = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip()
@@ -968,6 +1158,15 @@ def join_party(carpool_id: int) -> Any:
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
+
+    # Subscription gate: need active access to join
+    join_access = get_user_access(email)
+    if not join_access.get("can_join"):
+        return jsonify({
+            "error": "subscription_required",
+            "message": "Joining a carpool requires an active subscription or Search Pack.",
+            "tier_needed": "search_pack",
+        }), 403
 
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
@@ -1571,6 +1770,274 @@ def health_check() -> Any:
     except Exception as e:
         info["db_error"] = str(e)
     return jsonify(info)
+
+
+# ---------------------------------------------------------------------------
+# Subscription routes
+# ---------------------------------------------------------------------------
+
+@app.get("/pricing")
+def pricing_page() -> Any:
+    user_email = session.get("user_email", "")
+    access = get_user_access(user_email) if user_email else {}
+    return render_template(
+        "pricing.html",
+        user_email=user_email,
+        access=access,
+        stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
+        price_monthly=STRIPE_PRICE_MONTHLY,
+        price_annual=STRIPE_PRICE_ANNUAL,
+        price_search_pack=STRIPE_PRICE_SEARCH_PACK,
+    )
+
+
+@app.get("/account")
+def account_page() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return redirect(url_for("login_page"))
+    access = get_user_access(email)
+    p = db.placeholder
+    sub_rows = db.query(f"SELECT * FROM subscriptions WHERE user_email = {p}", (email,))
+    sub = sub_rows[0] if sub_rows else {}
+    return render_template(
+        "account.html",
+        user_email=email,
+        access=access,
+        sub=sub,
+        stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
+    )
+
+
+@app.get("/subscription/success")
+def subscription_success() -> Any:
+    return render_template("subscription_success.html", user_email=session.get("user_email", ""))
+
+
+@app.get("/subscription/cancel-return")
+def subscription_cancel_return() -> Any:
+    return redirect(url_for("pricing_page"))
+
+
+@app.get("/api/subscription/status")
+def subscription_status() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    access = get_user_access(email)
+    return jsonify(access)
+
+
+@app.post("/api/subscription/checkout")
+def create_checkout_session() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    if not stripe_lib:
+        return jsonify({"error": "Stripe is not configured on this server"}), 503
+
+    data = request.get_json(silent=True) or {}
+    price_id = str(data.get("price_id", "")).strip()
+    mode = str(data.get("mode", "subscription")).strip()
+
+    if not price_id:
+        return jsonify({"error": "price_id is required"}), 400
+    if mode not in ("subscription", "payment"):
+        return jsonify({"error": "Invalid mode; must be 'subscription' or 'payment'"}), 400
+
+    stripe_lib.api_key = STRIPE_SECRET_KEY
+    p = db.placeholder
+
+    try:
+        # Get or create Stripe customer
+        sub_rows = db.query(f"SELECT stripe_customer_id FROM subscriptions WHERE user_email = {p}", (email,))
+        customer_id = (sub_rows[0].get("stripe_customer_id") or "") if sub_rows else ""
+
+        if not customer_id:
+            customer = stripe_lib.Customer.create(
+                email=email,
+                metadata={"app_email": email},
+            )
+            customer_id = customer.id
+            now_iso = _now_utc().isoformat()
+            existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+            if existing:
+                db.execute(
+                    f"UPDATE subscriptions SET stripe_customer_id = {p}, updated_at = {p} WHERE user_email = {p}",
+                    (customer_id, now_iso, email),
+                )
+            else:
+                db.execute(
+                    f"INSERT INTO subscriptions (user_email, stripe_customer_id, search_credits, created_at, updated_at) VALUES ({p}, {p}, 0, {p}, {p})",
+                    (email, customer_id, now_iso, now_iso),
+                )
+
+        checkout = stripe_lib.checkout.Session.create(
+            customer=customer_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode=mode,
+            success_url=request.host_url.rstrip("/") + "/subscription/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=request.host_url.rstrip("/") + "/pricing",
+        )
+        return jsonify({"url": checkout.url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subscription/portal")
+def customer_portal() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    if not stripe_lib:
+        return jsonify({"error": "Stripe is not configured on this server"}), 503
+
+    stripe_lib.api_key = STRIPE_SECRET_KEY
+    p = db.placeholder
+
+    sub_rows = db.query(f"SELECT stripe_customer_id FROM subscriptions WHERE user_email = {p}", (email,))
+    customer_id = (sub_rows[0].get("stripe_customer_id") or "") if sub_rows else ""
+    if not customer_id:
+        return jsonify({"error": "No billing account found. Please subscribe first."}), 404
+
+    try:
+        portal = stripe_lib.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=request.host_url.rstrip("/") + "/account",
+        )
+        return jsonify({"url": portal.url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subscription/cancel")
+def cancel_subscription() -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    if not stripe_lib:
+        return jsonify({"error": "Stripe is not configured on this server"}), 503
+
+    stripe_lib.api_key = STRIPE_SECRET_KEY
+    p = db.placeholder
+
+    sub_rows = db.query(f"SELECT stripe_subscription_id FROM subscriptions WHERE user_email = {p}", (email,))
+    sub_id = (sub_rows[0].get("stripe_subscription_id") or "") if sub_rows else ""
+    if not sub_id:
+        return jsonify({"error": "No active subscription found"}), 404
+
+    try:
+        stripe_lib.Subscription.modify(sub_id, cancel_at_period_end=True)
+        return jsonify({"ok": True, "message": "Subscription will cancel at the end of the current billing period."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/webhooks/stripe")
+def stripe_webhook() -> Any:
+    if not stripe_lib:
+        return jsonify({"error": "Stripe not configured"}), 503
+
+    payload = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    try:
+        stripe_lib.api_key = STRIPE_SECRET_KEY
+        event = stripe_lib.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except stripe_lib.errors.SignatureVerificationError:
+        return jsonify({"error": "Invalid signature"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    event_type = event["type"]
+    obj = event["data"]["object"]
+    now_iso = _now_utc().isoformat()
+    p = db.placeholder
+
+    if event_type == "checkout.session.completed":
+        mode = obj.get("mode")
+        customer_id = obj.get("customer", "")
+        # Retrieve user email from customer metadata
+        user_email = ""
+        try:
+            customer = stripe_lib.Customer.retrieve(customer_id)
+            user_email = customer.get("metadata", {}).get("app_email", "") or customer.get("email", "")
+        except Exception:
+            user_email = obj.get("customer_details", {}).get("email", "")
+
+        if not user_email:
+            return jsonify({"ok": True})
+
+        user_email = user_email.lower().strip()
+
+        # Ensure row exists
+        existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (user_email,))
+        if not existing:
+            db.execute(
+                f"INSERT INTO subscriptions (user_email, stripe_customer_id, search_credits, created_at, updated_at) VALUES ({p}, {p}, 0, {p}, {p})",
+                (user_email, customer_id, now_iso, now_iso),
+            )
+        else:
+            db.execute(
+                f"UPDATE subscriptions SET stripe_customer_id = {p}, updated_at = {p} WHERE user_email = {p}",
+                (customer_id, now_iso, user_email),
+            )
+
+        if mode == "payment":
+            # Search pack: add 3 credits
+            db.execute(
+                f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
+                (now_iso, user_email),
+            )
+        elif mode == "subscription":
+            sub_id = obj.get("subscription", "")
+            if sub_id:
+                try:
+                    sub = stripe_lib.Subscription.retrieve(sub_id)
+                    plan_type = _get_plan_type_from_stripe_sub(sub)
+                    period_end = datetime.fromtimestamp(
+                        sub["current_period_end"], tz=timezone.utc
+                    ).isoformat()
+                    db.execute(
+                        f"UPDATE subscriptions SET stripe_subscription_id = {p}, plan_type = {p}, sub_status = 'active', current_period_end = {p}, updated_at = {p} WHERE user_email = {p}",
+                        (sub_id, plan_type, period_end, now_iso, user_email),
+                    )
+                except Exception:
+                    pass
+
+    elif event_type == "invoice.payment_succeeded":
+        sub_id = obj.get("subscription", "")
+        if sub_id:
+            try:
+                sub = stripe_lib.Subscription.retrieve(sub_id)
+                plan_type = _get_plan_type_from_stripe_sub(sub)
+                period_end = datetime.fromtimestamp(
+                    sub["current_period_end"], tz=timezone.utc
+                ).isoformat()
+                db.execute(
+                    f"UPDATE subscriptions SET sub_status = 'active', current_period_end = {p}, plan_type = {p}, updated_at = {p} WHERE stripe_subscription_id = {p}",
+                    (period_end, plan_type, now_iso, sub_id),
+                )
+            except Exception:
+                pass
+
+    elif event_type == "invoice.payment_failed":
+        sub_id = obj.get("subscription", "")
+        if sub_id:
+            db.execute(
+                f"UPDATE subscriptions SET sub_status = 'past_due', updated_at = {p} WHERE stripe_subscription_id = {p}",
+                (now_iso, sub_id),
+            )
+
+    elif event_type == "customer.subscription.deleted":
+        sub_id = obj.get("id", "")
+        if sub_id:
+            db.execute(
+                f"UPDATE subscriptions SET sub_status = 'canceled', stripe_subscription_id = '', plan_type = '', current_period_end = '', updated_at = {p} WHERE stripe_subscription_id = {p}",
+                (now_iso, sub_id),
+            )
+
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

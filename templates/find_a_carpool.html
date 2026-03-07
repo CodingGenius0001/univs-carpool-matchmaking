@@ -17,6 +17,7 @@
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool" class="active">Find a Carpool</a>
         <a href="/create-a-carpool">Create Carpool</a>
+        <a href="/pricing">Pricing</a>
       </nav>
       <a href="/my-party" class="my-party-btn" id="my-party-btn" {% if not has_party %}style="display:none"{% endif %}>My Carpool</a>
       <div class="hamburger-wrap">
@@ -31,6 +32,7 @@
           <div class="menu-divider"></div>
           <a href="/eula">EULA &amp; ToS</a>
           <a href="/privacy">Privacy Policy</a>
+          <a href="/account">My Subscription</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
           <a href="/auth/logout" class="menu-logout">Logout</a>
@@ -67,7 +69,10 @@
     </footer>
 
     <script src="{{ url_for('static', filename='search.js') }}"></script>
+    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
     <script>
+      C2ASub.initSubscriptionBadge();
+      C2ASub.initCreditsIndicator('search-form');
       const hbBtn = document.getElementById('hamburger-btn');
       const hbMenu = document.getElementById('hamburger-menu');
       hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));

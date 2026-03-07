@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Subscription - Campus2Air</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header app-header">
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <nav class="nav-links">
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/create-a-carpool">Create Carpool</a>
+        <a href="/pricing">Pricing</a>
+      </nav>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
+          <div class="menu-divider"></div>
+          <a href="/eula">EULA &amp; ToS</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/account" class="active">My Subscription</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card account-section">
+        <h2>My Subscription</h2>
+
+        <!-- Current plan display -->
+        <div class="account-tier-row">
+          <div>
+            <p class="text-muted" style="margin:0;font-size:0.85rem;">Current plan</p>
+            {% set tier = access.get('tier', 'none') %}
+            {% if tier == 'trial' %}
+            <div class="account-tier-label">Free Trial</div>
+            <p class="text-muted" style="font-size:0.88rem;">
+              {{ access.get('trial_days_left', 0) }} day{{ 's' if access.get('trial_days_left', 0) != 1 else '' }} remaining
+            </p>
+            {% elif tier == 'monthly' %}
+            <div class="account-tier-label">Monthly Plan <span class="subscription-badge">Pro</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Renews {{ access.get('current_period_end', '')[:10] }}</p>
+            {% elif tier == 'annual' %}
+            <div class="account-tier-label">Annual Plan <span class="subscription-badge">Annual</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Renews {{ access.get('current_period_end', '')[:10] }}</p>
+            {% elif tier == 'search_pack' %}
+            <div class="account-tier-label">Search Pack <span class="subscription-badge search-pack">Pack</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">{{ access.get('search_credits', 0) }} search credit{{ 's' if access.get('search_credits', 0) != 1 else '' }} remaining</p>
+            {% else %}
+            <div class="account-tier-label" style="color:var(--danger)">No Active Plan <span class="subscription-badge locked">Locked</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Your trial has ended. Choose a plan to continue.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Billing management (only for recurring subscribers) -->
+        {% if tier in ('monthly', 'annual') and sub.get('stripe_customer_id') %}
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="portal-btn" onclick="C2ASub.openBillingPortal(this)">
+            Manage Billing
+          </button>
+          <button class="btn btn-danger btn-sm" id="cancel-btn" onclick="C2ASub.cancelSubscription(this)">
+            Cancel Subscription
+          </button>
+        </div>
+        <p class="text-muted" style="font-size:0.8rem;">
+          Cancellations take effect at the end of your current billing period. Your Stripe invoices and payment history are available in the billing portal.
+        </p>
+        {% endif %}
+
+        <!-- Buy more credits (for search pack users) -->
+        {% if tier == 'search_pack' or tier == 'none' %}
+        <div>
+          <a href="/pricing" class="btn btn-premium">
+            {% if tier == 'search_pack' %}Buy More Searches{% else %}Choose a Plan{% endif %}
+          </a>
+        </div>
+        {% endif %}
+
+        <!-- Upgrade CTA for trial users nearing end -->
+        {% if tier == 'trial' and access.get('trial_days_left', 30) <= 7 %}
+        <div class="trial-banner warning">
+          <span class="trial-icon">⚠️</span>
+          <span>Your trial ends soon! <a href="/pricing">Upgrade now</a> to keep access.</span>
+        </div>
+        {% endif %}
+
+        <hr style="border-color:var(--border);margin:0.5rem 0;" />
+        <p class="text-muted" style="font-size:0.8rem;">
+          Logged in as <strong>{{ user_email }}</strong>. &nbsp;
+          Questions? Contact support or visit our <a href="/eula">Terms of Service</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+    </script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
+    <script>C2ASub.initSubscriptionBadge();</script>
+  </body>
+</html>
