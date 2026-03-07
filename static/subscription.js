@@ -124,10 +124,23 @@
     section.appendChild(overlay);
   }
 
+  // Reset checkout buttons if user navigates back from Stripe
+  window.addEventListener('pageshow', () => {
+    document.querySelectorAll('.btn-checkout').forEach(b => {
+      b.disabled = false;
+      if (b.dataset.label) b.textContent = b.dataset.label;
+    });
+  });
+
   /** Start Stripe Checkout for a given price + mode */
   async function startCheckout(priceId, mode) {
     const btn = event && event.currentTarget;
-    if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+    if (btn) {
+      if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+      btn.classList.add('btn-checkout');
+      btn.disabled = true;
+      btn.textContent = 'Redirecting…';
+    }
     try {
       const res = await fetch('/api/subscription/checkout', {
         method: 'POST',

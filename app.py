@@ -2016,6 +2016,13 @@ def create_checkout_session() -> Any:
         sub_rows = db.query(f"SELECT stripe_customer_id FROM subscriptions WHERE user_email = {p}", (email,))
         customer_id = (sub_rows[0].get("stripe_customer_id") or "") if sub_rows else ""
 
+        # Verify the stored customer still exists in Stripe; create a new one if not
+        if customer_id:
+            try:
+                stripe_lib.Customer.retrieve(customer_id)
+            except stripe_lib.error.InvalidRequestError:
+                customer_id = ""  # stale — will create fresh below
+
         if not customer_id:
             customer = stripe_lib.Customer.create(
                 email=email,
