@@ -1766,7 +1766,7 @@ def admin_clear_user_subscription() -> Any:
     p = db.placeholder
     try:
         db.execute(
-            f"UPDATE subscriptions SET stripe_subscription_id = '', plan_type = '', sub_status = 'canceled', current_period_end = '', search_credits = 0 WHERE user_email = {p}",
+            f"UPDATE subscriptions SET stripe_customer_id = '', stripe_subscription_id = '', plan_type = '', sub_status = '', current_period_end = '', search_credits = 0 WHERE user_email = {p}",
             (email,),
         )
     except Exception as e:
