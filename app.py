@@ -908,6 +908,7 @@ def _create_carpool_inner() -> Any:
         except Exception:
             pass
 
+
     return jsonify({"message": "Carpool created!", "entry": _serialize_entry(rows[0])}), 201
 
 
