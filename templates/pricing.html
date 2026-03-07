@@ -65,7 +65,7 @@
               <li>Stack multiple packs</li>
             </ul>
             <div class="plan-cta">
-              {% if user_email and price_search_pack %}
+              {% if user_email %}
               <button class="btn btn-secondary btn-block" onclick="C2ASub.startCheckout('{{ price_search_pack }}', 'payment')">
                 Buy Search Pack
               </button>
@@ -86,7 +86,7 @@
               <li>Cancel anytime</li>
             </ul>
             <div class="plan-cta">
-              {% if user_email and price_monthly %}
+              {% if user_email %}
               <button class="btn btn-primary btn-block" onclick="C2ASub.startCheckout('{{ price_monthly }}', 'subscription')">
                 Subscribe Monthly
               </button>
@@ -108,7 +108,7 @@
               <li>Best value for regulars</li>
             </ul>
             <div class="plan-cta">
-              {% if user_email and price_annual %}
+              {% if user_email %}
               <button class="btn btn-secondary btn-block" onclick="C2ASub.startCheckout('{{ price_annual }}', 'subscription')">
                 Subscribe Annually
               </button>
