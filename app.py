@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import json
 import os
 import re
 import sqlite3
 import ssl
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 import traceback
 
@@ -46,9 +43,6 @@ FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 
-
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-RESEND_FROM = os.environ.get("RESEND_FROM", "Campus2Air <onboarding@resend.dev>")
 
 # Airline IATA codes for autocomplete
 AIRLINE_CODES: dict[str, str] = {
@@ -392,7 +386,6 @@ class DBAdapter:
                     first_name VARCHAR(120) NOT NULL DEFAULT '',
                     last_initial VARCHAR(1) NOT NULL DEFAULT '',
                     phone VARCHAR(32) NOT NULL DEFAULT '',
-                    email_notif_opt_in TINYINT NOT NULL DEFAULT 1,
                     created_at VARCHAR(64) NOT NULL DEFAULT ''
                 )
                 """
@@ -405,7 +398,6 @@ class DBAdapter:
                     first_name TEXT NOT NULL DEFAULT '',
                     last_initial TEXT NOT NULL DEFAULT '',
                     phone TEXT NOT NULL DEFAULT '',
-                    email_notif_opt_in INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL DEFAULT ''
                 )
                 """
@@ -459,9 +451,6 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'creator_email'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
-                cur.execute("SHOW COLUMNS FROM users LIKE 'email_notif_opt_in'")
-                if not cur.fetchone():
-                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in TINYINT NOT NULL DEFAULT 1")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -473,10 +462,6 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
                 if "creator_email" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
-                cur.execute("PRAGMA table_info(users)")
-                user_cols = [row[1] for row in cur.fetchall()]
-                if "email_notif_opt_in" not in user_cols:
-                    cur.execute("ALTER TABLE users ADD COLUMN email_notif_opt_in INTEGER NOT NULL DEFAULT 1")
             conn.commit()
         finally:
             cur.close()
@@ -489,40 +474,12 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def send_email_notification(to_email: str, message: str) -> None:
-    if not (RESEND_API_KEY and to_email):
-        return
-    try:
-        payload = json.dumps({
-            "from": RESEND_FROM,
-            "to": [to_email],
-            "subject": "Campus2Air — Carpool Update",
-            "text": message,
-        }).encode()
-        req = Request(
-            "https://api.resend.com/emails",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-        )
-        urlopen(req, timeout=5)
-    except Exception as e:
-        app.logger.warning(f"Email notification failed to {to_email}: {e}")
-
-
 def notify_user(email: str, message: str) -> None:
     p = db.placeholder
     db.execute(
         f"INSERT INTO notifications (user_email, message, created_at) VALUES ({p}, {p}, {p})",
         (email, message, _now_utc().isoformat()),
     )
-    rows = db.query(f"SELECT email_notif_opt_in FROM users WHERE user_email = {p}", (email,))
-    # No row means user hasn't joined a carpool yet — treat as opted in (default is 1)
-    opt_in = rows[0].get("email_notif_opt_in", 1) if rows else 1
-    if opt_in:
-        send_email_notification(email, message)
 
 
 def _clean_flight_code(code: str) -> str:
@@ -1028,25 +985,24 @@ def join_party(carpool_id: int) -> Any:
     if current_count >= max_members:
         return jsonify({"error": "This carpool is full"}), 409
 
-    # Store phone number and SMS opt-in if provided
+    # Store phone number if provided
     data = request.get_json(silent=True) or {}
     raw_phone = str(data.get("phone", "")).strip()
-    email_notif_opt_in = 1 if data.get("email_notif_opt_in") else 0
     if raw_phone:
         raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
         if PHONE_PATTERN.match(raw_phone):
             try:
                 existing_user = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
                 if existing_user:
-                    db.execute(f"UPDATE users SET phone = {p}, email_notif_opt_in = {p} WHERE user_email = {p}", (raw_phone, email_notif_opt_in, email))
+                    db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
                 else:
                     name = session.get("user_name", "")
                     parts = name.strip().split() if name else []
                     first_name = parts[0] if parts else email.split("@")[0]
                     last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
                     db.execute(
-                        f"INSERT INTO users (user_email, first_name, last_initial, phone, email_notif_opt_in, created_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
-                        (email, first_name, last_initial, raw_phone, email_notif_opt_in, _now_utc().isoformat()),
+                        f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+                        (email, first_name, last_initial, raw_phone, _now_utc().isoformat()),
                     )
             except Exception:
                 pass

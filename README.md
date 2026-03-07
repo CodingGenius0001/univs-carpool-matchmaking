@@ -6,8 +6,9 @@ Campus2Air is a web application built for university students to coordinate shar
 
 - **Add Flight Details** - Students submit their flight code, departure airport, date, planned campus departure time, and contact info.
 - **Find a Carpool** - Search for other students flying on the same flight, from the same airport, or on the same date. Results are ranked by match score.
-- **Live Flight Verification** - Flight codes are verified in real-time using the SerpApi Google Flights API. Airline names auto-detect from the flight code prefix.
-- **Automatic Cleanup** - All records are automatically deleted at the end of the departure day (11:59 PM), so no stale data lingers.
+- **Airline Autocomplete** - Airline names auto-detect from the flight code prefix using a built-in IATA code lookup.
+- **In-App Notifications** - Users receive in-app alerts when someone joins or leaves their carpool, when ownership transfers, and when a carpool is disbanded.
+- **Automatic Cleanup** - All records are automatically deleted at the end of the departure day (11:59 PM UTC), so no stale data lingers.
 - **Admin Panel** - A password-protected admin dashboard for managing entries, with session-based authentication and 30-minute session expiry.
 
 ## Built For
@@ -18,7 +19,6 @@ This project was developed as part of a university coursework assignment to solv
 
 - **Backend**: Python / Flask
 - **Database**: MySQL (TiDB Cloud) with SQLite fallback
-- **Flight Data**: SerpApi Google Flights API
 - **Frontend**: HTML, CSS (custom dark theme), vanilla JavaScript
 - **Deployment**: Vercel (serverless Python runtime)
-- **Authentication**: Werkzeug password hashing with session-based admin auth
+- **Authentication**: Firebase (Google Sign-In for users), Werkzeug password hashing with session-based admin auth
