@@ -604,6 +604,15 @@ def _require_user_login() -> bool:
 def _user_context() -> dict[str, Any]:
     """Build common template context for logged-in pages."""
     email = session.get("user_email", "")
+    raw_name = session.get("user_name", "")
+    # Build short display name e.g. "Keshav P" from Google display name
+    parts = raw_name.strip().split() if raw_name else []
+    if len(parts) >= 2:
+        display_name = f"{parts[0]} {parts[-1][0].upper()}"
+    elif parts:
+        display_name = parts[0]
+    else:
+        display_name = ""
     has_party = False
     if email:
         try:
@@ -612,7 +621,7 @@ def _user_context() -> dict[str, Any]:
             has_party = rows[0]["c"] > 0 if rows else False
         except Exception:
             pass
-    return {"user_email": email, "has_party": has_party}
+    return {"user_email": email, "has_party": has_party, "display_name": display_name}
 
 
 @app.get("/start-now")
@@ -757,20 +766,20 @@ def _create_carpool_inner() -> Any:
     _cleanup_expired_entries()
     data = request.get_json(silent=True) or request.form.to_dict()
 
-    required = ["first_name", "last_initial", "phone", "flight_code", "airport_code"]
+    required = ["phone", "flight_code", "airport_code"]
     missing = [k for k in required if not str(data.get(k, "")).strip()]
     if not str(data.get("departure_date") or data.get("flight_date") or "").strip():
         missing.append("departure_date")
     if missing:
         return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-    first_name = data["first_name"].strip()
-    if not NAME_PATTERN.match(first_name):
-        return jsonify({"error": "First name can only contain letters, spaces, hyphens, and apostrophes"}), 400
-
-    last_initial = data["last_initial"].strip()
-    if len(last_initial) != 1 or not last_initial.isalpha():
-        return jsonify({"error": "Last initial must be exactly 1 letter"}), 400
+    # Derive name from the Google login stored in session
+    raw_name = session.get("user_name", "")
+    name_parts = raw_name.strip().split() if raw_name else []
+    first_name = name_parts[0].title() if name_parts else ""
+    last_initial = name_parts[-1][0].upper() if len(name_parts) > 1 and name_parts[-1] else ""
+    if not first_name:
+        return jsonify({"error": "Could not determine your name from your login session"}), 400
 
     airport_code = data["airport_code"].upper().strip()
     if len(airport_code) != 3:
@@ -821,8 +830,8 @@ def _create_carpool_inner() -> Any:
         ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """,
         (
-            data["first_name"].strip().title(),
-            data["last_initial"].strip()[:1].upper(),
+            first_name,
+            last_initial,
             raw_phone,
             flight_code,
             airport_code,

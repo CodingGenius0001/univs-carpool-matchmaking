@@ -43,14 +43,12 @@
         <h2>Create a Carpool</h2>
         <p class="disclaimer">Your info is only visible to matched carpool partners. Records are automatically removed after the flight lands.</p>
 
+        {% if display_name %}
+        <p class="text-muted text-sm">Creating carpool as <strong>{{ display_name }}</strong></p>
+        {% endif %}
+
         <form id="join-form">
           <div class="grid">
-            <label>First Name
-              <input name="first_name" id="first_name" required placeholder="e.g. Alex" />
-            </label>
-            <label>Last Initial
-              <input name="last_initial" id="last_initial" maxlength="1" required placeholder="e.g. K" />
-            </label>
             <label>Phone Number
               <input name="phone" id="phone" required placeholder="+1 (909) 555 1234" maxlength="17" />
             </label>

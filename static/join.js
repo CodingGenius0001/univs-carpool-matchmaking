@@ -6,8 +6,6 @@ const flightCodeInput = document.querySelector('#flight_code');
 const departureDateInput = document.querySelector('#departure_date');
 const airlineDropdown = document.querySelector('#airline-dropdown');
 const airlineNameInput = document.querySelector('#airline_name');
-const firstNameInput = document.querySelector('#first_name');
-const lastInitialInput = document.querySelector('#last_initial');
 
 // --- Set min date to today ---
 if (departureDateInput) {
@@ -57,20 +55,7 @@ const formatPhone = (raw) => {
   return out;
 };
 
-// Strip anything that isn't a letter, space, hyphen, or apostrophe
-const sanitizeName = (raw) => raw.replace(/[^A-Za-z \-']/g, '');
-
 // --- Input listeners ---
-
-// Name: only letters, spaces, hyphens, apostrophes
-firstNameInput?.addEventListener('input', () => {
-  firstNameInput.value = sanitizeName(firstNameInput.value);
-});
-
-// Last initial: only a single letter
-lastInitialInput?.addEventListener('input', () => {
-  lastInitialInput.value = lastInitialInput.value.replace(/[^A-Za-z]/g, '').slice(0, 1);
-});
 
 // Airport code: uppercase letters only
 airportCodeInput?.addEventListener('input', () => {
@@ -228,23 +213,6 @@ flightCodeInput?.addEventListener('blur', () => {
 form?.addEventListener('submit', async (e) => {
   e.preventDefault();
   closeAirlineDropdown();
-
-  // Validate name contains only letters
-  const firstName = firstNameInput?.value || '';
-  if (!firstName || /[^A-Za-z \-']/.test(firstName)) {
-    msg.textContent = 'First name can only contain letters, spaces, hyphens, and apostrophes.';
-    msg.className = 'error';
-    firstNameInput?.focus();
-    return;
-  }
-
-  const lastInitial = lastInitialInput?.value || '';
-  if (!lastInitial || /[^A-Za-z]/.test(lastInitial)) {
-    msg.textContent = 'Last initial must be a single letter.';
-    msg.className = 'error';
-    lastInitialInput?.focus();
-    return;
-  }
 
   // Validate date is selected and valid
   if (!departureDateInput?.value) {
