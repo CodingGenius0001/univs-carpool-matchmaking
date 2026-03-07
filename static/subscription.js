@@ -169,24 +169,36 @@
     }
   }
 
-  /** Cancel subscription (sets cancel_at_period_end) */
-  async function cancelSubscription(btn) {
-    if (!confirm('Are you sure you want to cancel? You will keep access until the end of your current billing period.')) return;
+  /** Confirm and execute cancellation (called from inline cancel panel) */
+  async function confirmCancel(btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
     try {
       const res = await fetch('/api/subscription/cancel', { method: 'POST' });
       const json = await res.json();
       if (json.ok) {
-        alert('Subscription cancelled. You will keep access until your billing period ends.');
-        window.location.reload();
+        // Show success message in the panel instead of alert
+        const panel = document.getElementById('cancel-confirm');
+        if (panel) {
+          panel.style.borderColor = 'var(--border)';
+          panel.style.background = 'transparent';
+          panel.innerHTML = '<p style="margin:0;color:var(--text-muted);font-size:0.9rem;">Your subscription has been cancelled. You keep access until your billing period ends.</p>';
+        }
       } else {
-        alert(json.error || 'Could not cancel subscription.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Cancel Subscription'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Yes, cancel my plan'; }
+        const panel = document.getElementById('cancel-confirm');
+        const errEl = panel && panel.querySelector('.cancel-error');
+        if (panel && !errEl) {
+          panel.insertAdjacentHTML('beforeend', `<p class="cancel-error" style="color:var(--danger);font-size:0.85rem;margin:0;">${json.error || 'Could not cancel. Please try again or use Manage Billing.'}</p>`);
+        }
       }
     } catch {
-      alert('Network error. Please try again.');
-      if (btn) { btn.disabled = false; btn.textContent = 'Cancel Subscription'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Yes, cancel my plan'; }
     }
+  }
+
+  /** @deprecated Use confirmCancel via inline panel instead */
+  async function cancelSubscription(btn) {
+    document.getElementById('cancel-confirm') ? (document.getElementById('cancel-confirm').hidden = false) : confirmCancel(btn);
   }
 
   // Expose globally
@@ -199,5 +211,6 @@
     startCheckout,
     openBillingPortal,
     cancelSubscription,
+    confirmCancel,
   };
 })();

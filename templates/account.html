@@ -88,19 +88,40 @@
         {% endif %}
 
         <!-- Billing management (only for recurring subscribers) -->
-        {% if tier in ('monthly', 'annual') and sub.get('stripe_customer_id') %}
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+        {% if tier in ('monthly', 'annual') and (sub.get('stripe_customer_id') or sub.get('stripe_subscription_id')) %}
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
           <button class="btn btn-secondary" id="portal-btn" onclick="C2ASub.openBillingPortal(this)">
             Manage Billing
           </button>
           {% if not (stripe_sub_data and stripe_sub_data.cancel_at_period_end) %}
-          <button class="btn btn-danger btn-sm" id="cancel-btn" onclick="C2ASub.cancelSubscription(this)">
+          <button class="btn btn-ghost-danger" id="cancel-btn" onclick="document.getElementById('cancel-confirm').hidden=false;this.hidden=true;">
             Cancel Subscription
           </button>
           {% endif %}
         </div>
+
+        <!-- Inline cancel confirmation panel -->
+        {% if not (stripe_sub_data and stripe_sub_data.cancel_at_period_end) %}
+        <div id="cancel-confirm" hidden style="border:1px solid var(--danger);border-radius:12px;padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:0.75rem;background:rgba(239,68,68,0.05);">
+          <p style="margin:0;font-weight:600;color:var(--danger);">Cancel your subscription?</p>
+          <p class="text-muted" style="font-size:0.88rem;margin:0;">
+            You'll keep full access until the end of your current billing period.
+            {% if stripe_sub_data %}After <strong>{{ stripe_sub_data.next_billing_date }}</strong>, your account will be locked.{% endif %}
+            No further charges will be made.
+          </p>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <button class="btn btn-danger btn-sm" id="confirm-cancel-btn" onclick="C2ASub.confirmCancel(this)">
+              Yes, cancel my plan
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cancel-confirm').hidden=true;document.getElementById('cancel-btn').hidden=false;">
+              Keep my plan
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
         <p class="text-muted" style="font-size:0.8rem;">
-          Cancellations take effect at the end of your current billing period. Your Stripe invoices and payment history are available in the billing portal.
+          Cancellations take effect at the end of your billing period. Invoices and payment history are in the billing portal.
         </p>
         {% endif %}
 
