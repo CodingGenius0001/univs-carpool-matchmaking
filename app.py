@@ -1749,6 +1749,22 @@ def admin_edit_entry(entry_id: int) -> Any:
     return redirect(url_for("admin_panel"))
 
 
+@app.post("/admin/clear-user-subscription")
+def admin_clear_user_subscription() -> Any:
+    """Dev/test helper: wipe a user's subscription row so they appear fully locked out."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.form.get("email", "").strip()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    p = db.placeholder
+    db.execute(
+        f"UPDATE subscriptions SET stripe_subscription_id = '', plan_type = '', sub_status = '', current_period_end = '', search_credits = 0, updated_at = {p} WHERE user_email = {p}",
+        (_now_utc().isoformat(), email),
+    )
+    return jsonify({"ok": True, "email": email})
+
+
 @app.post("/admin/set-user-created")
 def admin_set_user_created() -> Any:
     """Dev/test helper: manually set a user's created_at to expire their trial."""
