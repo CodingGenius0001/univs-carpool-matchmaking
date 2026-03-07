@@ -807,6 +807,9 @@ def landing_legacy() -> Any:
 def create_a_carpool_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
+    access = get_user_access(session["user_email"])
+    if not access.get("can_create"):
+        return redirect(url_for("pricing_page"))
     return render_template("create_a_carpool.html", **_user_context())
 
 
@@ -820,6 +823,9 @@ def add_flight_details_redirect() -> Any:
 def find_a_carpool_page() -> Any:
     if not _require_user_login():
         return redirect(url_for("login_page"))
+    access = get_user_access(session["user_email"])
+    if not access.get("can_search"):
+        return redirect(url_for("pricing_page"))
     return render_template("find_a_carpool.html", **_user_context())
 
 
