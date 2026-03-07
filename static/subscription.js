@@ -46,23 +46,16 @@
     let html = '';
     const tier = access.tier || 'none';
 
-    if (tier === 'trial') {
+    if (tier === 'monthly' || tier === 'annual') {
+      // Active paid subscriber — no banner needed
+      return;
+    } else if (tier === 'trial') {
       const days = access.trial_days_left || 0;
       const urgency = days <= 5 ? 'warning' : '';
       html = `<div class="trial-banner ${urgency}">
         <span class="trial-icon">⏳</span>
         <span>Free trial active &mdash; <strong>${days} day${days !== 1 ? 's' : ''}</strong> remaining.
         <a href="/pricing">Upgrade now</a> to keep access after your trial ends.</span>
-      </div>`;
-    } else if (tier === 'monthly') {
-      html = `<div class="trial-banner">
-        <span class="trial-icon">✓</span>
-        <span>Monthly plan active. <a href="/account">Manage billing</a></span>
-      </div>`;
-    } else if (tier === 'annual') {
-      html = `<div class="trial-banner">
-        <span class="trial-icon">✓</span>
-        <span>Annual plan active. <a href="/account">Manage billing</a></span>
       </div>`;
     } else if (tier === 'search_pack') {
       const credits = access.search_credits || 0;
