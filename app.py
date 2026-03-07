@@ -568,6 +568,17 @@ def get_user_access(user_email: str) -> dict[str, Any]:
             trial_end = created_dt + timedelta(days=30)
             if _now_utc() < trial_end:
                 days_left = max(1, (trial_end - _now_utc()).days + 1)
+                # Check if user already has an active paid subscription running concurrently
+                has_paid_sub = False
+                try:
+                    sub_rows = db.query(
+                        f"SELECT sub_status FROM subscriptions WHERE user_email = {db.placeholder}",
+                        (user_email,),
+                    )
+                    if sub_rows and sub_rows[0].get("sub_status") == "active":
+                        has_paid_sub = True
+                except Exception:
+                    pass
                 return {
                     "tier": "trial",
                     "can_search": True,
@@ -575,6 +586,7 @@ def get_user_access(user_email: str) -> dict[str, Any]:
                     "can_join": True,
                     "trial_ends_at": trial_end.isoformat(),
                     "trial_days_left": days_left,
+                    "has_active_subscription": has_paid_sub,
                 }
     except Exception:
         pass

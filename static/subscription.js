@@ -49,6 +49,9 @@
     if (tier === 'monthly' || tier === 'annual') {
       // Active paid subscriber — no banner needed
       return;
+    } else if (tier === 'trial' && access.has_active_subscription) {
+      // In trial but already has a paid subscription lined up — no banner needed
+      return;
     } else if (tier === 'trial') {
       const days = access.trial_days_left || 0;
       const urgency = days <= 5 ? 'warning' : '';
