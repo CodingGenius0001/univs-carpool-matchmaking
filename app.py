@@ -1758,10 +1758,13 @@ def admin_clear_user_subscription() -> Any:
     if not email:
         return jsonify({"error": "email required"}), 400
     p = db.placeholder
-    db.execute(
-        f"UPDATE subscriptions SET stripe_subscription_id = '', plan_type = '', sub_status = '', current_period_end = '', search_credits = 0, updated_at = {p} WHERE user_email = {p}",
-        (_now_utc().isoformat(), email),
-    )
+    try:
+        db.execute(
+            f"UPDATE subscriptions SET stripe_subscription_id = '', plan_type = '', sub_status = 'canceled', current_period_end = '', search_credits = 0 WHERE user_email = {p}",
+            (email,),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
     return jsonify({"ok": True, "email": email})
 
 
