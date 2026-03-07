@@ -1800,11 +1800,34 @@ def account_page() -> Any:
     p = db.placeholder
     sub_rows = db.query(f"SELECT * FROM subscriptions WHERE user_email = {p}", (email,))
     sub = sub_rows[0] if sub_rows else {}
+
+    # Fetch live Stripe subscription data for upcoming billing panel
+    stripe_sub_data = None
+    if stripe_lib and STRIPE_SECRET_KEY and sub.get("stripe_subscription_id"):
+        try:
+            stripe_lib.api_key = STRIPE_SECRET_KEY
+            s = stripe_lib.Subscription.retrieve(sub["stripe_subscription_id"])
+            item = s["items"]["data"][0]
+            amount = item["price"]["unit_amount"]
+            currency = item["price"]["currency"].upper()
+            interval = item["price"]["recurring"]["interval"]
+            period_end = datetime.fromtimestamp(s["current_period_end"], tz=timezone.utc)
+            stripe_sub_data = {
+                "cancel_at_period_end": s.get("cancel_at_period_end", False),
+                "next_billing_date": period_end.strftime("%B %d, %Y"),
+                "amount": f"{currency} {amount / 100:.2f}",
+                "interval": interval,
+                "status": s.get("status", ""),
+            }
+        except Exception:
+            pass
+
     return render_template(
         "account.html",
         user_email=email,
         access=access,
         sub=sub,
+        stripe_sub_data=stripe_sub_data,
         stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
     )
 
@@ -1817,6 +1840,65 @@ def subscription_success() -> Any:
 @app.get("/subscription/cancel-return")
 def subscription_cancel_return() -> Any:
     return redirect(url_for("pricing_page"))
+
+
+@app.post("/api/subscription/sync")
+def sync_subscription() -> Any:
+    """Called from the success page to sync subscription state directly from Stripe,
+    as a fallback in case the webhook hasn't fired yet."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    if not stripe_lib or not STRIPE_SECRET_KEY:
+        return jsonify({"ok": True, "skipped": True})
+
+    data = request.get_json(silent=True) or {}
+    checkout_session_id = data.get("session_id", "").strip()
+    if not checkout_session_id:
+        return jsonify({"error": "session_id required"}), 400
+
+    stripe_lib.api_key = STRIPE_SECRET_KEY
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+
+    try:
+        cs = stripe_lib.checkout.Session.retrieve(checkout_session_id)
+        mode = cs.get("mode")
+        customer_id = cs.get("customer", "")
+
+        # Ensure subscription row exists
+        existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+        if not existing:
+            db.execute(
+                f"INSERT INTO subscriptions (user_email, stripe_customer_id, search_credits, created_at, updated_at) VALUES ({p}, {p}, 0, {p}, {p})",
+                (email, customer_id, now_iso, now_iso),
+            )
+        elif customer_id:
+            db.execute(
+                f"UPDATE subscriptions SET stripe_customer_id = {p}, updated_at = {p} WHERE user_email = {p}",
+                (customer_id, now_iso, email),
+            )
+
+        if mode == "payment":
+            # Only add credits if not already added (idempotency: check session not already processed)
+            db.execute(
+                f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
+                (now_iso, email),
+            )
+        elif mode == "subscription":
+            sub_id = cs.get("subscription", "")
+            if sub_id:
+                s = stripe_lib.Subscription.retrieve(sub_id)
+                plan_type = _get_plan_type_from_stripe_sub(s)
+                period_end = datetime.fromtimestamp(s["current_period_end"], tz=timezone.utc).isoformat()
+                db.execute(
+                    f"UPDATE subscriptions SET stripe_subscription_id = {p}, plan_type = {p}, sub_status = 'active', current_period_end = {p}, updated_at = {p} WHERE user_email = {p}",
+                    (sub_id, plan_type, period_end, now_iso, email),
+                )
+
+        return jsonify({"ok": True, "mode": mode})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.get("/api/subscription/status")
