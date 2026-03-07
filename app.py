@@ -534,6 +534,18 @@ def _get_plan_type_from_stripe_sub(sub: Any) -> str:
         return "monthly"
 
 
+def _get_period_end_ts(sub: Any) -> int | None:
+    """Extract current_period_end timestamp from a Stripe Subscription object.
+    Handles both older API (top-level) and newer API (per-item) structures."""
+    ts = sub.get("current_period_end")
+    if not ts:
+        try:
+            ts = sub["items"]["data"][0].get("current_period_end")
+        except Exception:
+            pass
+    return int(ts) if ts else None
+
+
 def get_user_access(user_email: str) -> dict[str, Any]:
     """Return the user's current subscription tier and access rights.
 
@@ -1811,7 +1823,8 @@ def account_page() -> Any:
             amount = item["price"]["unit_amount"]
             currency = item["price"]["currency"].upper()
             interval = item["price"]["recurring"]["interval"]
-            period_end = datetime.fromtimestamp(s["current_period_end"], tz=timezone.utc)
+            ts = _get_period_end_ts(s)
+            period_end = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else _now_utc()
             stripe_sub_data = {
                 "cancel_at_period_end": s.get("cancel_at_period_end", False),
                 "next_billing_date": period_end.strftime("%B %d, %Y"),
@@ -1902,7 +1915,8 @@ def sync_subscription() -> Any:
             if sub_id:
                 s = stripe_lib.Subscription.retrieve(sub_id)
                 plan_type = _get_plan_type_from_stripe_sub(s)
-                period_end = datetime.fromtimestamp(s["current_period_end"], tz=timezone.utc).isoformat()
+                ts = _get_period_end_ts(s)
+                period_end = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
                 db.execute(
                     f"UPDATE subscriptions SET stripe_subscription_id = {p}, plan_type = {p}, sub_status = 'active', current_period_end = {p}, updated_at = {p} WHERE user_email = {p}",
                     (sub_id, plan_type, period_end, now_iso, email),
@@ -2089,9 +2103,8 @@ def stripe_webhook() -> Any:
                 try:
                     sub = stripe_lib.Subscription.retrieve(sub_id)
                     plan_type = _get_plan_type_from_stripe_sub(sub)
-                    period_end = datetime.fromtimestamp(
-                        sub["current_period_end"], tz=timezone.utc
-                    ).isoformat()
+                    ts = _get_period_end_ts(sub)
+                    period_end = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
                     db.execute(
                         f"UPDATE subscriptions SET stripe_subscription_id = {p}, plan_type = {p}, sub_status = 'active', current_period_end = {p}, updated_at = {p} WHERE user_email = {p}",
                         (sub_id, plan_type, period_end, now_iso, user_email),
@@ -2105,9 +2118,8 @@ def stripe_webhook() -> Any:
             try:
                 sub = stripe_lib.Subscription.retrieve(sub_id)
                 plan_type = _get_plan_type_from_stripe_sub(sub)
-                period_end = datetime.fromtimestamp(
-                    sub["current_period_end"], tz=timezone.utc
-                ).isoformat()
+                ts = _get_period_end_ts(sub)
+                period_end = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
                 db.execute(
                     f"UPDATE subscriptions SET sub_status = 'active', current_period_end = {p}, plan_type = {p}, updated_at = {p} WHERE stripe_subscription_id = {p}",
                     (period_end, plan_type, now_iso, sub_id),
