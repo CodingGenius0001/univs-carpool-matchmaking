@@ -28,6 +28,10 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Secure flag is set only when running under HTTPS (Vercel always uses HTTPS)
+app.config["SESSION_COOKIE_SECURE"] = bool(os.getenv("VERCEL") or os.getenv("SESSION_COOKIE_SECURE"))
 
 # ---------------------------------------------------------------------------
 # Stripe configuration
@@ -52,8 +56,13 @@ def to_pst_filter(utc_str: str) -> str:
     except Exception:
         return str(utc_str)[:16]
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = generate_password_hash("Keshavpsn!8")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+# Accept a pre-computed hash via env var (most secure), or a plaintext password
+# via ADMIN_PASSWORD env var, falling back to the default only in development.
+_admin_pw_hash = os.getenv("ADMIN_PASSWORD_HASH", "")
+if not _admin_pw_hash:
+    _admin_pw_hash = generate_password_hash(os.getenv("ADMIN_PASSWORD", "Keshavpsn!8"))
+ADMIN_PASSWORD_HASH = _admin_pw_hash
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
@@ -744,12 +753,12 @@ def _ensure_db() -> None:
 
 @app.errorhandler(Exception)
 def handle_exception(e: Exception) -> Any:
-    """Return JSON errors for API routes, HTML for pages."""
+    """Return JSON errors for API routes, HTML for pages. Never leak internals."""
     tb = traceback.format_exc()
     app.logger.error(f"Unhandled exception: {e}\n{tb}")
     if request.path.startswith("/api/"):
-        return jsonify({"error": f"Server error: {e}"}), 500
-    return f"<h1>Internal Server Error</h1><pre>{e}</pre>", 500
+        return jsonify({"error": "An internal server error occurred. Please try again."}), 500
+    return "<h1>Internal Server Error</h1><p>Something went wrong. Please try again.</p>", 500
 
 
 def _cleanup_expired_entries() -> None:
@@ -936,9 +945,7 @@ def firebase_callback() -> Any:
 
 @app.get("/auth/logout")
 def user_logout() -> Any:
-    session.pop("user_email", None)
-    session.pop("user_name", None)
-    session.pop("user_uid", None)
+    session.clear()
     return redirect(url_for("landing"))
 
 
@@ -1050,7 +1057,7 @@ def _create_carpool_inner() -> Any:
             airport_location,
             "TBD",
             _to_api_flight_date(parsed_flight_date),
-            int(data.get("seats_available", 4) or 4),
+            max(1, min(7, int(data.get("seats_available", 4) or 4))),
             str(data.get("notes", "")).strip(),
             "direct",
             "active",
@@ -1695,6 +1702,7 @@ def admin_login() -> Any:
     username = request.form.get("username", "")
     password = request.form.get("password", "")
     if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        session.clear()  # prevent session fixation
         session.permanent = True
         session["admin_authed"] = True
         session["admin_login_at"] = _now_utc().isoformat()
@@ -1826,7 +1834,9 @@ def _add_admin_cache_headers(response: Any) -> Any:
 
 @app.get("/health")
 def health_check() -> Any:
-    """Debug endpoint to check app status on Vercel."""
+    """Debug endpoint to check app status on Vercel. Admin-only."""
+    if not _require_admin():
+        return jsonify({"status": "ok"}), 200
     actual_engine = "sqlite" if db._mysql_failed else db.engine
     info: dict[str, Any] = {
         "status": "ok",
