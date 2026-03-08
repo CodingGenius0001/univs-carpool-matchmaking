@@ -31,7 +31,8 @@
     const tier = access.tier || 'none';
     const labels = { trial: 'Trial', monthly: 'Pro', annual: 'Annual', search_pack: 'Pack', none: 'Locked' };
     const badge = document.createElement('span');
-    badge.className = 'subscription-badge ' + (tier === 'none' ? 'locked' : tier === 'trial' ? 'trial' : tier === 'search_pack' ? 'search-pack' : '');
+    const tierClass = { trial: 'trial', monthly: 'monthly', annual: 'annual', search_pack: 'search-pack', none: 'locked' };
+    badge.className = 'subscription-badge ' + (tierClass[tier] || '');
     badge.textContent = labels[tier] || tier;
     emailEl.appendChild(badge);
   }

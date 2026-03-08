@@ -1850,6 +1850,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-transform: uppercase;
 }
 .subscription-badge.trial { background: rgba(110,231,183,0.25); color: var(--accent); }
+.subscription-badge.monthly { background: rgba(110,231,183,0.2); color: var(--accent); }
+.subscription-badge.annual { background: rgba(96,165,250,0.2); color: var(--accent2); }
 .subscription-badge.search-pack { background: rgba(96,165,250,0.25); color: var(--accent2); }
 .subscription-badge.locked { background: rgba(248,113,113,0.2); color: #f87171; }
 
