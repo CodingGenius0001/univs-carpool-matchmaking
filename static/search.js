@@ -139,6 +139,19 @@ searchForm?.addEventListener('submit', async (e) => {
     return;
   }
 
+  // Guard: if on search pack with 0 credits, go straight to pricing
+  if (typeof C2ASub !== 'undefined') {
+    const access = await C2ASub.fetchStatus();
+    if (access && access.tier === 'search_pack' && (access.search_credits || 0) <= 0) {
+      window.location.href = '/pricing';
+      return;
+    }
+    if (access && !access.can_search) {
+      window.location.href = '/pricing';
+      return;
+    }
+  }
+
   results.innerHTML = '<p class="text-muted text-center mt-2"><span class="spinner"></span> Searching...</p>';
   submitBtn.disabled = true;
 
@@ -152,6 +165,13 @@ searchForm?.addEventListener('submit', async (e) => {
     }
     const query = new URLSearchParams(formData);
     const res = await fetch(`/api/carpools/search?${query.toString()}`);
+
+    // Backend 403 means no access — go to pricing
+    if (res.status === 403) {
+      window.location.href = '/pricing';
+      return;
+    }
+
     const data = await res.json();
 
     // Refresh credits counter after every search (backend may have decremented)
