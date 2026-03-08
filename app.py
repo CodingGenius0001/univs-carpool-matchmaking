@@ -604,15 +604,17 @@ def get_user_access(user_email: str) -> dict[str, Any]:
                         has_paid_sub = True
                 except Exception:
                     pass
-                return {
-                    "tier": "trial",
-                    "can_search": True,
-                    "can_create": True,
-                    "can_join": True,
-                    "trial_ends_at": trial_end.isoformat(),
-                    "trial_days_left": days_left,
-                    "has_active_subscription": has_paid_sub,
-                }
+                if not has_paid_sub:
+                    return {
+                        "tier": "trial",
+                        "can_search": True,
+                        "can_create": True,
+                        "can_join": True,
+                        "trial_ends_at": trial_end.isoformat(),
+                        "trial_days_left": days_left,
+                        "has_active_subscription": False,
+                    }
+                # has_paid_sub is True — fall through to return actual subscription tier
     except Exception:
         pass
 
@@ -1734,11 +1736,25 @@ def admin_panel() -> Any:
         rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
     except Exception:
         rows = []
+    try:
+        users = db.query(
+            """
+            SELECT u.user_email, u.first_name, u.last_initial, u.phone, u.created_at,
+                   s.plan_type, s.sub_status, s.search_credits, s.current_period_end,
+                   s.stripe_customer_id, s.stripe_subscription_id
+            FROM users u
+            LEFT JOIN subscriptions s ON u.user_email = s.user_email
+            ORDER BY u.created_at DESC
+            """
+        )
+    except Exception:
+        users = []
     total = len(rows)
     unverified = sum(1 for r in rows if r.get("status") == "unverified")
     unique_flights = len({r.get("flight_code", "") for r in rows})
     return render_template("admin.html", entries=rows, total=total,
-                           unverified=unverified, unique_flights=unique_flights)
+                           unverified=unverified, unique_flights=unique_flights,
+                           users=users)
 
 
 @app.post("/admin/delete-all")
@@ -1828,6 +1844,117 @@ def admin_set_user_created() -> Any:
     )
     rows = db.query(f"SELECT user_email, created_at FROM users WHERE user_email = {p}", (email,))
     return jsonify({"ok": True, "user": rows[0] if rows else None})
+
+
+@app.post("/admin/edit-user")
+def admin_edit_user() -> Any:
+    """Edit a user's profile and/or subscription fields from the admin panel."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.form.get("email", "").strip().lower()
+    if not email:
+        return redirect(url_for("admin_panel"))
+
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+
+    # --- User profile fields ---
+    first_name = request.form.get("first_name", "").strip().title()
+    last_initial = request.form.get("last_initial", "").strip().upper()[:1]
+    phone = request.form.get("phone", "").strip()
+    created_at = request.form.get("created_at", "").strip()  # trial reset date
+
+    user_updates: list[str] = []
+    user_vals: list[Any] = []
+    if first_name:
+        user_updates.append(f"first_name = {p}")
+        user_vals.append(first_name)
+    if last_initial:
+        user_updates.append(f"last_initial = {p}")
+        user_vals.append(last_initial)
+    if phone:
+        user_updates.append(f"phone = {p}")
+        user_vals.append(phone)
+    if created_at:
+        user_updates.append(f"created_at = {p}")
+        user_vals.append(created_at)
+    if user_updates:
+        user_vals.append(email)
+        db.execute(
+            f"UPDATE users SET {', '.join(user_updates)} WHERE user_email = {p}",
+            tuple(user_vals),
+        )
+
+    # --- Subscription fields ---
+    plan_type = request.form.get("plan_type", "").strip()
+    sub_status = request.form.get("sub_status", "").strip()
+    search_credits_raw = request.form.get("search_credits", "").strip()
+    current_period_end = request.form.get("current_period_end", "").strip()
+    clear_sub = request.form.get("clear_sub", "").strip()  # "1" to wipe subscription
+
+    if clear_sub == "1":
+        db.execute(
+            f"UPDATE subscriptions SET stripe_customer_id = '', stripe_subscription_id = '', plan_type = '', sub_status = '', current_period_end = '', search_credits = 0, updated_at = {p} WHERE user_email = {p}",
+            (now_iso, email),
+        )
+    else:
+        sub_updates: list[str] = []
+        sub_vals: list[Any] = []
+        if plan_type != "":
+            sub_updates.append(f"plan_type = {p}")
+            sub_vals.append(plan_type)
+        if sub_status != "":
+            sub_updates.append(f"sub_status = {p}")
+            sub_vals.append(sub_status)
+        if search_credits_raw != "":
+            try:
+                sub_updates.append(f"search_credits = {p}")
+                sub_vals.append(int(search_credits_raw))
+            except ValueError:
+                pass
+        if current_period_end:
+            sub_updates.append(f"current_period_end = {p}")
+            sub_vals.append(current_period_end)
+        if sub_updates:
+            sub_updates.append(f"updated_at = {p}")
+            sub_vals.append(now_iso)
+            sub_vals.append(email)
+            # Upsert: update if exists, insert minimal row otherwise
+            existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+            if existing:
+                db.execute(
+                    f"UPDATE subscriptions SET {', '.join(sub_updates)} WHERE user_email = {p}",
+                    tuple(sub_vals),
+                )
+            else:
+                db.execute(
+                    f"INSERT INTO subscriptions (user_email, search_credits, created_at, updated_at) VALUES ({p}, 0, {p}, {p})",
+                    (email, now_iso, now_iso),
+                )
+                db.execute(
+                    f"UPDATE subscriptions SET {', '.join(sub_updates)} WHERE user_email = {p}",
+                    tuple(sub_vals),
+                )
+
+    return redirect(url_for("admin_panel"))
+
+
+@app.post("/admin/reset-user-trial")
+def admin_reset_user_trial() -> Any:
+    """Reset a user to a fresh 30-day trial and wipe their subscription."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.form.get("email", "").strip().lower()
+    if not email:
+        return redirect(url_for("admin_panel"))
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+    db.execute(f"UPDATE users SET created_at = {p} WHERE user_email = {p}", (now_iso, email))
+    db.execute(
+        f"UPDATE subscriptions SET stripe_subscription_id = '', plan_type = '', sub_status = '', current_period_end = '', search_credits = 0, updated_at = {p} WHERE user_email = {p}",
+        (now_iso, email),
+    )
+    return redirect(url_for("admin_panel"))
 
 
 @app.route("/admin/logout", methods=["GET", "POST"])
