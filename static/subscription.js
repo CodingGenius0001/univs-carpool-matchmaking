@@ -102,6 +102,21 @@
     }
   }
 
+  /** Re-fetch status and update the credits counter after a search */
+  async function refreshCreditsIndicator() {
+    _cachedAccess = null; // bust cache so we get fresh data
+    const access = await fetchStatus();
+    const el = document.getElementById('credits-display');
+    if (!el || !access) return;
+    if (access.tier === 'search_pack') {
+      const credits = access.search_credits || 0;
+      el.textContent = `Search Pack: ${credits} search${credits !== 1 ? 'es' : ''} remaining`;
+      if (credits === 0) el.style.color = 'var(--danger, #f87171)';
+    } else if (access.tier !== 'search_pack') {
+      el.remove(); // credits hit 0, tier changed — remove indicator
+    }
+  }
+
   /** Show a paywall overlay over a gated section */
   async function initPaywallOverlay(sectionSelector, tierNeeded, featureName) {
     const access = await fetchStatus();
@@ -217,6 +232,7 @@
     initSubscriptionBadge,
     initTrialBanner,
     initCreditsIndicator,
+    refreshCreditsIndicator,
     initPaywallOverlay,
     startCheckout,
     openBillingPortal,

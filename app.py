@@ -1194,8 +1194,8 @@ def search_carpools() -> Any:
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
 
-    # Decrement search credit only after a successful search (atomic, prevents credit loss on error)
-    if access.get("tier") == "search_pack":
+    # Decrement search credit only when results are found (don't burn credits on empty searches)
+    if access.get("tier") == "search_pack" and results:
         p_tmp = db.placeholder
         db.execute(
             f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p_tmp} WHERE user_email = {p_tmp} AND search_credits > 0",

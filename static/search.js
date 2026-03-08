@@ -154,6 +154,11 @@ searchForm?.addEventListener('submit', async (e) => {
     const res = await fetch(`/api/carpools/search?${query.toString()}`);
     const data = await res.json();
 
+    // Refresh credits counter after every search (backend may have decremented)
+    if (typeof C2ASub !== 'undefined') {
+      C2ASub.refreshCreditsIndicator();
+    }
+
     if (!data.results?.length) {
       const params = new URLSearchParams();
       if (formData.flight_code) params.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
