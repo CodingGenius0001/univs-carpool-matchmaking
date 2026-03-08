@@ -33,7 +33,7 @@
     const badge = document.createElement('span');
     badge.className = 'subscription-badge ' + (tier === 'none' ? 'locked' : tier === 'trial' ? 'trial' : tier === 'search_pack' ? 'search-pack' : '');
     badge.textContent = labels[tier] || tier;
-    emailEl.after(badge);
+    emailEl.appendChild(badge);
   }
 
   /** Show a trial / status banner at the top of .container main */

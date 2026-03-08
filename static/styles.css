@@ -1153,7 +1153,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .hamburger-menu .menu-email {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.5rem 1rem;
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1845,7 +1847,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   color: #0a0e1a;
   vertical-align: middle;
-  margin-left: 0.4rem;
   text-transform: uppercase;
 }
 .subscription-badge.trial { background: rgba(110,231,183,0.25); color: var(--accent); }

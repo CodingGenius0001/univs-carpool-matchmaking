@@ -58,10 +58,15 @@ def to_pst_filter(utc_str: str) -> str:
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 # Accept a pre-computed hash via env var (most secure), or a plaintext password
-# via ADMIN_PASSWORD env var, falling back to the default only in development.
+# via ADMIN_PASSWORD env var. No default — must be configured explicitly.
 _admin_pw_hash = os.getenv("ADMIN_PASSWORD_HASH", "")
 if not _admin_pw_hash:
-    _admin_pw_hash = generate_password_hash(os.getenv("ADMIN_PASSWORD", "Keshavpsn!8"))
+    _admin_pw = os.getenv("ADMIN_PASSWORD", "")
+    if not _admin_pw:
+        raise RuntimeError(
+            "ADMIN_PASSWORD or ADMIN_PASSWORD_HASH environment variable must be set"
+        )
+    _admin_pw_hash = generate_password_hash(_admin_pw)
 ADMIN_PASSWORD_HASH = _admin_pw_hash
 FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
