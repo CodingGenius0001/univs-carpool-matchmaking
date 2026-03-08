@@ -1937,6 +1937,8 @@ def account_page() -> Any:
         sub=sub,
         stripe_sub_data=stripe_sub_data,
         stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
+        price_monthly=STRIPE_PRICE_MONTHLY,
+        price_annual=STRIPE_PRICE_ANNUAL,
     )
 
 
@@ -2100,6 +2102,44 @@ def create_checkout_session() -> Any:
             cancel_url=request.host_url.rstrip("/") + "/pricing",
         )
         return jsonify({"url": checkout.url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subscription/upgrade")
+def upgrade_subscription() -> Any:
+    """Upgrade an active monthly subscription to annual in-place via Stripe."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    if not stripe_lib:
+        return jsonify({"error": "Stripe is not configured on this server"}), 503
+    if not STRIPE_PRICE_ANNUAL:
+        return jsonify({"error": "Annual plan not configured"}), 503
+
+    p = db.placeholder
+    sub_rows = db.query(f"SELECT * FROM subscriptions WHERE user_email = {p}", (email,))
+    if not sub_rows or not sub_rows[0].get("stripe_subscription_id"):
+        return jsonify({"error": "No active subscription found"}), 400
+    sub = sub_rows[0]
+    if sub.get("plan_type") != "monthly":
+        return jsonify({"error": "Only monthly plans can be upgraded this way"}), 400
+
+    stripe_lib.api_key = STRIPE_SECRET_KEY
+    try:
+        stripe_sub = stripe_lib.Subscription.retrieve(sub["stripe_subscription_id"])
+        item_id = stripe_sub["items"]["data"][0]["id"]
+        stripe_lib.Subscription.modify(
+            sub["stripe_subscription_id"],
+            items=[{"id": item_id, "price": STRIPE_PRICE_ANNUAL}],
+            proration_behavior="always_invoice",
+        )
+        now_iso = _now_utc().isoformat()
+        db.execute(
+            f"UPDATE subscriptions SET plan_type = {p}, updated_at = {p} WHERE user_email = {p}",
+            ("annual", now_iso, email),
+        )
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
