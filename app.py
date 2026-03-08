@@ -1957,6 +1957,52 @@ def admin_reset_user_trial() -> Any:
     return redirect(url_for("admin_panel"))
 
 
+@app.post("/admin/grant-subscription")
+def admin_grant_subscription() -> Any:
+    """Manually grant a user a monthly or annual subscription (bypasses Stripe)."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.form.get("email", "").strip().lower()
+    plan = request.form.get("plan", "").strip()  # 'monthly', 'annual', or 'search_pack'
+    if not email or plan not in ("monthly", "annual", "search_pack"):
+        return redirect(url_for("admin_panel"))
+
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+
+    if plan == "search_pack":
+        existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+        if existing:
+            db.execute(
+                f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
+                (now_iso, email),
+            )
+        else:
+            db.execute(
+                f"INSERT INTO subscriptions (user_email, search_credits, created_at, updated_at) VALUES ({p}, 3, {p}, {p})",
+                (email, now_iso, now_iso),
+            )
+    else:
+        if plan == "monthly":
+            period_end = (_now_utc() + timedelta(days=31)).isoformat()
+        else:
+            period_end = (_now_utc() + timedelta(days=366)).isoformat()
+
+        existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+        if existing:
+            db.execute(
+                f"UPDATE subscriptions SET plan_type = {p}, sub_status = 'active', current_period_end = {p}, updated_at = {p} WHERE user_email = {p}",
+                (plan, period_end, now_iso, email),
+            )
+        else:
+            db.execute(
+                f"INSERT INTO subscriptions (user_email, plan_type, sub_status, current_period_end, search_credits, created_at, updated_at) VALUES ({p}, {p}, 'active', {p}, 0, {p}, {p})",
+                (email, plan, period_end, now_iso, now_iso),
+            )
+
+    return redirect(url_for("admin_panel"))
+
+
 @app.route("/admin/logout", methods=["GET", "POST"])
 def admin_logout() -> Any:
     session.clear()

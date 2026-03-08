@@ -220,7 +220,7 @@
                 <td style="font-size:0.8rem;">{{ u.sub_status or '—' }}</td>
                 <td style="text-align:center;">{{ u.search_credits or 0 }}</td>
                 <td style="font-size:0.78rem;">{{ (u.current_period_end or '')[:10] or '—' }}</td>
-                <td style="white-space:nowrap;">
+                <td style="white-space:nowrap;display:flex;flex-direction:column;gap:0.3rem;padding:0.5rem;">
                   <button type="button" class="btn btn-secondary btn-sm user-edit-btn"
                     data-email="{{ u.user_email }}"
                     data-first_name="{{ u.first_name or '' }}"
@@ -232,10 +232,28 @@
                     data-search_credits="{{ u.search_credits or 0 }}"
                     data-current_period_end="{{ u.current_period_end or '' }}"
                   >Edit</button>
-                  <form method="post" action="/admin/reset-user-trial" style="display:inline;"
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} a monthly plan?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="monthly" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(110,231,183,0.15);color:var(--accent);border-color:rgba(110,231,183,0.3);">+ Monthly</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} an annual plan?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="annual" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(96,165,250,0.15);color:var(--accent2);border-color:rgba(96,165,250,0.3);">+ Annual</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Add 3 search credits to {{ u.user_email }}?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="search_pack" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3);">+3 Credits</button>
+                  </form>
+                  <form method="post" action="/admin/reset-user-trial" style="display:contents;"
                         onsubmit="return confirm('Reset {{ u.user_email }} to a fresh 30-day trial and clear their subscription?');">
                     <input type="hidden" name="email" value="{{ u.user_email }}" />
-                    <button type="submit" class="btn btn-sm" style="background:rgba(251,191,36,0.15);color:#fbbf24;border-color:rgba(251,191,36,0.3);margin-top:0.25rem;">Reset Trial</button>
+                    <button type="submit" class="btn btn-sm" style="background:rgba(251,191,36,0.15);color:#fbbf24;border-color:rgba(251,191,36,0.3);">Reset Trial</button>
                   </form>
                 </td>
               </tr>
