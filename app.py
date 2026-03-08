@@ -502,6 +502,10 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'creator_email'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
+                # Idempotency: track last processed checkout session to prevent double-credits
+                cur.execute("SHOW COLUMNS FROM subscriptions LIKE 'last_checkout_session_id'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE subscriptions ADD COLUMN last_checkout_session_id VARCHAR(255) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -513,6 +517,10 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
                 if "creator_email" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
+                cur.execute("PRAGMA table_info(subscriptions)")
+                sub_cols = [row[1] for row in cur.fetchall()]
+                if "last_checkout_session_id" not in sub_cols:
+                    cur.execute("ALTER TABLE subscriptions ADD COLUMN last_checkout_session_id TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -600,22 +608,26 @@ def get_user_access(user_email: str) -> dict[str, Any]:
         if sub_rows:
             s = sub_rows[0]
             if s.get("sub_status") == "active" and s.get("current_period_end"):
+                plan = s.get("plan_type") or "monthly"
+                period_end_str = s["current_period_end"]
+                still_valid = False
                 try:
-                    period_end = datetime.fromisoformat(
-                        s["current_period_end"].replace("Z", "+00:00")
-                    )
+                    period_end = datetime.fromisoformat(period_end_str.replace("Z", "+00:00"))
                     if period_end.tzinfo is None:
                         period_end = period_end.replace(tzinfo=timezone.utc)
-                    if _now_utc() < period_end:
-                        return {
-                            "tier": s["plan_type"],
-                            "can_search": True,
-                            "can_create": True,
-                            "can_join": True,
-                            "current_period_end": s["current_period_end"],
-                        }
+                    still_valid = _now_utc() < period_end
                 except Exception:
-                    pass
+                    # Cannot parse date — give benefit of the doubt so a paid user
+                    # isn't locked out due to a DB data format issue.
+                    still_valid = True
+                if still_valid:
+                    return {
+                        "tier": plan,
+                        "can_search": True,
+                        "can_create": True,
+                        "can_join": True,
+                        "current_period_end": period_end_str,
+                    }
             # 3. Check search credits (one-time pack)
             credits = int(s.get("search_credits", 0) or 0)
             if credits > 0:
@@ -1961,10 +1973,17 @@ def sync_subscription() -> Any:
             )
 
         if mode == "payment":
-            db.execute(
-                f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
-                (now_iso, email),
+            # Idempotency check: only add credits if this checkout session hasn't been processed before
+            already_rows = db.query(
+                f"SELECT last_checkout_session_id FROM subscriptions WHERE user_email = {p}",
+                (email,),
             )
+            already = (already_rows[0].get("last_checkout_session_id") or "") if already_rows else ""
+            if already != checkout_session_id:
+                db.execute(
+                    f"UPDATE subscriptions SET search_credits = search_credits + 3, last_checkout_session_id = {p}, updated_at = {p} WHERE user_email = {p}",
+                    (checkout_session_id, now_iso, email),
+                )
         elif mode == "subscription":
             sub_id = cs.get("subscription", "")
             if sub_id:
@@ -2070,6 +2089,12 @@ def customer_portal() -> Any:
     if not customer_id:
         return jsonify({"error": "No billing account found. Please subscribe first."}), 404
 
+    # Verify customer still exists in Stripe
+    try:
+        stripe_lib.Customer.retrieve(customer_id)
+    except stripe_lib.error.InvalidRequestError:
+        return jsonify({"error": "Billing account not found. Please contact support."}), 404
+
     try:
         portal = stripe_lib.billing_portal.Session.create(
             customer=customer_id,
@@ -2114,7 +2139,7 @@ def stripe_webhook() -> Any:
     try:
         stripe_lib.api_key = STRIPE_SECRET_KEY
         event = stripe_lib.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except stripe_lib.errors.SignatureVerificationError:
+    except stripe_lib.error.SignatureVerificationError:
         return jsonify({"error": "Invalid signature"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -2176,16 +2201,25 @@ def stripe_webhook() -> Any:
 
     elif event_type == "invoice.payment_succeeded":
         sub_id = obj.get("subscription", "")
+        customer_id = obj.get("customer", "")
         if sub_id:
             try:
                 sub = stripe_lib.Subscription.retrieve(sub_id)
                 plan_type = _get_plan_type_from_stripe_sub(sub)
                 ts = _get_period_end_ts(sub)
                 period_end = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else ""
+                # Primary: update by subscription_id (covers renewals)
                 db.execute(
                     f"UPDATE subscriptions SET sub_status = 'active', current_period_end = {p}, plan_type = {p}, updated_at = {p} WHERE stripe_subscription_id = {p}",
                     (period_end, plan_type, now_iso, sub_id),
                 )
+                # Fallback: if the subscription_id wasn't saved (initial sync failed),
+                # update by customer_id so the user still gets access.
+                if customer_id:
+                    db.execute(
+                        f"UPDATE subscriptions SET sub_status = 'active', stripe_subscription_id = {p}, current_period_end = {p}, plan_type = {p}, updated_at = {p} WHERE stripe_customer_id = {p} AND (stripe_subscription_id = '' OR stripe_subscription_id IS NULL)",
+                        (sub_id, period_end, plan_type, now_iso, customer_id),
+                    )
             except Exception:
                 pass
 
