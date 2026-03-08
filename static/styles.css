@@ -188,6 +188,14 @@ main, .container {
 .btn-danger:hover {
   background: rgba(248, 113, 113, 0.2);
 }
+.btn-ghost-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+.btn-ghost-danger:hover {
+  background: rgba(248, 113, 113, 0.08);
+}
 
 .btn-sm {
   font-size: 0.8rem;
@@ -1145,7 +1153,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .hamburger-menu .menu-email {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.5rem 1rem;
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1798,3 +1808,132 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 1;
   transform: scale(1);
 }
+
+/* ===========================================================================
+   Subscription / Pricing UI
+   =========================================================================== */
+
+/* Trial / status banner */
+.trial-banner {
+  background: linear-gradient(135deg, rgba(110,231,183,0.15), rgba(96,165,250,0.12));
+  border: 1px solid rgba(110,231,183,0.3);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+.trial-banner .trial-icon { font-size: 1.2rem; }
+.trial-banner a { color: var(--accent); text-decoration: underline; }
+.trial-banner.warning {
+  background: rgba(251,191,36,0.1);
+  border-color: rgba(251,191,36,0.35);
+}
+.trial-banner.locked {
+  background: rgba(248,113,113,0.1);
+  border-color: rgba(248,113,113,0.35);
+}
+
+/* Subscription badge (chip next to user email in hamburger) */
+.subscription-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #0a0e1a;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.subscription-badge.trial { background: rgba(110,231,183,0.25); color: var(--accent); }
+.subscription-badge.monthly { background: rgba(110,231,183,0.2); color: var(--accent); }
+.subscription-badge.annual { background: rgba(96,165,250,0.2); color: var(--accent2); }
+.subscription-badge.search-pack { background: rgba(96,165,250,0.25); color: var(--accent2); }
+.subscription-badge.locked { background: rgba(248,113,113,0.2); color: #f87171; }
+
+/* Credits indicator */
+.credits-indicator {
+  font-size: 0.82rem;
+  color: var(--accent2);
+  background: rgba(96,165,250,0.1);
+  border: 1px solid rgba(96,165,250,0.25);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.85rem;
+  margin-bottom: 1rem;
+  display: inline-block;
+}
+
+/* Upgrade / premium button */
+.btn-premium {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #0a0e1a;
+  font-weight: 700;
+  border: none;
+}
+.btn-premium:hover { opacity: 0.9; }
+
+/* Paywall overlay (shown over gated pages) */
+.paywall-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(10,14,26,0.88);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+.paywall-overlay h3 { font-size: 1.3rem; margin: 0; }
+.paywall-overlay p { color: var(--text-muted); margin: 0; }
+section.card { position: relative; } /* needed for overlay positioning */
+
+/* Pricing page */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+.pricing-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color var(--transition), transform var(--transition);
+}
+.pricing-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.pricing-card.featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(110,231,183,0.12);
+}
+.pricing-card .price { font-size: 2rem; font-weight: 800; color: var(--text); }
+.pricing-card .price span { font-size: 0.9rem; font-weight: 400; color: var(--text-muted); }
+.pricing-card .plan-name { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.pricing-card .plan-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.pricing-card .plan-features li { font-size: 0.88rem; color: var(--text-muted); }
+.pricing-card .plan-features li::before { content: "✓ "; color: var(--accent); }
+.pricing-card .plan-features li.feature-no { color: var(--text-muted); opacity: 0.7; }
+.pricing-card .plan-features li.feature-no::before { content: "✕ "; color: var(--danger); }
+.pricing-card .plan-cta { margin-top: auto; }
+
+/* Account page */
+.account-section { display: flex; flex-direction: column; gap: 1.5rem; }
+.account-tier-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.account-tier-label { font-size: 1.4rem; font-weight: 700; }
+
+/* Light mode overrides */
+.light-mode .paywall-overlay { background: rgba(255,255,255,0.9); }
+.light-mode .trial-banner { border-color: rgba(16,130,90,0.3); }
+.light-mode .pricing-card { background: var(--card); }

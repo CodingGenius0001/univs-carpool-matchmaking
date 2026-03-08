@@ -181,6 +181,90 @@
 
         {% endif %}
       </section>
+
+      <!-- Users & Subscriptions Section -->
+      <section class="card" style="margin-top:1.5rem;">
+        <h2>Users &amp; Subscriptions</h2>
+        <p class="text-muted" style="font-size:0.85rem;margin-bottom:1rem;">{{ users|length }} registered user{{ 's' if users|length != 1 else '' }}</p>
+
+        {% if users %}
+        <div class="table-wrap">
+          <table class="entries-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Trial Start</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Credits</th>
+                <th>Period End</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td style="font-size:0.8rem;">{{ u.user_email }}</td>
+                <td>{{ u.first_name or '' }} {{ u.last_initial or '' }}{{ '.' if u.last_initial else '' }}</td>
+                <td style="font-size:0.8rem;">{{ u.phone or '—' }}</td>
+                <td style="font-size:0.78rem;">{{ (u.created_at or '')[:10] or '—' }}</td>
+                <td>
+                  {% if u.plan_type %}<span class="subscription-badge {{ u.plan_type }}">{{ u.plan_type }}</span>
+                  {% elif not u.sub_status %}
+                    {% set created = u.created_at or '' %}
+                    <span class="subscription-badge trial">trial</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="font-size:0.8rem;">{{ u.sub_status or '—' }}</td>
+                <td style="text-align:center;">{{ u.search_credits or 0 }}</td>
+                <td style="font-size:0.78rem;">{{ (u.current_period_end or '')[:10] or '—' }}</td>
+                <td style="white-space:nowrap;display:flex;flex-direction:column;gap:0.3rem;padding:0.5rem;">
+                  <button type="button" class="btn btn-secondary btn-sm user-edit-btn"
+                    data-email="{{ u.user_email }}"
+                    data-first_name="{{ u.first_name or '' }}"
+                    data-last_initial="{{ u.last_initial or '' }}"
+                    data-phone="{{ u.phone or '' }}"
+                    data-created_at="{{ u.created_at or '' }}"
+                    data-plan_type="{{ u.plan_type or '' }}"
+                    data-sub_status="{{ u.sub_status or '' }}"
+                    data-search_credits="{{ u.search_credits or 0 }}"
+                    data-current_period_end="{{ u.current_period_end or '' }}"
+                  >Edit</button>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} a monthly plan?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="monthly" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(110,231,183,0.15);color:var(--accent);border-color:rgba(110,231,183,0.3);">+ Monthly</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} an annual plan?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="annual" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(96,165,250,0.15);color:var(--accent2);border-color:rgba(96,165,250,0.3);">+ Annual</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Add 3 search credits to {{ u.user_email }}?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="search_pack" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3);">+3 Credits</button>
+                  </form>
+                  <form method="post" action="/admin/reset-user-trial" style="display:contents;"
+                        onsubmit="return confirm('Reset {{ u.user_email }} to a fresh 30-day trial and clear their subscription?');">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(251,191,36,0.15);color:#fbbf24;border-color:rgba(251,191,36,0.3);">Reset Trial</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No users yet.</p>
+        {% endif %}
+      </section>
     </main>
 
     <!-- Edit Modal -->
@@ -217,6 +301,68 @@
           <div class="modal-actions mt-2">
             <button type="submit" class="btn btn-primary">Save Changes</button>
             <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- User Edit Modal -->
+    <div id="user-edit-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card card" style="max-width:520px;">
+        <h3>Edit User</h3>
+        <p id="user-edit-email-display" class="text-muted" style="font-size:0.85rem;margin:0 0 1rem;"></p>
+        <form id="user-edit-form" method="post" action="/admin/edit-user">
+          <input type="hidden" name="email" id="user-edit-email" />
+          <p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);font-weight:600;margin:0 0 0.5rem;">Profile</p>
+          <div class="modal-grid">
+            <label>First Name
+              <input name="first_name" id="user-edit-first_name" placeholder="First name" />
+            </label>
+            <label>Last Initial
+              <input name="last_initial" id="user-edit-last_initial" maxlength="1" placeholder="Initial" />
+            </label>
+            <label>Phone
+              <input name="phone" id="user-edit-phone" placeholder="+1 (XXX) XXX XXXX" />
+            </label>
+            <label>Trial Start (created_at)
+              <input name="created_at" id="user-edit-created_at" placeholder="2026-01-01T00:00:00" />
+            </label>
+          </div>
+          <p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);font-weight:600;margin:1rem 0 0.5rem;">Subscription</p>
+          <div class="modal-grid">
+            <label>Plan Type
+              <select name="plan_type" id="user-edit-plan_type">
+                <option value="">— unchanged —</option>
+                <option value="monthly">monthly</option>
+                <option value="annual">annual</option>
+                <option value="">none (clear)</option>
+              </select>
+            </label>
+            <label>Sub Status
+              <select name="sub_status" id="user-edit-sub_status">
+                <option value="">— unchanged —</option>
+                <option value="active">active</option>
+                <option value="past_due">past_due</option>
+                <option value="canceled">canceled</option>
+                <option value="">none (clear)</option>
+              </select>
+            </label>
+            <label>Search Credits
+              <input name="search_credits" id="user-edit-search_credits" type="number" min="0" placeholder="0" />
+            </label>
+            <label>Period End (ISO date)
+              <input name="current_period_end" id="user-edit-current_period_end" placeholder="2026-04-01T00:00:00" />
+            </label>
+          </div>
+          <div style="margin-top:1rem;padding:0.75rem;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" name="clear_sub" id="user-edit-clear_sub" value="1" />
+              Wipe entire subscription record (clears all billing fields + credits)
+            </label>
+          </div>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <button type="button" class="btn btn-secondary" id="user-edit-cancel">Cancel</button>
           </div>
         </form>
       </div>
@@ -259,6 +405,31 @@
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
+
+      // User Edit modal logic
+      const userModal = document.getElementById('user-edit-modal');
+      const userEditForm = document.getElementById('user-edit-form');
+      const userEditCancel = document.getElementById('user-edit-cancel');
+
+      document.querySelectorAll('.user-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('user-edit-email').value = btn.dataset.email;
+          document.getElementById('user-edit-email-display').textContent = btn.dataset.email;
+          document.getElementById('user-edit-first_name').value = btn.dataset.first_name;
+          document.getElementById('user-edit-last_initial').value = btn.dataset.last_initial;
+          document.getElementById('user-edit-phone').value = btn.dataset.phone;
+          document.getElementById('user-edit-created_at').value = btn.dataset.created_at;
+          document.getElementById('user-edit-plan_type').value = btn.dataset.plan_type;
+          document.getElementById('user-edit-sub_status').value = btn.dataset.sub_status;
+          document.getElementById('user-edit-search_credits').value = btn.dataset.search_credits;
+          document.getElementById('user-edit-current_period_end').value = btn.dataset.current_period_end;
+          document.getElementById('user-edit-clear_sub').checked = false;
+          userModal.style.display = 'flex';
+        });
+      });
+
+      userEditCancel.addEventListener('click', () => { userModal.style.display = 'none'; });
+      userModal.addEventListener('click', (e) => { if (e.target === userModal) userModal.style.display = 'none'; });
     </script>
       <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
