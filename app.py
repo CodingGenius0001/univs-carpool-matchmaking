@@ -17,7 +17,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, g, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
@@ -156,6 +156,7 @@ class DBAdapter:
         self.placeholder = "%s" if self.engine == "mysql" else "?"
         self._mysql_failed = False
         self._mysql_failed_at: float | None = None  # timestamp of last failure
+        self._schema_needs_reinit = False  # set True when falling back to SQLite
 
     def _activate_sqlite_fallback(self, reason: str = "") -> None:
         """Switch to SQLite fallback. Retries MySQL after 60 s of downtime."""
@@ -165,13 +166,15 @@ class DBAdapter:
         self._mysql_failed = True
         self._mysql_failed_at = time.time()
         self.placeholder = "?"
-        # Discard any broken MySQL connection on this request
-        old = g.pop("db", None)
-        if old is not None:
-            try:
-                old.close()
-            except Exception:
-                pass
+        self._schema_needs_reinit = True  # SQLite schema must be (re-)initialized
+        # Discard any broken MySQL connection — g is only available in a request context
+        if has_request_context():
+            old = g.pop("db", None)
+            if old is not None:
+                try:
+                    old.close()
+                except Exception:
+                    pass
 
     def _should_retry_mysql(self) -> bool:
         """Return True if enough time has passed to retry MySQL after a failure."""
@@ -741,8 +744,9 @@ _db_initialized = False
 def _ensure_db() -> None:
     """Ensure database table exists on every request (handles Vercel cold starts)."""
     global _db_initialized
-    if _db_initialized:
+    if _db_initialized and not db._schema_needs_reinit:
         return
+    db._schema_needs_reinit = False
     try:
         db.init_schema()
         db.ensure_columns()
@@ -905,40 +909,41 @@ def firebase_callback() -> Any:
     session["user_name"] = name
     session["user_uid"] = uid
 
-    # Store/update user profile from Google display name
-    if name:
-        parts = name.strip().split()
-        first_name = parts[0] if parts else ""
-        last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
-        p = db.placeholder
-        try:
-            existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
-            if not existing:
-                db.execute(
-                    f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
-                    (email, first_name, last_initial, "", _now_utc().isoformat()),
-                )
-            else:
-                # Update name in case Google name changed, but don't overwrite phone
-                db.execute(
-                    f"UPDATE users SET first_name = {p}, last_initial = {p} WHERE user_email = {p}",
-                    (first_name, last_initial, email),
-                )
-        except Exception:
-            pass
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+    parts = name.strip().split() if name else []
+    first_name = parts[0] if parts else ""
+    last_initial = parts[-1][0].upper() if len(parts) > 1 and parts[-1] else ""
 
-        # Ensure subscription row exists for new users
-        try:
-            existing_sub = db.query(
-                f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,)
+    # Always create the users row (needed for trial tracking via created_at)
+    try:
+        existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+        if not existing:
+            db.execute(
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso),
             )
-            if not existing_sub:
-                db.execute(
-                    f"INSERT INTO subscriptions (user_email, search_credits, created_at, updated_at) VALUES ({p}, 0, {p}, {p})",
-                    (email, _now_utc().isoformat(), _now_utc().isoformat()),
-                )
-        except Exception:
-            pass
+        elif name:
+            # Only update name fields if a name was provided (don't blank out existing)
+            db.execute(
+                f"UPDATE users SET first_name = {p}, last_initial = {p} WHERE user_email = {p}",
+                (first_name, last_initial, email),
+            )
+    except Exception:
+        pass
+
+    # Always ensure subscription row exists — required for trial and billing tracking
+    try:
+        existing_sub = db.query(
+            f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,)
+        )
+        if not existing_sub:
+            db.execute(
+                f"INSERT INTO subscriptions (user_email, search_credits, created_at, updated_at) VALUES ({p}, 0, {p}, {p})",
+                (email, now_iso, now_iso),
+            )
+    except Exception:
+        pass
 
     return jsonify({"ok": True, "redirect": url_for("start_now_page")})
 
@@ -1128,14 +1133,6 @@ def search_carpools() -> Any:
             "tier_needed": "search_pack",
         }), 403
 
-    # Decrement search credit for one-time pack users (atomic update)
-    if access.get("tier") == "search_pack":
-        p_tmp = db.placeholder
-        db.execute(
-            f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p_tmp} WHERE user_email = {p_tmp} AND search_credits > 0",
-            (_now_utc().isoformat(), search_user),
-        )
-
     flight_code = _clean_flight_code(request.args.get("flight_code", ""))
     airport_code = request.args.get("airport_code", "").upper().strip()
     flight_date_raw = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip()
@@ -1189,6 +1186,15 @@ def search_carpools() -> Any:
             results.append(public_row)
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
+
+    # Decrement search credit only after a successful search (atomic, prevents credit loss on error)
+    if access.get("tier") == "search_pack":
+        p_tmp = db.placeholder
+        db.execute(
+            f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p_tmp} WHERE user_email = {p_tmp} AND search_credits > 0",
+            (_now_utc().isoformat(), search_user),
+        )
+
     return jsonify({"count": len(results), "results": results})
 
 
@@ -1223,6 +1229,11 @@ def join_party(carpool_id: int) -> Any:
         return jsonify({"error": "Carpool not found"}), 404
 
     carpool = rows[0]
+
+    # Reject joins on expired carpools (join_party doesn't call _cleanup_expired_entries)
+    expires_at = carpool.get("expires_at", "")
+    if expires_at and expires_at <= _now_utc().isoformat():
+        return jsonify({"error": "This carpool has expired"}), 410
 
     # Check if already a member
     existing = db.query(
@@ -1729,6 +1740,7 @@ def admin_panel() -> Any:
 def admin_delete_all() -> Any:
     if not _require_admin():
         return jsonify({"error": "Unauthorized"}), 401
+    db.execute("DELETE FROM party_members")
     db.execute("DELETE FROM carpools")
     return redirect(url_for("admin_panel"))
 
@@ -1738,6 +1750,7 @@ def admin_delete_entry(entry_id: int) -> Any:
     if not _require_admin():
         return jsonify({"error": "Unauthorized"}), 401
     p = db.placeholder
+    db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (entry_id,))
     db.execute(f"DELETE FROM carpools WHERE id = {p}", (entry_id,))
     return redirect(url_for("admin_panel"))
 
@@ -2036,6 +2049,9 @@ def create_checkout_session() -> Any:
         return jsonify({"error": "price_id is required"}), 400
     if mode not in ("subscription", "payment"):
         return jsonify({"error": "Invalid mode; must be 'subscription' or 'payment'"}), 400
+    allowed_prices = {STRIPE_PRICE_MONTHLY, STRIPE_PRICE_ANNUAL, STRIPE_PRICE_SEARCH_PACK}
+    if price_id not in allowed_prices:
+        return jsonify({"error": "Invalid price selection"}), 400
 
     stripe_lib.api_key = STRIPE_SECRET_KEY
     p = db.placeholder
@@ -2189,11 +2205,18 @@ def stripe_webhook() -> Any:
             )
 
         if mode == "payment":
-            # Search pack: add 3 credits
-            db.execute(
-                f"UPDATE subscriptions SET search_credits = search_credits + 3, updated_at = {p} WHERE user_email = {p}",
-                (now_iso, user_email),
+            # Search pack: add 3 credits — idempotency check prevents double-grant on retry
+            checkout_session_id = obj.get("id", "")
+            already_rows = db.query(
+                f"SELECT last_checkout_session_id FROM subscriptions WHERE user_email = {p}",
+                (user_email,),
             )
+            already = (already_rows[0].get("last_checkout_session_id") or "") if already_rows else ""
+            if already != checkout_session_id:
+                db.execute(
+                    f"UPDATE subscriptions SET search_credits = search_credits + 3, last_checkout_session_id = {p}, updated_at = {p} WHERE user_email = {p}",
+                    (checkout_session_id, now_iso, user_email),
+                )
         elif mode == "subscription":
             sub_id = obj.get("subscription", "")
             if sub_id:
