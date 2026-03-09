@@ -930,6 +930,15 @@ def firebase_callback() -> Any:
                 f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
                 (email, first_name, last_initial, "", now_iso),
             )
+            # Welcome notification: inform new user of their 30-day free trial
+            trial_end_date = (_now_utc() + timedelta(days=30)).strftime("%B %d, %Y")
+            try:
+                db.execute(
+                    f"INSERT INTO notifications (user_email, message, created_at, dismissed) VALUES ({p}, {p}, {p}, 0)",
+                    (email, f"🎉 Welcome to Campus2Air! Your free 30-day trial has started and will end on {trial_end_date}. Enjoy unlimited searches and carpool creation during your trial.", now_iso),
+                )
+            except Exception:
+                pass
         elif name:
             # Only update name fields if a name was provided (don't blank out existing)
             db.execute(
