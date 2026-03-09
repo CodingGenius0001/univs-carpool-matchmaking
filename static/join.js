@@ -1,3 +1,5 @@
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
 const form = document.querySelector('#join-form');
 const msg = document.querySelector('#join-message');
 const airportCodeInput = document.querySelector('#airport_code');
@@ -7,7 +9,7 @@ const departureDateInput = document.querySelector('#departure_date');
 const airlineDropdown = document.querySelector('#airline-dropdown');
 const airlineNameInput = document.querySelector('#airline_name');
 
-// --- Set min date to today ---
+// --- Set min date to today and max to 1 year from now ---
 if (departureDateInput) {
   const today = new Date();
   const yyyy = today.getFullYear();
@@ -15,23 +17,6 @@ if (departureDateInput) {
   const dd = String(today.getDate()).padStart(2, '0');
   departureDateInput.min = `${yyyy}-${mm}-${dd}`;
 
-  const maxDate = new Date(today);
-  maxDate.setFullYear(maxDate.getFullYear() + 1);
-  const maxYyyy = maxDate.getFullYear();
-  const maxMm = String(maxDate.getMonth() + 1).padStart(2, '0');
-  const maxDd = String(maxDate.getDate()).padStart(2, '0');
-  departureDateInput.max = `${maxYyyy}-${maxMm}-${maxDd}`;
-}
-
-// --- Set min date to today ---
-if (departureDateInput) {
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  departureDateInput.min = `${yyyy}-${mm}-${dd}`;
-
-  // Also set a reasonable max (1 year from now)
   const maxDate = new Date(today);
   maxDate.setFullYear(maxDate.getFullYear() + 1);
   const maxYyyy = maxDate.getFullYear();
@@ -265,7 +250,7 @@ form?.addEventListener('submit', async (e) => {
 
     const res = await fetch('/api/carpools', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
       body: JSON.stringify(payload),
       signal: controller.signal
     });

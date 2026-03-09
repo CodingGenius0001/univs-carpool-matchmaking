@@ -17,7 +17,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, g, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
@@ -26,7 +26,22 @@ except ImportError:
     stripe_lib = None  # type: ignore[assignment]
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
+_flask_secret = os.getenv("FLASK_SECRET_KEY")
+if not _flask_secret:
+    raise RuntimeError("FLASK_SECRET_KEY environment variable must be set.")
+app.secret_key = _flask_secret
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+csrf = CSRFProtect(app)
+app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # 1 hour
+app.config['WTF_CSRF_HEADERS'] = ['X-CSRFToken', 'X-CSRF-Token']
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -42,6 +57,30 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_MONTHLY = os.getenv("STRIPE_PRICE_MONTHLY", "")    # $0.99/mo
 STRIPE_PRICE_ANNUAL = os.getenv("STRIPE_PRICE_ANNUAL", "")      # $8.28/yr
 STRIPE_PRICE_SEARCH_PACK = os.getenv("STRIPE_PRICE_SEARCH_PACK", "")  # $2.99 one-time
+
+# ---------------------------------------------------------------------------
+# Firebase Admin SDK initialization (server-side token verification)
+# ---------------------------------------------------------------------------
+import firebase_admin
+from firebase_admin import credentials as fb_credentials, auth as fb_auth
+
+_firebase_app = None
+_fb_sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+if _fb_sa_json:
+    try:
+        import json as _json
+        _sa_dict = _json.loads(_fb_sa_json)
+        _fb_cred = fb_credentials.Certificate(_sa_dict)
+        _firebase_app = firebase_admin.initialize_app(_fb_cred)
+    except Exception as _fb_err:
+        print(f"WARNING: Firebase Admin SDK init failed: {_fb_err}. Token verification disabled.")
+else:
+    print("WARNING: FIREBASE_SERVICE_ACCOUNT_JSON not set. Firebase token verification is DISABLED — not safe for production.")
+
+
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf)
 
 
 @app.template_filter("to_pst")
@@ -276,6 +315,29 @@ class DBAdapter:
         return list(rows)
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> int:
+        """Execute a statement and return the number of rows affected (rowcount)."""
+        try:
+            conn = self.get_conn()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            rowcount = cur.rowcount
+            conn.commit()
+            cur.close()
+        except Exception as exc:
+            if self.engine == "mysql" and self._is_mysql_conn_error(exc):
+                self._activate_sqlite_fallback(f"MySQL execute failed: {exc}")
+                conn = self._get_sqlite_conn()
+                cur = conn.cursor()
+                cur.execute(sql.replace("%s", "?"), params)
+                rowcount = cur.rowcount
+                conn.commit()
+                cur.close()
+            else:
+                raise
+        return int(rowcount if rowcount is not None else 0)
+
+    def execute_insert(self, sql: str, params: tuple[Any, ...] = ()) -> int:
+        """Execute an INSERT statement and return the last inserted row ID."""
         try:
             conn = self.get_conn()
             cur = conn.cursor()
@@ -285,7 +347,7 @@ class DBAdapter:
             cur.close()
         except Exception as exc:
             if self.engine == "mysql" and self._is_mysql_conn_error(exc):
-                self._activate_sqlite_fallback(f"MySQL execute failed: {exc}")
+                self._activate_sqlite_fallback(f"MySQL execute_insert failed: {exc}")
                 conn = self._get_sqlite_conn()
                 cur = conn.cursor()
                 cur.execute(sql.replace("%s", "?"), params)
@@ -523,6 +585,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM subscriptions LIKE 'last_checkout_session_id'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE subscriptions ADD COLUMN last_checkout_session_id VARCHAR(255) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM users LIKE 'is_banned'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE users ADD COLUMN is_banned INT NOT NULL DEFAULT 0")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -538,6 +603,10 @@ class DBAdapter:
                 sub_cols = [row[1] for row in cur.fetchall()]
                 if "last_checkout_session_id" not in sub_cols:
                     cur.execute("ALTER TABLE subscriptions ADD COLUMN last_checkout_session_id TEXT NOT NULL DEFAULT ''")
+                cur.execute("PRAGMA table_info(users)")
+                user_cols = [row[1] for row in cur.fetchall()]
+                if "is_banned" not in user_cols:
+                    cur.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0")
             conn.commit()
         finally:
             cur.close()
@@ -636,9 +705,8 @@ def get_user_access(user_email: str) -> dict[str, Any]:
                         period_end = period_end.replace(tzinfo=timezone.utc)
                     still_valid = _now_utc() < period_end
                 except Exception:
-                    # Cannot parse date — give benefit of the doubt so a paid user
-                    # isn't locked out due to a DB data format issue.
-                    still_valid = True
+                    # Cannot parse date — treat as expired rather than giving free access
+                    still_valid = False
                 if still_valid:
                     return {
                         "tier": plan,
@@ -762,6 +830,16 @@ def _ensure_db() -> None:
         pass
 
 
+@app.before_request
+def enforce_ban_on_api():
+    """Block banned users from all /api/ endpoints."""
+    if request.path.startswith("/api/"):
+        email = session.get("user_email")
+        if email and _is_user_banned(email):
+            session.clear()
+            return jsonify({"error": "Your account has been suspended. Contact support."}), 403
+
+
 @app.errorhandler(Exception)
 def handle_exception(e: Exception) -> Any:
     """Return JSON errors for API routes, HTML for pages. Never leak internals."""
@@ -795,9 +873,32 @@ def landing() -> Any:
     return render_template("welcome.html")
 
 
+def _is_user_banned(email: str) -> bool:
+    """Returns True if the user is banned."""
+    if not email:
+        return False
+    p = db.placeholder
+    try:
+        rows = db.query(f"SELECT is_banned FROM users WHERE user_email = {p}", (email,))
+        return bool(rows and rows[0].get("is_banned"))
+    except Exception:
+        return False
+
+
 def _require_user_login() -> bool:
     """Check if a regular user is logged in via Firebase."""
-    return bool(session.get("user_email"))
+    email = session.get("user_email")
+    if not email:
+        return False
+    p = db.placeholder
+    try:
+        rows = db.query(f"SELECT is_banned FROM users WHERE user_email = {p}", (email,))
+        if rows and rows[0].get("is_banned"):
+            session.clear()
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def _user_context() -> dict[str, Any]:
@@ -898,12 +999,26 @@ def login_page() -> Any:
 
 
 @app.post("/auth/firebase-callback")
+@csrf.exempt
+@limiter.limit("20 per minute")
 def firebase_callback() -> Any:
-    """Receive Firebase ID token from client, verify email domain, set session."""
+    """Receive Firebase ID token from client, verify it server-side, set session."""
     data = request.get_json(silent=True) or {}
-    email = str(data.get("email", "")).strip().lower()
-    name = str(data.get("name", "")).strip()
-    uid = str(data.get("uid", "")).strip()
+    id_token = data.get("idToken", "")
+    if _firebase_app:
+        try:
+            decoded = fb_auth.verify_id_token(id_token)
+            email = decoded.get("email", "").strip().lower()
+            name = decoded.get("name", data.get("name", "")).strip()
+            uid = decoded.get("uid", "").strip()
+        except Exception:
+            return jsonify({"error": "Invalid or expired authentication token."}), 401
+    else:
+        # Dev fallback — not safe for production
+        print("WARNING: Firebase token not verified (no service account configured).")
+        email = str(data.get("email", "")).strip().lower()
+        name = str(data.get("name", "")).strip()
+        uid = str(data.get("uid", "")).strip()
 
     if not email or not uid:
         return jsonify({"error": "Missing authentication data"}), 400
@@ -911,12 +1026,19 @@ def firebase_callback() -> Any:
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
 
+    p = db.placeholder
+    try:
+        ban_rows = db.query(f"SELECT is_banned FROM users WHERE user_email = {p}", (email,))
+        if ban_rows and ban_rows[0].get("is_banned"):
+            return jsonify({"error": "Your account has been suspended. Contact support."}), 403
+    except Exception:
+        pass
+
     session.permanent = True
     session["user_email"] = email
     session["user_name"] = name
     session["user_uid"] = uid
 
-    p = db.placeholder
     now_iso = _now_utc().isoformat()
     parts = name.strip().split() if name else []
     first_name = parts[0] if parts else ""
@@ -980,12 +1102,13 @@ def search_page() -> Any:
 # ---------------------------------------------------------------------------
 
 @app.post("/api/carpools")
+@limiter.limit("10 per minute")
 def create_carpool() -> Any:
     try:
         return _create_carpool_inner()
     except Exception as e:
         app.logger.error(f"create_carpool error: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": f"Server error: {e}"}), 500
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 def _create_carpool_inner() -> Any:
@@ -1044,6 +1167,9 @@ def _create_carpool_inner() -> Any:
     parsed_flight_date = _parse_user_flight_date(departure_date_raw)
     if not parsed_flight_date:
         return jsonify({"error": "departure_date must be in MM-DD-YYYY format"}), 400
+    today = datetime.now(timezone.utc).date()
+    if parsed_flight_date.date() < today:
+        return jsonify({"error": "Departure date cannot be in the past."}), 400
     flight_date_user = _to_user_flight_date(parsed_flight_date)
 
     airport_name, airport_location = _resolve_airport(airport_code)
@@ -1055,12 +1181,17 @@ def _create_carpool_inner() -> Any:
     # is already "yesterday" in UTC.
     expires_at = (parsed_flight_date + timedelta(days=1)).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
+    try:
+        _seats_available_val = max(1, min(7, int(data.get("seats_available", 4) or 4)))
+    except (ValueError, TypeError):
+        return jsonify({"error": "seats_available must be a number between 1 and 7."}), 400
+
     destination_airport = str(data.get("destination_airport", "")).strip().upper()[:3]
     planned_departure_time = str(data.get("planned_departure_time", "")).strip()
     creator_email = session.get("user_email", "")
 
     p = db.placeholder
-    last_id = db.execute(
+    last_id = db.execute_insert(
         f"""
         INSERT INTO carpools (
             first_name,last_initial,phone,flight_code,airport_code,airport_name,airport_location,
@@ -1078,7 +1209,7 @@ def _create_carpool_inner() -> Any:
             airport_location,
             "TBD",
             _to_api_flight_date(parsed_flight_date),
-            max(1, min(7, int(data.get("seats_available", 4) or 4))),
+            _seats_available_val,
             str(data.get("notes", "")).strip(),
             "direct",
             "active",
@@ -1134,6 +1265,7 @@ def suggest_airlines() -> Any:
 
 
 @app.get("/api/carpools/search")
+@limiter.limit("30 per minute")
 def search_carpools() -> Any:
     _cleanup_expired_entries()
 
@@ -1161,6 +1293,17 @@ def search_carpools() -> Any:
 
     current_user = session.get("user_email", "")
     p = db.placeholder
+
+    # For search_pack: atomically consume credit BEFORE running the search
+    credit_consumed = False
+    if access.get("tier") == "search_pack":
+        affected = db.execute(
+            f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p} WHERE user_email = {p} AND search_credits > 0",
+            (_now_utc().isoformat(), search_user),
+        )
+        if not affected:  # 0 rows updated = no credits left
+            return jsonify({"error": "No search credits remaining.", "upgrade": True}), 403
+        credit_consumed = True
 
     rows = db.query(f"SELECT * FROM carpools WHERE status = {p} ORDER BY created_at DESC", ("active",))
 
@@ -1203,11 +1346,10 @@ def search_carpools() -> Any:
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
 
-    # Decrement search credit only when results are found (don't burn credits on empty searches)
-    if access.get("tier") == "search_pack" and results:
-        p_tmp = db.placeholder
+    # If search_pack and no results found, refund the credit
+    if credit_consumed and not results:
         db.execute(
-            f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p_tmp} WHERE user_email = {p_tmp} AND search_credits > 0",
+            f"UPDATE subscriptions SET search_credits = search_credits + 1, updated_at = {p} WHERE user_email = {p}",
             (_now_utc().isoformat(), search_user),
         )
 
@@ -1216,12 +1358,20 @@ def search_carpools() -> Any:
 
 @app.get("/api/carpools/<int:entry_id>")
 def carpool_details(entry_id: int) -> Any:
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
     _cleanup_expired_entries()
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (entry_id,))
     if not rows:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"entry": _serialize_entry(rows[0], include_phone=True)})
+    member_rows = db.query(
+        f"SELECT 1 FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (entry_id, email),
+    )
+    is_member = bool(member_rows)
+    return jsonify({"entry": _serialize_entry(rows[0], include_phone=is_member)})
 
 
 @app.post("/api/carpools/<int:carpool_id>/join")
@@ -1251,22 +1401,30 @@ def join_party(carpool_id: int) -> Any:
     if expires_at and expires_at <= _now_utc().isoformat():
         return jsonify({"error": "This carpool has expired"}), 410
 
-    # Check if already a member
-    existing = db.query(
-        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
-        (carpool_id, email),
-    )
-    if existing:
-        return jsonify({"error": "Already in this carpool"}), 409
-
-    # Check seat cap: seats_available includes the creator seat
-    members = db.query(
-        f"SELECT COUNT(*) as c FROM party_members WHERE carpool_id = {p}",
-        (carpool_id,),
-    )
-    current_count = members[0]["c"] if members else 0
     max_members = int(carpool.get("seats_available", 3))
-    if current_count >= max_members:
+
+    # Atomically check both "already a member" and "seat cap" in one conditional INSERT.
+    # This eliminates the TOCTOU race where two simultaneous joins could both pass the
+    # count check and both insert, exceeding the seat cap.
+    joined_at = _now_utc().isoformat()
+    rows_inserted = db.execute(
+        f"""INSERT INTO party_members (carpool_id, user_email, joined_at)
+            SELECT {p}, {p}, {p}
+            WHERE (SELECT COUNT(*) FROM party_members WHERE carpool_id = {p}) < {p}
+            AND NOT EXISTS (
+                SELECT 1 FROM party_members WHERE carpool_id = {p} AND user_email = {p}
+            )""",
+        (carpool_id, email, joined_at, carpool_id, max_members, carpool_id, email),
+    )
+
+    if not rows_inserted:
+        # Distinguish: already a member vs carpool full
+        existing = db.query(
+            f"SELECT 1 FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+            (carpool_id, email),
+        )
+        if existing:
+            return jsonify({"error": "Already in this carpool"}), 409
         return jsonify({"error": "This carpool is full"}), 409
 
     # Store phone number if provided
@@ -1291,15 +1449,10 @@ def join_party(carpool_id: int) -> Any:
             except Exception:
                 pass
 
-    # Fetch existing members before inserting, to notify them
+    # Fetch all current members (excluding the joiner) to send notifications
     existing_members = db.query(
-        f"SELECT user_email FROM party_members WHERE carpool_id = {p}",
-        (carpool_id,),
-    )
-
-    db.execute(
-        f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
-        (carpool_id, email, _now_utc().isoformat()),
+        f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
+        (carpool_id, email),
     )
 
     # Notify creator and all existing members that someone joined
@@ -1550,7 +1703,8 @@ def update_user_phone() -> Any:
                 (email, "", "", raw_phone, _now_utc().isoformat()),
             )
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"update_user_phone error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
     return jsonify({"ok": True})
 
 
@@ -1712,11 +1866,18 @@ def dismiss_notification(notif_id: int) -> Any:
     return jsonify({"ok": True})
 
 
+@app.get("/api/csrf-token")
+@csrf.exempt
+def get_csrf_token() -> Any:
+    return jsonify({"csrf_token": generate_csrf()})
+
+
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
 
 @app.get("/admin/login")
+@limiter.limit("10 per minute")
 def admin_login_page() -> Any:
     if _require_admin():
         return redirect(url_for("admin_panel"))
@@ -1725,6 +1886,7 @@ def admin_login_page() -> Any:
 
 
 @app.post("/admin/login")
+@limiter.limit("10 per minute")
 def admin_login() -> Any:
     username = request.form.get("username", "")
     password = request.form.get("password", "")
@@ -1749,6 +1911,7 @@ def admin_panel() -> Any:
         users = db.query(
             """
             SELECT u.user_email, u.first_name, u.last_initial, u.phone, u.created_at,
+                   u.is_banned,
                    s.plan_type, s.sub_status, s.search_credits, s.current_period_end,
                    s.stripe_customer_id, s.stripe_subscription_id
             FROM users u
@@ -1833,7 +1996,8 @@ def admin_clear_user_subscription() -> Any:
             (email,),
         )
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        app.logger.error(f"admin_clear_user_subscription error: {e}")
+        return jsonify({"ok": False, "error": "An internal error occurred."}), 500
     return jsonify({"ok": True, "email": email})
 
 
@@ -1917,10 +2081,15 @@ def admin_edit_user() -> Any:
             sub_vals.append(sub_status)
         if search_credits_raw != "":
             try:
+                sc_val = int(search_credits_raw)
+                if sc_val < 0:
+                    flash("Search credits cannot be negative.", "error")
+                    return redirect(url_for("admin_panel"))
                 sub_updates.append(f"search_credits = {p}")
-                sub_vals.append(int(search_credits_raw))
+                sub_vals.append(sc_val)
             except ValueError:
-                pass
+                flash("Search credits must be a valid integer.", "error")
+                return redirect(url_for("admin_panel"))
         if current_period_end:
             sub_updates.append(f"current_period_end = {p}")
             sub_vals.append(current_period_end)
@@ -1977,6 +2146,11 @@ def admin_grant_subscription() -> Any:
         return redirect(url_for("admin_panel"))
 
     p = db.placeholder
+    user_exists = db.query(f"SELECT 1 FROM users WHERE user_email = {p}", (email,))
+    if not user_exists:
+        flash(f"User not found: {email}", "error")
+        return redirect(url_for("admin_panel"))
+
     now_iso = _now_utc().isoformat()
 
     if plan == "search_pack":
@@ -2009,6 +2183,116 @@ def admin_grant_subscription() -> Any:
                 (email, plan, period_end, now_iso, now_iso),
             )
 
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/ban-user", methods=["POST"])
+def admin_ban_user():
+    if not _require_admin():
+        return redirect(url_for("admin_login_page"))
+    email = request.form.get("email", "").strip()
+    action = request.form.get("action", "ban")
+    if not email:
+        flash("Email required.", "error")
+        return redirect(url_for("admin_panel"))
+    p = db.placeholder
+    flag = 1 if action == "ban" else 0
+    db.execute(f"UPDATE users SET is_banned = {p} WHERE user_email = {p}", (flag, email))
+    if flag == 1:
+        notify_user(email, "Your account has been suspended by an administrator. Please contact support if you believe this is a mistake.")
+    flash(f"User {'banned' if flag else 'unbanned'}: {email}", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/delete-user", methods=["POST"])
+def admin_delete_user():
+    if not _require_admin():
+        return redirect(url_for("admin_login_page"))
+    email = request.form.get("email", "").strip()
+    if not email:
+        flash("Email required.", "error")
+        return redirect(url_for("admin_panel"))
+    p = db.placeholder
+    # Find all carpools created by this user
+    carpools = db.query(f"SELECT id FROM carpools WHERE creator_email = {p}", (email,))
+    for c in carpools:
+        db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (c["id"],))
+    db.execute(f"DELETE FROM carpools WHERE creator_email = {p}", (email,))
+    db.execute(f"DELETE FROM party_members WHERE user_email = {p}", (email,))
+    db.execute(f"DELETE FROM subscriptions WHERE user_email = {p}", (email,))
+    db.execute(f"DELETE FROM notifications WHERE user_email = {p}", (email,))
+    db.execute(f"DELETE FROM users WHERE user_email = {p}", (email,))
+    flash(f"User deleted: {email}", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/user-carpools", methods=["GET"])
+def admin_user_carpools():
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = request.args.get("email", "").strip()
+    if not email:
+        return jsonify({"error": "Email required"}), 400
+    p = db.placeholder
+    created = db.query(
+        f"SELECT id, flight_code, airport_code, requested_flight_date, seats_available, created_at FROM carpools WHERE creator_email = {p}",
+        (email,)
+    )
+    joined_rows = db.query(f"SELECT carpool_id FROM party_members WHERE user_email = {p}", (email,))
+    joined = []
+    for row in joined_rows:
+        c = db.query(f"SELECT id, flight_code, airport_code, requested_flight_date, seats_available, created_at FROM carpools WHERE id = {p}", (row["carpool_id"],))
+        if c:
+            joined.append(c[0])
+    return jsonify({"created": [dict(c) for c in created], "joined": [dict(j) for j in joined]})
+
+
+@app.route("/admin/revoke-subscription", methods=["POST"])
+def admin_revoke_subscription():
+    if not _require_admin():
+        return redirect(url_for("admin_login_page"))
+    email = request.form.get("email", "").strip()
+    if not email:
+        flash("Email required.", "error")
+        return redirect(url_for("admin_panel"))
+    p = db.placeholder
+    now = _now_utc().isoformat()
+    db.execute(
+        f"UPDATE subscriptions SET sub_status='canceled', stripe_subscription_id='', plan_type='', current_period_end='', updated_at={p} WHERE user_email={p}",
+        (now, email)
+    )
+    flash(f"Subscription revoked for {email}", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/set-user-credits", methods=["POST"])
+def admin_set_user_credits():
+    if not _require_admin():
+        return redirect(url_for("admin_login_page"))
+    email = request.form.get("email", "").strip()
+    credits_str = request.form.get("credits", "").strip()
+    if not email or credits_str == "":
+        flash("Email and credits required.", "error")
+        return redirect(url_for("admin_panel"))
+    try:
+        credits = int(credits_str)
+    except ValueError:
+        flash("Credits must be an integer.", "error")
+        return redirect(url_for("admin_panel"))
+    if credits < 0:
+        flash("Credits cannot be negative.", "error")
+        return redirect(url_for("admin_panel"))
+    p = db.placeholder
+    now = _now_utc().isoformat()
+    existing = db.query(f"SELECT user_email FROM subscriptions WHERE user_email = {p}", (email,))
+    if existing:
+        db.execute(f"UPDATE subscriptions SET search_credits={p}, updated_at={p} WHERE user_email={p}", (credits, now, email))
+    else:
+        db.execute(
+            f"INSERT INTO subscriptions (user_email, search_credits, updated_at) VALUES ({p},{p},{p})",
+            (email, credits, now)
+        )
+    flash(f"Credits set to {credits} for {email}", "success")
     return redirect(url_for("admin_panel"))
 
 
@@ -2210,7 +2494,8 @@ def sync_subscription() -> Any:
 
         return jsonify({"ok": True, "mode": mode, "email": email})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"sync_subscription error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.get("/api/subscription/status")
@@ -2285,7 +2570,8 @@ def create_checkout_session() -> Any:
         )
         return jsonify({"url": checkout.url})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"create_checkout_session error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.post("/api/subscription/upgrade")
@@ -2323,7 +2609,8 @@ def upgrade_subscription() -> Any:
         )
         return jsonify({"success": True})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"upgrade_subscription error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.post("/api/subscription/portal")
@@ -2355,7 +2642,8 @@ def customer_portal() -> Any:
         )
         return jsonify({"url": portal.url})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"customer_portal error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.post("/api/subscription/cancel")
@@ -2378,10 +2666,12 @@ def cancel_subscription() -> Any:
         stripe_lib.Subscription.modify(sub_id, cancel_at_period_end=True)
         return jsonify({"ok": True, "message": "Subscription will cancel at the end of the current billing period."})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"cancel_subscription error: {e}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.post("/webhooks/stripe")
+@csrf.exempt
 def stripe_webhook() -> Any:
     if not stripe_lib:
         return jsonify({"error": "Stripe not configured"}), 503
@@ -2395,7 +2685,8 @@ def stripe_webhook() -> Any:
     except stripe_lib.error.SignatureVerificationError:
         return jsonify({"error": "Invalid signature"}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        app.logger.error(f"stripe_webhook parse error: {e}")
+        return jsonify({"error": "Invalid request."}), 400
 
     event_type = event["type"]
     obj = event["data"]["object"]
@@ -2518,4 +2809,4 @@ except Exception as exc:
     print(f"[startup] database initialization failed: {exc}")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), debug=os.getenv("FLASK_DEBUG", "0") == "1")

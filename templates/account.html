@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>My Subscription - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -170,6 +171,7 @@
     </footer>
 
     <script>
+      const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
       const hbBtn = document.getElementById('hamburger-btn');
       const hbMenu = document.getElementById('hamburger-menu');
       hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
@@ -181,7 +183,7 @@
         btn.disabled = true;
         btn.textContent = 'Upgrading…';
         try {
-          const res = await fetch('/api/subscription/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+          const res = await fetch('/api/subscription/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN } });
           const data = await res.json();
           if (data.success) {
             window.location.reload();

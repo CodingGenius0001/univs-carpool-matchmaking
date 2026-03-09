@@ -7,6 +7,8 @@
 (function () {
   'use strict';
 
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
   let _cachedAccess = null;
 
   async function fetchStatus() {
@@ -160,7 +162,7 @@
     try {
       const res = await fetch('/api/subscription/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
         body: JSON.stringify({ price_id: priceId, mode }),
       });
       const json = await res.json();
@@ -180,7 +182,7 @@
   async function openBillingPortal(btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     try {
-      const res = await fetch('/api/subscription/portal', { method: 'POST' });
+      const res = await fetch('/api/subscription/portal', { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
       const json = await res.json();
       if (json.url) {
         window.location.href = json.url;
@@ -198,7 +200,7 @@
   async function confirmCancel(btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
     try {
-      const res = await fetch('/api/subscription/cancel', { method: 'POST' });
+      const res = await fetch('/api/subscription/cancel', { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
       const json = await res.json();
       if (json.ok) {
         // Show success message in the panel instead of alert

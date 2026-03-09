@@ -1,6 +1,18 @@
 const searchForm = document.querySelector('#search-form');
 const results = document.querySelector('#results');
 
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Auto-format inputs
 const searchAirport = searchForm?.querySelector('[name="airport_code"]');
 const searchDate = searchForm?.querySelector('[name="departure_date"]');
@@ -57,56 +69,57 @@ async function loadUserPhone() {
 loadUserPhone();
 
 function renderResults(data) {
-  results.innerHTML = `<p class="text-muted text-sm mt-2">${data.count} carpool${data.count !== 1 ? 's' : ''} found</p>` +
+  results.innerHTML = `<p class="text-muted text-sm mt-2">${escapeHtml(data.count)} carpool${data.count !== 1 ? 's' : ''} found</p>` +
     data.results.map((r) => {
       const scoreClass = r.match_score >= 70 ? 'score-high' : r.match_score >= 30 ? 'score-medium' : 'score-low';
       const reasons = (r.match_reasons || []).map(reason =>
-        `<span class="match-tag">${reason}</span>`
+        `<span class="match-tag">${escapeHtml(reason)}</span>`
       ).join('');
 
       const seatsRemaining = r.seats_remaining ?? r.seats_available;
       const isMember = r.is_member;
       const isFull = seatsRemaining <= 0 && !isMember;
+      const safeId = escapeHtml(r.id);
 
       let actionBtn;
       if (isMember) {
-        actionBtn = `<button data-id="${r.id}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
+        actionBtn = `<button data-id="${safeId}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                       <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Carpool</a>`;
       } else if (isFull) {
         actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Carpool Full</button>`;
       } else {
-        actionBtn = `<button data-id="${r.id}" class="join-carpool-btn btn btn-primary btn-sm">Join Carpool</button>`;
+        actionBtn = `<button data-id="${safeId}" class="join-carpool-btn btn btn-primary btn-sm">Join Carpool</button>`;
       }
 
       return `
         <article class="result">
           <div class="result-header">
             <div>
-              <div class="result-name">${r.first_name} ${r.last_initial}.</div>
+              <div class="result-name">${escapeHtml(r.first_name)} ${escapeHtml(r.last_initial)}.</div>
               ${reasons ? `<div class="match-reasons">${reasons}</div>` : ''}
             </div>
-            ${r.match_score > 0 ? `<span class="result-badge ${scoreClass}">${r.match_score}% match</span>` : ''}
+            ${r.match_score > 0 ? `<span class="result-badge ${escapeHtml(scoreClass)}">${escapeHtml(r.match_score)}% match</span>` : ''}
           </div>
           <div class="result-info">
             <span>
               <span class="label">Flight</span>
-              <strong>${r.flight_code}</strong>
+              <strong>${escapeHtml(r.flight_code)}</strong>
             </span>
             <span>
               <span class="label">Airport</span>
-              ${r.airport_code}
+              ${escapeHtml(r.airport_code)}
             </span>
             <span>
               <span class="label">Date</span>
-              ${r.requested_flight_date || r.flight_date_utc || '\u2014'}
+              ${escapeHtml(r.requested_flight_date || r.flight_date_utc) || '\u2014'}
             </span>
             <span>
               <span class="label">Seats</span>
-              ${isFull ? '<span style="color:var(--danger)">Full</span>' : `${seatsRemaining} left`}
+              ${isFull ? '<span style="color:var(--danger)">Full</span>' : `${escapeHtml(seatsRemaining)} left`}
             </span>
             <span>
               <span class="label">Carpool</span>
-              ${r.member_count || 1} member${(r.member_count || 1) !== 1 ? 's' : ''}
+              ${escapeHtml(r.member_count || 1)} member${(r.member_count || 1) !== 1 ? 's' : ''}
             </span>
           </div>
           <div class="result-actions">
@@ -269,7 +282,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
     try {
       const res = await fetch(`/api/carpools/${carpoolId}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
         body: JSON.stringify({ phone })
       });
       const data = await res.json();
@@ -304,7 +317,7 @@ document.addEventListener('click', async (e) => {
   leaveBtn.textContent = 'Leaving...';
 
   try {
-    const res = await fetch(`/api/carpools/${id}/leave`, { method: 'POST' });
+    const res = await fetch(`/api/carpools/${id}/leave`, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
     if (res.ok) {
       leaveBtn.textContent = 'Left!';
       setTimeout(() => searchForm?.requestSubmit(), 500);

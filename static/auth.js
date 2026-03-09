@@ -67,11 +67,13 @@ signinBtn?.addEventListener('click', async () => {
       return;
     }
 
-    // Send to server to set session
+    // Send to server to set session (include ID token for server-side verification)
+    const idToken = await user.getIdToken(/* forceRefresh */ true);
     const res = await fetch('/auth/firebase-callback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        idToken: idToken,
         email: email,
         name: user.displayName || '',
         uid: user.uid
