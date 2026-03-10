@@ -12,6 +12,7 @@
     <style>
       .policy-body { font-size: 0.92rem; color: var(--text-muted); line-height: 1.75; }
       .policy-body h3 { color: var(--text); margin: 1.5rem 0 0.4rem; font-size: 1rem; }
+      .policy-body h4 { color: var(--text); margin: 1rem 0 0.35rem; font-size: 0.96rem; }
       .policy-body p { margin-bottom: 0.75rem; }
       .policy-body ul { padding-left: 1.25rem; margin-bottom: 0.75rem; }
       .policy-body ul li { margin-bottom: 0.35rem; }
@@ -59,61 +60,94 @@
       <section class="card eula-card">
         <a href="{% if user_email %}/start-now{% else %}/{% endif %}" class="eula-close-btn eula-panel-close" aria-label="Close">✕</a>
         <h2>Privacy Policy</h2>
-        <p class="card-subtitle">How Campus2Air collects, uses, and protects your information.</p>
+        <p class="card-subtitle">How Campus2Air collects, uses, shares, and protects your information.</p>
         <p class="policy-meta">Effective Date: January 1, 2025 &nbsp;|&nbsp; Last Updated: March 4, 2026</p>
 
         <div class="policy-body">
-          <h3>1. Who We Are</h3>
-          <p>Campus2Air is a student-built carpool matchmaking platform designed to help UC Riverside students coordinate shared rides to and from airports. This Privacy Policy explains what personal information we collect, how we use it, and your rights regarding that information.</p>
+          <h3>Overview</h3>
+          <p>Campus2Air is a carpool matchmaking platform for UC Riverside students coordinating shared rides to and from airports. This Privacy Policy explains exactly what we collect, why we collect it, who can see it, and what rights you have over it.</p>
+          <p>We are not a consumer app, a data company, or an advertising platform. We operate this service as a student project. We collect only what is necessary to make carpools work.</p>
 
-          <h3>2. Information We Collect</h3>
-          <p>We collect the following information when you use Campus2Air:</p>
+          <h3>1. What We Collect</h3>
+          <p>We collect the following categories of information:</p>
+          <h4>Account Information</h4>
           <ul>
-            <li><strong>Account information:</strong> Your UCR Google account email address, provided through Google Sign-In (Firebase Authentication). We only accept <code>@ucr.edu</code> addresses.</li>
-            <li><strong>User profile:</strong> Your full name (first name and last initial), email address, and phone number. This information is saved to your profile when you join or create a carpool and is used to coordinate carpool coordination.</li>
-            <li><strong>Carpool listing data:</strong> Flight code, departure airport, departure date, planned departure time, seat count, and any optional notes you enter.</li>
-            <li><strong>Carpool membership:</strong> Records of which carpools you have joined or created.</li>
-            <li><strong>Notifications:</strong> In-app messages (e.g., carpool disbandment notices) that you can dismiss.</li>
+            <li>Your UCR Google account email address (<code>@ucr.edu</code> only), collected via Firebase Authentication (Google Sign-In).</li>
+            <li>Your full name (first name and last initial) and phone number, provided when you join or create a carpool.</li>
           </ul>
+          <h4>Carpool Data</h4>
+          <ul>
+            <li>Flight code, departure airport, departure date, planned departure time, seat count, and any optional notes you enter.</li>
+            <li>Records of carpools you have joined or created.</li>
+          </ul>
+          <h4>In-App Notifications</h4>
+          <ul>
+            <li>System messages about your carpool (e.g., disbandment notices). These are not marketing emails.</li>
+          </ul>
+          <p>We do not collect location data, payment information, device identifiers, or browsing behavior.</p>
 
-          <h3>3. How We Use Your Information</h3>
-          <p>Your information is used solely to operate the Campus2Air service:</p>
+          <h3>2. Why We Collect It</h3>
+          <p>Every piece of data we collect has a single purpose: operating the carpool matching service. Specifically:</p>
           <ul>
-            <li>Displaying your carpool listing to matched students so they can contact you.</li>
-            <li>Connecting you with other students on the same or similar flights.</li>
-            <li>Enabling carpool features (join, leave, manage carpool groups).</li>
-            <li>Sending in-app notifications about your carpool.</li>
+            <li>Your email authenticates your identity and confirms UCR enrollment.</li>
+            <li>Your name and phone number allow matched carpool members to coordinate with each other.</li>
+            <li>Your carpool listing data powers the matching algorithm and display to other students.</li>
           </ul>
-          <p>We do not use your information for advertising, marketing, or any purpose beyond operating the carpool service.</p>
+          <p>We do not use your data for advertising, marketing, profiling, or any purpose beyond running the carpool service.</p>
 
-          <h3>4. How Your Information Is Shared</h3>
-          <p>Your carpool details (first name, last initial, flight code, airport, date, and departure time) are visible to other authenticated UCR students who are searching for carpools. Your phone number is only shown to students who have joined the same carpool as you.</p>
-          <p>We do not sell, rent, or share your personal information with third-party advertisers or data brokers.</p>
-          <p>We use the following third-party services to operate Campus2Air:</p>
+          <h3>3. Who Can See Your Information</h3>
+          <p>We limit data visibility based on carpool membership:</p>
           <ul>
-            <li><strong>Firebase (Google):</strong> Handles Google Sign-In authentication. Subject to Google's Privacy Policy.</li>
-            <li><strong>Vercel:</strong> Hosts the application. Subject to Vercel's Privacy Policy.</li>
-            <li><strong>TiDB Cloud / MySQL provider:</strong> Stores carpool data securely.</li>
+            <li><strong>All authenticated UCR students can see:</strong> your first name and last initial, flight code, airport, departure date, and departure time.</li>
+            <li><strong>Only students in your carpool group can see:</strong> your phone number.</li>
           </ul>
+          <p>We do not sell, rent, license, or share your personal information with third-party advertisers, data brokers, or any external parties for commercial purposes.</p>
+
+          <h3>4. Third-Party Services</h3>
+          <p>Campus2Air relies on the following third-party infrastructure providers to function. Each is bound by its own privacy policy:</p>
+          <ul>
+            <li><strong>Firebase (Google):</strong> handles authentication (Google Sign-In). Google&apos;s Privacy Policy applies to authentication data.</li>
+            <li><strong>Vercel:</strong> hosts the application. Vercel&apos;s Privacy Policy applies to server-level access logs.</li>
+            <li><strong>TiDB Cloud / MySQL:</strong> stores carpool data in a secured database.</li>
+          </ul>
+          <p>We do not control the data practices of these providers beyond the scope of our service agreements with them. We encourage you to review their respective privacy policies.</p>
 
           <h3>5. Data Retention</h3>
-          <p>Carpool listings are automatically deleted at 11:59 PM UTC on your listed departure date. Carpool membership records are deleted when the associated carpool expires or is disbanded. You may also manually leave a carpool or delete your carpool at any time.</p>
-          <p>Account information (email) may be retained in our database for a reasonable period after your last activity to support notifications and history, but is never used beyond the scope of this service.</p>
+          <ul>
+            <li>Carpool listings are automatically deleted at 11:59 PM UTC on your listed departure date.</li>
+            <li>Carpool membership records are deleted when the associated carpool expires or is disbanded.</li>
+            <li>You may manually leave a carpool or delete your carpool listing at any time.</li>
+          </ul>
+          <p>Account information (email) may be retained for a reasonable period after your last activity to support notifications, but is never used beyond this service.</p>
 
-          <h3>6. Data Security</h3>
-          <p>We take reasonable technical measures to protect your data, including encrypted connections (HTTPS), secure database storage, and server-side session management. However, no online service is 100% secure. Please use a strong, unique password for your UCR Google account.</p>
+          <h3>6. No Background Checks</h3>
+          <p>Campus2Air does not perform background checks, identity verification beyond UCR email authentication, or screening of any kind on its users. Matching is based solely on flight and schedule data.</p>
+          <p>By using Campus2Air, you acknowledge that you are meeting other students at your own discretion and risk. We are a coordination tool, not a vetting service.</p>
 
-          <h3>7. Your Rights</h3>
-          <p>You may request deletion of your data at any time by contacting us. You may also leave carpool parties or allow your listings to expire automatically. Because this service is restricted to UCR students, you can stop using it at any time by simply not logging in again.</p>
+          <h3>7. Data Security</h3>
+          <p>We take reasonable technical measures to protect your data, including HTTPS (encrypted connections), secure database access controls, and server-side session management.</p>
+          <p>No online service is fully immune to security risks. We recommend using a strong, unique password for your UCR Google account, which is your primary credential for this service.</p>
 
-          <h3>8. Children's Privacy</h3>
-          <p>Campus2Air is intended for university students (18+). We do not knowingly collect information from minors under 13. If you believe a minor has used this service, please contact us.</p>
+          <h3>8. Your Rights (Including California / CCPA)</h3>
+          <p>As a California resident, you have specific rights under the California Consumer Privacy Act (CCPA):</p>
+          <ul>
+            <li><strong>Right to know:</strong> You may request a full description of the personal information we have collected about you and how it has been used.</li>
+            <li><strong>Right to deletion:</strong> You may request deletion of your personal data at any time by contacting us.</li>
+            <li><strong>Right to non-discrimination:</strong> We will not treat you differently for exercising any of these rights.</li>
+            <li><strong>Right to opt-out:</strong> We do not sell personal information. There is nothing to opt out of.</li>
+          </ul>
+          <p>To exercise any of these rights, contact us through the Campus2Air repository or via your UCR student email. We will respond within 45 days as required by California law.</p>
 
-          <h3>9. Changes to This Policy</h3>
-          <p>We may update this Privacy Policy from time to time. Changes will be reflected by an updated "Last Updated" date at the top of this page. Continued use of Campus2Air after changes constitutes acceptance of the updated policy.</p>
+          <h3>9. Children&apos;s Privacy</h3>
+          <p>Campus2Air is intended exclusively for university students aged 18 and older. We do not knowingly collect personal information from minors under 13. If you have reason to believe a minor has used this service, please contact us immediately.</p>
 
-          <h3>10. Contact</h3>
-          <p>If you have questions about this Privacy Policy or your data, please reach out through the Campus2Air project repository or contact the maintainers directly via your UCR student email.</p>
+          <h3>10. Changes to This Policy</h3>
+          <p>We may update this Privacy Policy from time to time. When we do, we will update the &ldquo;Last Updated&rdquo; date at the top of this page. Continued use of Campus2Air after any changes are posted constitutes your acceptance of the revised policy.</p>
+          <p>We will not make retroactive changes that reduce your rights without clear notice.</p>
+
+          <h3>11. Contact</h3>
+          <p>Questions, data requests, or concerns about this Privacy Policy can be directed to the Campus2Air project repository or to the maintainers directly via UCR student email.</p>
+          <p class="policy-meta">&copy; 2026 Campus2Air. All Rights Reserved.</p>
         </div>
       </section>
     </main>
