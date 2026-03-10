@@ -4,35 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Get Started - Campus2Air</title>
+    <title>Subscription Activated - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
-      </head>
+  </head>
   <body>
     <header class="site-header app-header">
       <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
-        <a href="/start-now" class="active">Home</a>
+        <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
         <a href="/create-a-carpool">Create Carpool</a>
       </nav>
-      {% if has_party %}
-      <a href="/my-party" class="my-party-btn" id="my-party-btn">My Carpool</a>
-      {% endif %}
       <div class="hamburger-wrap">
         <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
-          <a href="/start-now" class="mobile-nav-link active">Home</a>
+          <a href="/start-now" class="mobile-nav-link">Home</a>
           <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
           <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
-          {% if has_party %}
-          <a href="/my-party" class="mobile-party-link">My Carpool</a>
-          {% endif %}
           <div class="menu-divider"></div>
           <a href="/pricing">Pricing</a>
           <a href="/eula">EULA &amp; ToS</a>
@@ -46,20 +40,16 @@
     </header>
 
     <main class="container">
-      <section class="card actions text-center" style="margin-top: 4rem;">
-        <h2>What would you like to do?</h2>
-        <p class="card-subtitle">Choose an option to get started</p>
-        <div class="button-row">
-          <a class="action-card" href="/create-a-carpool">
-            <div class="icon">+</div>
-            <h3>Create a Carpool</h3>
-            <p>Share your flight details so others can join your carpool</p>
-          </a>
-          <a class="action-card" href="/find-a-carpool">
-            <div class="icon">?</div>
-            <h3>Find a Carpool</h3>
-            <p>Search for students on the same flight or heading the same way</p>
-          </a>
+      <section class="card text-center" style="margin-top:4rem;padding:3rem 2rem;">
+        <div style="font-size:3rem;margin-bottom:1rem;">✅</div>
+        <h2>You're all set!</h2>
+        <p class="card-subtitle">Your payment was successful. Your access has been activated.</p>
+        <p class="text-muted" style="font-size:0.9rem;max-width:420px;margin:0 auto 1.5rem;">
+          It may take a few seconds for your subscription to appear in your account. If you purchased a Search Pack, your 3 credits are ready to use.
+        </p>
+        <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+          <a href="/find-a-carpool" class="btn btn-primary">Find a Carpool</a>
+          <a href="/account" class="btn btn-secondary">My Subscription</a>
         </div>
       </section>
     </main>
@@ -75,13 +65,23 @@
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
+
+      // Sync subscription state from Stripe then refresh so account page shows updated plan
+      const sessionId = new URLSearchParams(window.location.search).get('session_id');
+      if (sessionId) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        fetch('/api/subscription/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify({ session_id: sessionId }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          console.log('Sync result:', data);
+        })
+        .catch(err => console.error('Sync error:', err));
+      }
     </script>
-      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
-    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
-    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
-    <script>
-      C2ASub.initSubscriptionBadge();
-      C2ASub.initTrialBanner();
-    </script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Find a Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,8 +30,10 @@
           <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
           <a href="/my-party" class="mobile-party-link" id="mobile-my-party-link" {% if not has_party %}style="display:none"{% endif %}>My Carpool</a>
           <div class="menu-divider"></div>
+          <a href="/pricing">Pricing</a>
           <a href="/eula">EULA &amp; ToS</a>
           <a href="/privacy">Privacy Policy</a>
+          <a href="/account">My Subscription</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
           <a href="/auth/logout" class="menu-logout">Logout</a>
@@ -67,7 +70,10 @@
     </footer>
 
     <script src="{{ url_for('static', filename='search.js') }}"></script>
+    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
     <script>
+      C2ASub.initSubscriptionBadge();
+      C2ASub.initCreditsIndicator('search-form');
       const hbBtn = document.getElementById('hamburger-btn');
       const hbMenu = document.getElementById('hamburger-menu');
       hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));

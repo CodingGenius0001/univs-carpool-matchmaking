@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Admin Panel - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,6 +12,20 @@
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;">
+          {% for category, message in messages %}
+            <div style="padding:0.75rem 1.25rem;border-radius:8px;font-size:0.9rem;font-weight:500;
+              background:{% if category == 'error' %}rgba(248,113,113,0.15){% else %}rgba(110,231,183,0.15){% endif %};
+              border:1px solid {% if category == 'error' %}rgba(248,113,113,0.4){% else %}rgba(110,231,183,0.4){% endif %};
+              color:{% if category == 'error' %}#f87171{% else %}#6ee7b7{% endif %};">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
     <header class="site-header">
       <a href="/" class="site-logo">Campus2Air</a>
       <nav class="nav-links">
@@ -55,6 +70,7 @@
         <!-- Actions -->
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
           <form method="post" action="/admin/delete-all" onsubmit="return confirm('Are you sure you want to delete ALL entries? This cannot be undone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="danger btn-sm">Delete Entire Database</button>
           </form>
         </div>
@@ -112,6 +128,7 @@
                     data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
                   >Edit</button>
                   <form method="post" action="/admin/delete/{{ entry.id }}" style="display:inline;" onsubmit="return confirm('Delete this entry?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="danger btn-sm" style="margin-top:0.25rem;">Delete</button>
                   </form>
                 </td>
@@ -172,6 +189,7 @@
                 data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
               >Edit</button>
               <form method="post" action="/admin/delete/{{ entry.id }}" onsubmit="return confirm('Delete this entry?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="danger btn-sm">Delete</button>
               </form>
             </div>
@@ -181,6 +199,122 @@
 
         {% endif %}
       </section>
+
+      <!-- Users & Subscriptions Section -->
+      <section class="card" style="margin-top:1.5rem;">
+        <h2>Users &amp; Subscriptions</h2>
+        <p class="text-muted" style="font-size:0.85rem;margin-bottom:1rem;">{{ users|length }} registered user{{ 's' if users|length != 1 else '' }}</p>
+
+        {% if users %}
+        <div class="table-wrap">
+          <table class="entries-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Trial Start</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Credits</th>
+                <th>Period End</th>
+                <th>Banned</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td style="font-size:0.8rem;">{{ u.user_email }}</td>
+                <td>{{ u.first_name or '' }} {{ u.last_initial or '' }}{{ '.' if u.last_initial else '' }}</td>
+                <td style="font-size:0.8rem;">{{ u.phone or '—' }}</td>
+                <td style="font-size:0.78rem;">{{ (u.created_at or '')[:10] or '—' }}</td>
+                <td>
+                  {% if u.plan_type %}<span class="subscription-badge {{ u.plan_type }}">{{ u.plan_type }}</span>
+                  {% elif not u.sub_status %}
+                    {% set created = u.created_at or '' %}
+                    <span class="subscription-badge trial">trial</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="font-size:0.8rem;">{{ u.sub_status or '—' }}</td>
+                <td style="text-align:center;">{{ u.search_credits or 0 }}</td>
+                <td style="font-size:0.78rem;">{{ (u.current_period_end or '')[:10] or '—' }}</td>
+                <td style="text-align:center;">
+                  {% if u.is_banned %}<span style="color:#f87171;font-weight:600;">Banned</span>{% else %}—{% endif %}
+                </td>
+                <td style="white-space:nowrap;display:flex;flex-direction:column;gap:0.3rem;padding:0.5rem;">
+                  <button type="button" class="btn btn-secondary btn-sm user-edit-btn"
+                    data-email="{{ u.user_email }}"
+                    data-first_name="{{ u.first_name or '' }}"
+                    data-last_initial="{{ u.last_initial or '' }}"
+                    data-phone="{{ u.phone or '' }}"
+                    data-created_at="{{ u.created_at or '' }}"
+                    data-plan_type="{{ u.plan_type or '' }}"
+                    data-sub_status="{{ u.sub_status or '' }}"
+                    data-search_credits="{{ u.search_credits or 0 }}"
+                    data-current_period_end="{{ u.current_period_end or '' }}"
+                  >Edit</button>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} a monthly plan?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="monthly" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(110,231,183,0.15);color:var(--accent);border-color:rgba(110,231,183,0.3);">+ Monthly</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Grant {{ u.user_email }} an annual plan?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="annual" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(96,165,250,0.15);color:var(--accent2);border-color:rgba(96,165,250,0.3);">+ Annual</button>
+                  </form>
+                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
+                        onsubmit="return confirm('Add 3 search credits to {{ u.user_email }}?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <input type="hidden" name="plan" value="search_pack" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3);">+3 Credits</button>
+                  </form>
+                  <form method="post" action="/admin/reset-user-trial" style="display:contents;"
+                        onsubmit="return confirm('Reset {{ u.user_email }} to a fresh 30-day trial and clear their subscription?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}" />
+                    <button type="submit" class="btn btn-sm" style="background:rgba(251,191,36,0.15);color:#fbbf24;border-color:rgba(251,191,36,0.3);">Reset Trial</button>
+                  </form>
+                  <form method="post" action="/admin/ban-user" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}">
+                    <input type="hidden" name="action" value="{{ 'unban' if u.is_banned else 'ban' }}">
+                    <button type="submit" class="btn btn-sm {{ 'btn-success' if u.is_banned else 'btn-warning' }}"
+                      onclick="return confirm('{{ 'Unban' if u.is_banned else 'Ban' }} {{ u.user_email }}?')">
+                      {{ 'Unban' if u.is_banned else 'Ban' }}
+                    </button>
+                  </form>
+                  <button class="btn btn-sm btn-secondary user-carpools-btn" data-email="{{ u.user_email }}">View Carpools</button>
+                  {% if u.sub_status == 'active' %}
+                  <form method="post" action="/admin/revoke-subscription" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}">
+                    <button type="submit" class="btn btn-sm btn-warning"
+                      onclick="return confirm('Revoke subscription for {{ u.user_email }}?')">Revoke Sub</button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="/admin/delete-user" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email" value="{{ u.user_email }}">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                      onclick="return confirm('PERMANENTLY DELETE {{ u.user_email }}? This cannot be undone.') && confirm('Are you absolutely sure?')">Delete User</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No users yet.</p>
+        {% endif %}
+      </section>
     </main>
 
     <!-- Edit Modal -->
@@ -188,6 +322,7 @@
       <div class="modal-card card">
         <h3>Edit Entry</h3>
         <form id="edit-form" method="post" action="">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="modal-grid">
             <label>First Name
               <input name="first_name" id="edit-first_name" placeholder="First name" />
@@ -219,6 +354,86 @@
             <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- User Edit Modal -->
+    <div id="user-edit-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card card" style="max-width:520px;">
+        <h3>Edit User</h3>
+        <p id="user-edit-email-display" class="text-muted" style="font-size:0.85rem;margin:0 0 1rem;"></p>
+        <form id="user-edit-form" method="post" action="/admin/edit-user">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" id="user-edit-email" />
+          <p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);font-weight:600;margin:0 0 0.5rem;">Profile</p>
+          <div class="modal-grid">
+            <label>First Name
+              <input name="first_name" id="user-edit-first_name" placeholder="First name" />
+            </label>
+            <label>Last Initial
+              <input name="last_initial" id="user-edit-last_initial" maxlength="1" placeholder="Initial" />
+            </label>
+            <label>Phone
+              <input name="phone" id="user-edit-phone" placeholder="+1 (XXX) XXX XXXX" />
+            </label>
+            <label>Trial Start (created_at)
+              <input name="created_at" id="user-edit-created_at" placeholder="2026-01-01T00:00:00" />
+            </label>
+          </div>
+          <p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);font-weight:600;margin:1rem 0 0.5rem;">Subscription</p>
+          <div class="modal-grid">
+            <label>Plan Type
+              <select name="plan_type" id="user-edit-plan_type">
+                <option value="">— unchanged —</option>
+                <option value="monthly">monthly</option>
+                <option value="annual">annual</option>
+                <option value="">none (clear)</option>
+              </select>
+            </label>
+            <label>Sub Status
+              <select name="sub_status" id="user-edit-sub_status">
+                <option value="">— unchanged —</option>
+                <option value="active">active</option>
+                <option value="past_due">past_due</option>
+                <option value="canceled">canceled</option>
+                <option value="">none (clear)</option>
+              </select>
+            </label>
+            <label>Search Credits
+              <input name="search_credits" id="user-edit-search_credits" type="number" min="0" placeholder="0" />
+            </label>
+            <label>Set Credits To (exact)
+              <input name="set_credits_exact" id="user-edit-set_credits_exact" type="number" min="0" placeholder="e.g. 5" />
+            </label>
+            <label>Period End (ISO date)
+              <input name="current_period_end" id="user-edit-current_period_end" placeholder="2026-04-01T00:00:00" />
+            </label>
+          </div>
+          <div style="margin-top:1rem;padding:0.75rem;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" name="clear_sub" id="user-edit-clear_sub" value="1" />
+              Wipe entire subscription record (clears all billing fields + credits)
+            </label>
+          </div>
+          <div class="modal-actions mt-2">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <button type="button" class="btn btn-secondary" id="user-edit-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- View Carpools Modal -->
+    <div id="user-carpools-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card card" style="max-width:640px;">
+        <h3>Carpools for <span id="carpools-modal-email"></span></h3>
+        <p style="font-weight:600;margin-bottom:0.25rem;">Created Carpools</p>
+        <div id="carpools-created-list"></div>
+        <p style="font-weight:600;margin-top:1rem;margin-bottom:0.25rem;">Joined Parties</p>
+        <div id="carpools-joined-list"></div>
+        <div class="modal-actions mt-2">
+          <button type="button" class="btn btn-secondary" id="carpools-modal-cancel">Close</button>
+        </div>
       </div>
     </div>
 
@@ -259,6 +474,84 @@
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
+
+      // User Edit modal logic
+      const userModal = document.getElementById('user-edit-modal');
+      const userEditForm = document.getElementById('user-edit-form');
+      const userEditCancel = document.getElementById('user-edit-cancel');
+
+      document.querySelectorAll('.user-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('user-edit-email').value = btn.dataset.email;
+          document.getElementById('user-edit-email-display').textContent = btn.dataset.email;
+          document.getElementById('user-edit-first_name').value = btn.dataset.first_name;
+          document.getElementById('user-edit-last_initial').value = btn.dataset.last_initial;
+          document.getElementById('user-edit-phone').value = btn.dataset.phone;
+          document.getElementById('user-edit-created_at').value = btn.dataset.created_at;
+          document.getElementById('user-edit-plan_type').value = btn.dataset.plan_type;
+          document.getElementById('user-edit-sub_status').value = btn.dataset.sub_status;
+          document.getElementById('user-edit-search_credits').value = btn.dataset.search_credits;
+          document.getElementById('user-edit-current_period_end').value = btn.dataset.current_period_end;
+          document.getElementById('user-edit-clear_sub').checked = false;
+          userModal.style.display = 'flex';
+        });
+      });
+
+      userEditCancel.addEventListener('click', () => { userModal.style.display = 'none'; });
+      userModal.addEventListener('click', (e) => { if (e.target === userModal) userModal.style.display = 'none'; });
+
+      // View Carpools modal
+      const carpoolsModal = document.getElementById('user-carpools-modal');
+      document.getElementById('carpools-modal-cancel').addEventListener('click', () => {
+        carpoolsModal.style.display = 'none';
+      });
+      carpoolsModal.addEventListener('click', (e) => {
+        if (e.target === carpoolsModal) carpoolsModal.style.display = 'none';
+      });
+
+      function renderCarpoolRow(c) {
+        return `<div style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
+          <strong>${c.flight_code || '—'}</strong> → ${c.airport_code || '—'} on ${c.requested_flight_date || '—'}
+          (${c.seats_available ?? '?'} seats) <span style="color:var(--text-muted);font-size:0.8rem;">${c.created_at || ''}</span>
+        </div>`;
+      }
+
+      document.querySelectorAll('.user-carpools-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const email = btn.dataset.email;
+          document.getElementById('carpools-modal-email').textContent = email;
+          document.getElementById('carpools-created-list').innerHTML = 'Loading...';
+          document.getElementById('carpools-joined-list').innerHTML = 'Loading...';
+          carpoolsModal.style.display = 'flex';
+          try {
+            const res = await fetch(`/admin/user-carpools?email=${encodeURIComponent(email)}`);
+            const data = await res.json();
+            const createdEl = document.getElementById('carpools-created-list');
+            const joinedEl = document.getElementById('carpools-joined-list');
+            createdEl.innerHTML = data.created && data.created.length
+              ? data.created.map(renderCarpoolRow).join('')
+              : '<em>None</em>';
+            joinedEl.innerHTML = data.joined && data.joined.length
+              ? data.joined.map(renderCarpoolRow).join('')
+              : '<em>None</em>';
+          } catch(e) {
+            document.getElementById('carpools-created-list').innerHTML = '<em>Error loading data</em>';
+            document.getElementById('carpools-joined-list').innerHTML = '';
+          }
+        });
+      });
+
+      // Set Credits To intercept on edit user form
+      const editUserForm = document.getElementById('user-edit-form') || document.querySelector('#user-edit-modal form');
+      if (editUserForm) {
+        editUserForm.addEventListener('submit', function() {
+          const exactCredits = document.getElementById('user-edit-set_credits_exact');
+          if (exactCredits && exactCredits.value !== '') {
+            const creditsField = editUserForm.querySelector('[name="search_credits"]');
+            if (creditsField) creditsField.value = exactCredits.value;
+          }
+        });
+      }
     </script>
       <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>

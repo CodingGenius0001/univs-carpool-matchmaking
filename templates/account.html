@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>My Subscription - Campus2Air</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header app-header">
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <nav class="nav-links">
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/create-a-carpool">Create Carpool</a>
+      </nav>
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
+          <div class="menu-divider"></div>
+          <a href="/pricing">Pricing</a>
+          <a href="/eula">EULA &amp; ToS</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/account" class="active">My Subscription</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <a href="/auth/logout" class="menu-logout">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card account-section">
+        <h2>My Subscription</h2>
+
+        <!-- Current plan display -->
+        <div class="account-tier-row">
+          <div>
+            <p class="text-muted" style="margin:0;font-size:0.85rem;">Current plan</p>
+            {% set tier = access.get('tier', 'none') %}
+            {% if tier == 'trial' %}
+            <div class="account-tier-label">Free Trial</div>
+            <p class="text-muted" style="font-size:0.88rem;">
+              {{ access.get('trial_days_left', 0) }} day{{ 's' if access.get('trial_days_left', 0) != 1 else '' }} remaining
+            </p>
+            {% elif tier == 'monthly' %}
+            <div class="account-tier-label">Monthly Plan <span class="subscription-badge">Pro</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Renews {{ access.get('current_period_end', '')[:10] }}</p>
+            {% elif tier == 'annual' %}
+            <div class="account-tier-label">Annual Plan <span class="subscription-badge">Annual</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Renews {{ access.get('current_period_end', '')[:10] }}</p>
+            {% elif tier == 'search_pack' %}
+            <div class="account-tier-label">Search Pack <span class="subscription-badge search-pack">Pack</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">{{ access.get('search_credits', 0) }} search credit{{ 's' if access.get('search_credits', 0) != 1 else '' }} remaining</p>
+            {% else %}
+            <div class="account-tier-label" style="color:var(--danger)">No Active Plan <span class="subscription-badge locked">Locked</span></div>
+            <p class="text-muted" style="font-size:0.88rem;">Your trial has ended. Choose a plan to continue.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Upcoming billing panel (live from Stripe) -->
+        {% if stripe_sub_data %}
+        <div class="card" style="background:rgba(110,231,183,0.06);border-color:rgba(110,231,183,0.2);padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:0.5rem;">
+          <p style="margin:0;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);font-weight:600;">Upcoming Billing</p>
+          {% if stripe_sub_data.cancel_at_period_end %}
+          <p style="margin:0;color:var(--warning);font-weight:600;">Cancels on {{ stripe_sub_data.next_billing_date }}</p>
+          <p class="text-muted" style="font-size:0.85rem;margin:0;">You will keep access until then. No further charges.</p>
+          {% else %}
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+            <div>
+              <p style="margin:0;font-weight:600;font-size:1rem;">{{ stripe_sub_data.amount }} / {{ stripe_sub_data.interval }}</p>
+              <p class="text-muted" style="font-size:0.85rem;margin:0;">Next charge on {{ stripe_sub_data.next_billing_date }}</p>
+            </div>
+            <span style="font-size:0.75rem;padding:0.2rem 0.6rem;border-radius:999px;background:rgba(52,211,153,0.15);color:var(--success);font-weight:700;text-transform:uppercase;">{{ stripe_sub_data.status }}</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Upgrade options -->
+        {% if tier == 'monthly' %}
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          <button class="btn btn-premium" id="upgrade-annual-btn" onclick="upgradeToAnnual(this)">
+            Upgrade to Annual — $8.28/yr (save ~30%)
+          </button>
+          <p class="text-muted" style="font-size:0.8rem;margin:0;">Switch to annual billing now. You'll be charged a prorated amount immediately and won't be billed monthly again.</p>
+        </div>
+        {% endif %}
+
+        {% if tier == 'search_pack' %}
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          <p class="text-muted" style="font-size:0.85rem;margin:0;">Upgrade to a subscription for unlimited searches and carpool creation:</p>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <button class="btn btn-premium" onclick="C2ASub.startCheckout('{{ price_monthly }}', 'subscription')">
+              Upgrade to Monthly — $0.99/mo
+            </button>
+            <button class="btn btn-premium" onclick="C2ASub.startCheckout('{{ price_annual }}', 'subscription')">
+              Upgrade to Annual — $8.28/yr
+            </button>
+          </div>
+          <p class="text-muted" style="font-size:0.8rem;margin:0;">Your remaining search credits will carry over.</p>
+        </div>
+        {% endif %}
+
+        {% if tier == 'trial' %}
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          {% if access.get('trial_days_left', 30) <= 7 %}
+          <div class="trial-banner warning" style="margin:0;">
+            <span class="trial-icon">⚠️</span>
+            <span>Your trial ends in {{ access.get('trial_days_left', 0) }} day{{ 's' if access.get('trial_days_left', 0) != 1 else '' }}!</span>
+          </div>
+          {% endif %}
+          <p class="text-muted" style="font-size:0.85rem;margin:0;">Lock in a plan before your trial ends:</p>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <button class="btn btn-premium" onclick="C2ASub.startCheckout('{{ price_monthly }}', 'subscription')">
+              Monthly — $0.99/mo
+            </button>
+            <button class="btn btn-premium" onclick="C2ASub.startCheckout('{{ price_annual }}', 'subscription')">
+              Annual — $8.28/yr
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if tier == 'none' %}
+        <div>
+          <a href="/pricing" class="btn btn-premium">Choose a Plan</a>
+        </div>
+        {% endif %}
+
+        <!-- Buy more credits (search pack users) -->
+        {% if tier == 'search_pack' %}
+        <div>
+          <a href="/pricing" class="btn btn-secondary">Buy More Searches</a>
+        </div>
+        {% endif %}
+
+        <!-- Billing management — shown whenever there is any Stripe record -->
+        {% if sub.get('stripe_subscription_id') or sub.get('stripe_customer_id') %}
+        <div>
+          <button class="btn btn-secondary" id="portal-btn" onclick="C2ASub.openBillingPortal(this)">
+            Manage Billing
+          </button>
+        </div>
+        <p class="text-muted" style="font-size:0.8rem;">
+          Manage or cancel your subscription, update payment details, and view invoices via the billing portal.
+        </p>
+        {% endif %}
+
+        <hr style="border-color:var(--border);margin:0.5rem 0;" />
+        <p class="text-muted" style="font-size:0.8rem;">
+          Logged in as <strong>{{ user_email }}</strong>. &nbsp;
+          Questions? Contact support or visit our <a href="/eula">Terms of Service</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+
+      async function upgradeToAnnual(btn) {
+        btn.disabled = true;
+        btn.textContent = 'Upgrading…';
+        try {
+          const res = await fetch('/api/subscription/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN } });
+          const data = await res.json();
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert(data.error || 'Upgrade failed. Please try again.');
+            btn.disabled = false;
+            btn.textContent = 'Upgrade to Annual — $8.28/yr (save ~30%)';
+          }
+        } catch (e) {
+          alert('Network error. Please try again.');
+          btn.disabled = false;
+          btn.textContent = 'Upgrade to Annual — $8.28/yr (save ~30%)';
+        }
+      }
+    </script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='subscription.js') }}"></script>
+    <script>C2ASub.initSubscriptionBadge();</script>
+  </body>
+</html>

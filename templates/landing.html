@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>University Carpool Matchmaking</title>
+    <title>UCR Carpool Matchmaking</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
@@ -15,6 +15,7 @@
         <a href="/create-a-carpool">Create a Carpool</a>
       </nav>
       <form class="admin-login" method="post" action="/admin/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input name="username" placeholder="Admin username" required />
         <input name="password" type="password" placeholder="Admin password" required />
         <button type="submit">Admin Login</button>
@@ -24,8 +25,9 @@
     <main>
       <section class="hero-screen">
         <p class="badge">WELCOME</p>
-        <h1>University Carpool Matchmaking</h1>
+        <h1>UCR Carpool Matchmaking</h1>
         <p class="tagline">Connecting students one flight at a time.</p>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:0.5rem;">Free 30-day trial for new accounts &mdash; no credit card required.</p>
         <a class="scroll-button" href="#start">Scroll to Start ↓</a>
       </section>
 
