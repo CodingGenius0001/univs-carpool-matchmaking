@@ -970,6 +970,17 @@ select {
   text-transform: uppercase;
 }
 
+.see-more-notes-btn {
+  align-self: flex-start;
+  margin-top: 0.4rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.72rem;
+  border-width: 1px;
+  font-size: 0.74rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
 .result-detail,
 .carpool-members {
   margin-top: 1rem;
@@ -1866,11 +1877,11 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .site-logo .logo-short {
-    display: inline;
+    display: none;
   }
 
   .site-logo .logo-full {
-    display: none;
+    display: inline;
   }
 
   .hero-screen,

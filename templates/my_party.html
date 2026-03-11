@@ -252,7 +252,7 @@
                     const n = c.notes || '';
                     if (!n) return 'None';
                     if (n.length <= 15) return n;
-                    return `${n.slice(0, 15)}... <button class="see-more-notes-btn" data-notes="${n.replace(/"/g, '&quot;')}" style="font-size:0.75rem;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline;">See more</button>`;
+                    return `${n.slice(0, 15)}... <button class="see-more-notes-btn btn btn-secondary btn-sm" data-notes="${n.replace(/"/g, '&quot;')}">See more</button>`;
                   })()}</span>
                 </div>
                 <div class="carpool-members">
