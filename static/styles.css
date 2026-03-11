@@ -109,7 +109,7 @@ main {
 }
 
 .container {
-  width: min(1120px, calc(100% - 2rem));
+  width: min(1240px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 1.5rem 0 2.5rem;
 }
@@ -182,13 +182,14 @@ code {
 }
 
 .site-header {
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1240px, calc(100% - 2rem));
   margin: 1.1rem auto 0;
   padding: 0.95rem 1.2rem;
   display: flex;
   align-items: center;
   gap: 0.9rem;
   flex-wrap: wrap;
+  z-index: 120;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.62);
@@ -335,6 +336,7 @@ code {
   position: absolute;
   top: calc(100% + 0.55rem);
   right: 0;
+  z-index: 140;
   min-width: 220px;
   padding: 0.45rem;
   border-radius: 22px;
@@ -548,6 +550,7 @@ code {
 
 .actions {
   text-align: center;
+  width: 100%;
 }
 
 .button-row {
@@ -1168,6 +1171,12 @@ select {
   border-color: rgba(21, 93, 82, 0.18) !important;
 }
 
+.google-btn svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
 .google-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1497,6 +1506,288 @@ select {
   text-align: center;
   font-size: 0.84rem;
   color: var(--muted);
+}
+
+html:not(.light-mode) {
+  --background: #0d1519;
+  --background-alt: #121d22;
+  --foreground: #ecf0f2;
+  --muted: #9baab2;
+  --surface: rgba(18, 29, 34, 0.78);
+  --surface-strong: rgba(15, 24, 29, 0.9);
+  --surface-accent: rgba(216, 140, 65, 0.12);
+  --border: rgba(236, 240, 242, 0.08);
+  --button: #d88c41;
+  --button-hover: #e39a54;
+  --signal: #68a493;
+  --signal-soft: rgba(104, 164, 147, 0.14);
+  --danger: #f08f7e;
+  --danger-bg: rgba(240, 143, 126, 0.12);
+  --success: #7dc4ae;
+  --warning: #f0c978;
+  --shadow: 0 26px 90px rgba(0, 0, 0, 0.4);
+  --shadow-soft: 0 16px 44px rgba(0, 0, 0, 0.24);
+}
+
+html:not(.light-mode) body {
+  background:
+    radial-gradient(circle at top left, rgba(216, 140, 65, 0.12), transparent 32%),
+    radial-gradient(circle at top right, rgba(104, 164, 147, 0.14), transparent 24%),
+    linear-gradient(180deg, #162126 0%, #0d1519 100%);
+}
+
+html:not(.light-mode) body::before {
+  opacity: 0.4;
+  background-image:
+    linear-gradient(rgba(236, 240, 242, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(236, 240, 242, 0.04) 1px, transparent 1px);
+}
+
+html:not(.light-mode) body::after {
+  background:
+    radial-gradient(circle at 16% 24%, rgba(216, 140, 65, 0.12), transparent 24%),
+    radial-gradient(circle at 82% 74%, rgba(104, 164, 147, 0.1), transparent 20%);
+}
+
+html:not(.light-mode) code {
+  background: rgba(236, 240, 242, 0.08);
+  color: var(--foreground);
+}
+
+html:not(.light-mode) .site-header {
+  background: rgba(15, 24, 29, 0.84);
+  border-color: rgba(236, 240, 242, 0.08);
+}
+
+html:not(.light-mode) .site-logo,
+html:not(.light-mode) .result-name,
+html:not(.light-mode) .member-name,
+html:not(.light-mode) .member-email,
+html:not(.light-mode) .action-card,
+html:not(.light-mode) .action-card h3,
+html:not(.light-mode) .stat-value,
+html:not(.light-mode) .result-info strong,
+html:not(.light-mode) .policy-body h4 {
+  color: var(--foreground);
+}
+
+html:not(.light-mode) .site-header .admin-login,
+html:not(.light-mode) .hamburger-btn,
+html:not(.light-mode) .btn-secondary,
+html:not(.light-mode) .scroll-button,
+html:not(.light-mode) .google-btn,
+html:not(.light-mode) input,
+html:not(.light-mode) textarea,
+html:not(.light-mode) select,
+html:not(.light-mode) .airline-dropdown,
+html:not(.light-mode) .suggestion-item,
+html:not(.light-mode) .member-item,
+html:not(.light-mode) .table-wrap,
+html:not(.light-mode) .pdf-viewer,
+html:not(.light-mode) .eula-close-btn {
+  background: rgba(236, 240, 242, 0.04) !important;
+  border-color: rgba(236, 240, 242, 0.08) !important;
+  color: var(--foreground) !important;
+}
+
+html:not(.light-mode) .hamburger-btn span {
+  background: var(--foreground);
+}
+
+html:not(.light-mode) .hamburger-btn:hover,
+html:not(.light-mode) .google-btn:hover {
+  background: rgba(236, 240, 242, 0.08) !important;
+  border-color: rgba(236, 240, 242, 0.1) !important;
+}
+
+html:not(.light-mode) .hamburger-menu {
+  background: rgba(15, 24, 29, 0.96);
+  border-color: rgba(236, 240, 242, 0.08);
+  box-shadow: var(--shadow);
+}
+
+html:not(.light-mode) .hamburger-menu a,
+html:not(.light-mode) .menu-email,
+html:not(.light-mode) .nav-links a,
+html:not(.light-mode) .my-party-btn,
+html:not(.light-mode) p,
+html:not(.light-mode) li,
+html:not(.light-mode) .card-subtitle,
+html:not(.light-mode) .tagline,
+html:not(.light-mode) .result-info span,
+html:not(.light-mode) .entry-field,
+html:not(.light-mode) .site-footer,
+html:not(.light-mode) .text-muted,
+html:not(.light-mode) .policy-body p,
+html:not(.light-mode) .policy-body li,
+html:not(.light-mode) .policy-meta {
+  color: var(--muted);
+}
+
+html:not(.light-mode) .nav-links a:hover,
+html:not(.light-mode) .my-party-btn:hover,
+html:not(.light-mode) .hamburger-menu a:hover,
+html:not(.light-mode) .btn-secondary:hover,
+html:not(.light-mode) .scroll-button:hover {
+  color: var(--foreground) !important;
+  background: rgba(236, 240, 242, 0.08) !important;
+  border-color: rgba(236, 240, 242, 0.1) !important;
+}
+
+html:not(.light-mode) .nav-links a.active,
+html:not(.light-mode) .my-party-btn.active,
+html:not(.light-mode) .hamburger-menu a.active,
+html:not(.light-mode) .badge,
+html:not(.light-mode) .action-card .icon,
+html:not(.light-mode) .result-badge.score-high,
+html:not(.light-mode) .member-badge {
+  color: #f4eee5 !important;
+  background: rgba(216, 140, 65, 0.16) !important;
+  border-color: rgba(216, 140, 65, 0.24) !important;
+}
+
+html:not(.light-mode) .site-logo::before,
+html:not(.light-mode) .badge::before {
+  background: var(--button);
+  box-shadow: 0 0 0 6px rgba(216, 140, 65, 0.12);
+}
+
+html:not(.light-mode) .card,
+html:not(.light-mode) .action-card,
+html:not(.light-mode) .admin-entry-card,
+html:not(.light-mode) .stat-card,
+html:not(.light-mode) .result,
+html:not(.light-mode) .modal-card,
+html:not(.light-mode) .carpool-card,
+html:not(.light-mode) .hero,
+html:not(.light-mode) .hero-screen {
+  background:
+    radial-gradient(circle at top right, rgba(216, 140, 65, 0.08), transparent 24%),
+    linear-gradient(145deg, rgba(18, 29, 34, 0.88), rgba(10, 18, 22, 0.86));
+  border-color: rgba(236, 240, 242, 0.08);
+  box-shadow: var(--shadow-soft);
+}
+
+html:not(.light-mode) .hero-screen::before {
+  background: linear-gradient(145deg, rgba(104, 164, 147, 0.88), rgba(41, 92, 82, 0.72));
+}
+
+html:not(.light-mode) .hero-screen::after {
+  background: linear-gradient(145deg, rgba(34, 50, 57, 0.94), rgba(18, 29, 34, 0.9));
+  border-color: rgba(236, 240, 242, 0.06);
+}
+
+html:not(.light-mode) .btn-primary,
+html:not(.light-mode) button,
+html:not(.light-mode) .button-link {
+  background: var(--button);
+  color: #10181c;
+  box-shadow: 0 18px 32px rgba(216, 140, 65, 0.18);
+}
+
+html:not(.light-mode) .btn-primary:hover,
+html:not(.light-mode) button:hover,
+html:not(.light-mode) .button-link:hover {
+  background: var(--button-hover);
+  box-shadow: 0 22px 38px rgba(216, 140, 65, 0.22);
+}
+
+html:not(.light-mode) .btn-danger,
+html:not(.light-mode) .danger,
+html:not(.light-mode) .menu-logout {
+  color: var(--danger) !important;
+}
+
+html:not(.light-mode) input::placeholder,
+html:not(.light-mode) textarea::placeholder {
+  color: rgba(155, 170, 178, 0.72);
+}
+
+html:not(.light-mode) input:focus,
+html:not(.light-mode) textarea:focus,
+html:not(.light-mode) select:focus {
+  background: rgba(236, 240, 242, 0.06) !important;
+  border-color: rgba(216, 140, 65, 0.32) !important;
+  box-shadow: 0 0 0 4px rgba(216, 140, 65, 0.12);
+}
+
+html:not(.light-mode) .airline-option:hover,
+html:not(.light-mode) .airline-option.active,
+html:not(.light-mode) .suggestion-item:hover,
+html:not(.light-mode) .suggestion-item.selected,
+html:not(.light-mode) .result:hover,
+html:not(.light-mode) .entries-table tr:hover td {
+  background: rgba(236, 240, 242, 0.05) !important;
+  border-color: rgba(216, 140, 65, 0.18);
+}
+
+html:not(.light-mode) .airline-option .code,
+html:not(.light-mode) .suggestion-flight-code,
+html:not(.light-mode) .phone-btn,
+html:not(.light-mode) .back {
+  color: var(--button);
+}
+
+html:not(.light-mode) .phone-btn {
+  background: rgba(216, 140, 65, 0.12);
+  border-color: rgba(216, 140, 65, 0.18);
+}
+
+html:not(.light-mode) .result-badge.score-medium,
+html:not(.light-mode) .match-tag,
+html:not(.light-mode) .message-warning {
+  background: rgba(216, 140, 65, 0.14) !important;
+  color: var(--warning) !important;
+  border-color: rgba(216, 140, 65, 0.2) !important;
+}
+
+html:not(.light-mode) .result-badge.score-low {
+  background: rgba(236, 240, 242, 0.06);
+  color: var(--muted);
+}
+
+html:not(.light-mode) .message-success,
+html:not(.light-mode) #join-message:not(:empty) {
+  background: rgba(104, 164, 147, 0.12);
+  border-color: rgba(104, 164, 147, 0.18);
+  color: var(--success);
+}
+
+html:not(.light-mode) .message-error,
+html:not(.light-mode) .error-banner,
+html:not(.light-mode) .login-error,
+html:not(.light-mode) #join-message.error {
+  background: rgba(240, 143, 126, 0.12);
+  border-color: rgba(240, 143, 126, 0.18);
+  color: var(--danger);
+}
+
+html:not(.light-mode) .disclaimer {
+  background: rgba(216, 140, 65, 0.1);
+  border-color: rgba(216, 140, 65, 0.16);
+}
+
+html:not(.light-mode) .entries-table th {
+  background: rgba(15, 24, 29, 0.96);
+  color: var(--muted);
+}
+
+html:not(.light-mode) .entries-table td {
+  color: var(--foreground);
+  border-bottom-color: rgba(236, 240, 242, 0.05);
+}
+
+html:not(.light-mode) .menu-divider,
+html:not(.light-mode) .result-detail,
+html:not(.light-mode) .carpool-members {
+  border-color: rgba(236, 240, 242, 0.08);
+}
+
+html:not(.light-mode) .global-theme-toggle,
+html:not(.light-mode) .theme-toggle {
+  background: rgba(15, 24, 29, 0.88);
+  border-color: rgba(236, 240, 242, 0.08);
+  color: var(--foreground);
 }
 
 @media (max-width: 1024px) {
