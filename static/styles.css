@@ -1831,7 +1831,7 @@ html:not(.light-mode) .theme-toggle {
 
 @media (max-width: 860px) {
   main {
-    padding: 1rem;
+    padding: 0.85rem;
   }
 
   .container,
@@ -1846,7 +1846,8 @@ html:not(.light-mode) .theme-toggle {
   .site-header {
     margin-top: 0.7rem;
     border-radius: 28px;
-    padding: 0.85rem;
+    padding: 0.8rem 0.9rem;
+    gap: 0.7rem;
   }
 
   .site-header .admin-login {
@@ -1874,9 +1875,12 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .hero-screen {
-    padding: 2rem;
+    min-height: 0;
+    padding: 1.85rem 1.55rem 1.65rem;
     align-items: center;
     text-align: center;
+    justify-content: flex-start;
+    gap: 1rem;
   }
 
   .hero-screen h1 {
@@ -1889,15 +1893,32 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .hero-screen::before {
-    width: 8.5rem;
-    top: 1.4rem;
-    right: 1rem;
+    width: 7rem;
+    top: 1.1rem;
+    right: -1.2rem;
+    opacity: 0.34;
   }
 
   .hero-screen::after {
-    width: 7rem;
-    right: 2rem;
-    bottom: 1.5rem;
+    width: 5.25rem;
+    right: auto;
+    left: -1.6rem;
+    bottom: 2rem;
+    opacity: 0.26;
+  }
+
+  .badge {
+    justify-content: center;
+    max-width: min(100%, 18rem);
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  .tagline,
+  .hero p {
+    max-width: 28rem;
+    font-size: 0.98rem;
+    line-height: 1.72;
   }
 
   .hero-cta,
@@ -1934,11 +1955,33 @@ html:not(.light-mode) .theme-toggle {
 @media (max-width: 560px) {
   .site-header {
     flex-direction: row;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.8rem;
+    gap: 0.65rem;
   }
 
   .hamburger-wrap {
-    margin-left: 0;
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .hamburger-btn {
+    width: 2.85rem;
+    height: 2.85rem;
+  }
+
+  .hamburger-menu {
+    min-width: min(250px, calc(100vw - 1.8rem));
+    top: calc(100% + 0.45rem);
+  }
+
+  .site-logo {
+    font-size: 1.2rem;
+  }
+
+  .nav-links {
+    margin-right: 0;
   }
 
   .site-header .admin-login {
@@ -1947,11 +1990,49 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .hero-screen {
-    padding: 1.6rem;
+    padding: 1.45rem 1.15rem 1.3rem;
+    margin-top: 0.9rem;
+    border-radius: 30px;
+    gap: 0.9rem;
+  }
+
+  .hero-screen::before {
+    width: 6.3rem;
+    top: 1rem;
+    right: -1.6rem;
+    opacity: 0.28;
+  }
+
+  .hero-screen::after {
+    display: none;
+  }
+
+  .badge {
+    min-height: 0;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    max-width: 16rem;
   }
 
   h1 {
-    font-size: clamp(2.8rem, 14vw, 4.2rem);
+    font-size: clamp(2.45rem, 12.2vw, 3.8rem);
+    line-height: 0.98;
+  }
+
+  .tagline,
+  .hero p {
+    font-size: 0.96rem;
+    line-height: 1.68;
+  }
+
+  .hero-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero-cta .btn {
+    min-width: 9.5rem;
   }
 
   h2 {
@@ -1969,5 +2050,10 @@ html:not(.light-mode) .theme-toggle {
     height: 3rem;
     right: 0.7rem;
     bottom: 0.7rem;
+  }
+
+  .site-footer {
+    padding-bottom: 4.2rem;
+    font-size: 0.92rem;
   }
 }
