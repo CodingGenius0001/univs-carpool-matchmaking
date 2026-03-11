@@ -1311,6 +1311,7 @@ select {
 .modal-overlay {
   position: fixed;
   inset: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1527,6 +1528,7 @@ select {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 0 0 2rem;
+  z-index: 0;
   text-align: center;
   font-size: 0.84rem;
   color: var(--muted);
