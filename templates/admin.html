@@ -242,69 +242,74 @@
                 <td style="text-align:center;">
                   {% if u.is_banned %}<span style="color:#f87171;font-weight:600;">Banned</span>{% else %}—{% endif %}
                 </td>
-                <td style="white-space:nowrap;display:flex;flex-direction:column;gap:0.3rem;padding:0.5rem;">
-                  <button type="button" class="btn btn-secondary btn-sm user-edit-btn"
-                    data-email="{{ u.user_email }}"
-                    data-first_name="{{ u.first_name or '' }}"
-                    data-last_initial="{{ u.last_initial or '' }}"
-                    data-phone="{{ u.phone or '' }}"
-                    data-created_at="{{ u.created_at or '' }}"
-                    data-plan_type="{{ u.plan_type or '' }}"
-                    data-sub_status="{{ u.sub_status or '' }}"
-                    data-search_credits="{{ u.search_credits or 0 }}"
-                    data-current_period_end="{{ u.current_period_end or '' }}"
-                  >Edit</button>
-                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
-                        onsubmit="return confirm('Grant {{ u.user_email }} a monthly plan?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}" />
-                    <input type="hidden" name="plan" value="monthly" />
-                    <button type="submit" class="btn btn-sm" style="background:rgba(110,231,183,0.15);color:var(--accent);border-color:rgba(110,231,183,0.3);">+ Monthly</button>
-                  </form>
-                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
-                        onsubmit="return confirm('Grant {{ u.user_email }} an annual plan?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}" />
-                    <input type="hidden" name="plan" value="annual" />
-                    <button type="submit" class="btn btn-sm" style="background:rgba(96,165,250,0.15);color:var(--accent2);border-color:rgba(96,165,250,0.3);">+ Annual</button>
-                  </form>
-                  <form method="post" action="/admin/grant-subscription" style="display:contents;"
-                        onsubmit="return confirm('Add 3 search credits to {{ u.user_email }}?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}" />
-                    <input type="hidden" name="plan" value="search_pack" />
-                    <button type="submit" class="btn btn-sm" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3);">+3 Credits</button>
-                  </form>
-                  <form method="post" action="/admin/reset-user-trial" style="display:contents;"
-                        onsubmit="return confirm('Reset {{ u.user_email }} to a fresh 30-day trial and clear their subscription?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}" />
-                    <button type="submit" class="btn btn-sm" style="background:rgba(251,191,36,0.15);color:#fbbf24;border-color:rgba(251,191,36,0.3);">Reset Trial</button>
-                  </form>
-                  <form method="post" action="/admin/ban-user" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}">
-                    <input type="hidden" name="action" value="{{ 'unban' if u.is_banned else 'ban' }}">
-                    <button type="submit" class="btn btn-sm {{ 'btn-success' if u.is_banned else 'btn-warning' }}"
-                      onclick="return confirm('{{ 'Unban' if u.is_banned else 'Ban' }} {{ u.user_email }}?')">
-                      {{ 'Unban' if u.is_banned else 'Ban' }}
-                    </button>
-                  </form>
-                  <button class="btn btn-sm btn-secondary user-carpools-btn" data-email="{{ u.user_email }}">View Carpools</button>
-                  {% if u.sub_status == 'active' %}
-                  <form method="post" action="/admin/revoke-subscription" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}">
-                    <button type="submit" class="btn btn-sm btn-warning"
-                      onclick="return confirm('Revoke subscription for {{ u.user_email }}?')">Revoke Sub</button>
-                  </form>
-                  {% endif %}
-                  <form method="post" action="/admin/delete-user" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="email" value="{{ u.user_email }}">
-                    <button type="submit" class="btn btn-sm btn-danger"
-                      onclick="return confirm('PERMANENTLY DELETE {{ u.user_email }}? This cannot be undone.') && confirm('Are you absolutely sure?')">Delete User</button>
-                  </form>
+                <td class="admin-actions-cell">
+                  <div class="row-action-menu">
+                    <button type="button" class="row-action-trigger btn btn-secondary btn-sm" aria-label="Open actions" aria-expanded="false">...</button>
+                    <div class="row-action-popover" role="menu">
+                      <button type="button" class="btn btn-secondary btn-sm row-action-btn user-edit-btn"
+                        data-email="{{ u.user_email }}"
+                        data-first_name="{{ u.first_name or '' }}"
+                        data-last_initial="{{ u.last_initial or '' }}"
+                        data-phone="{{ u.phone or '' }}"
+                        data-created_at="{{ u.created_at or '' }}"
+                        data-plan_type="{{ u.plan_type or '' }}"
+                        data-sub_status="{{ u.sub_status or '' }}"
+                        data-search_credits="{{ u.search_credits or 0 }}"
+                        data-current_period_end="{{ u.current_period_end or '' }}"
+                      >Edit</button>
+                      <form method="post" action="/admin/grant-subscription" class="row-action-form"
+                            onsubmit="return confirm('Grant {{ u.user_email }} a monthly plan?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}" />
+                        <input type="hidden" name="plan" value="monthly" />
+                        <button type="submit" class="btn btn-sm row-action-btn row-action-mint">+ Monthly</button>
+                      </form>
+                      <form method="post" action="/admin/grant-subscription" class="row-action-form"
+                            onsubmit="return confirm('Grant {{ u.user_email }} an annual plan?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}" />
+                        <input type="hidden" name="plan" value="annual" />
+                        <button type="submit" class="btn btn-sm row-action-btn row-action-blue">+ Annual</button>
+                      </form>
+                      <form method="post" action="/admin/grant-subscription" class="row-action-form"
+                            onsubmit="return confirm('Add 3 search credits to {{ u.user_email }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}" />
+                        <input type="hidden" name="plan" value="search_pack" />
+                        <button type="submit" class="btn btn-sm row-action-btn row-action-violet">+3 Credits</button>
+                      </form>
+                      <form method="post" action="/admin/reset-user-trial" class="row-action-form"
+                            onsubmit="return confirm('Reset {{ u.user_email }} to a fresh 30-day trial and clear their subscription?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}" />
+                        <button type="submit" class="btn btn-sm row-action-btn row-action-gold">Reset Trial</button>
+                      </form>
+                      <form method="post" action="/admin/ban-user" class="row-action-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}">
+                        <input type="hidden" name="action" value="{{ 'unban' if u.is_banned else 'ban' }}">
+                        <button type="submit" class="btn btn-sm row-action-btn {{ 'row-action-mint' if u.is_banned else 'row-action-blue-solid' }}"
+                          onclick="return confirm('{{ 'Unban' if u.is_banned else 'Ban' }} {{ u.user_email }}?')">
+                          {{ 'Unban' if u.is_banned else 'Ban' }}
+                        </button>
+                      </form>
+                      <button class="btn btn-sm btn-secondary row-action-btn user-carpools-btn" data-email="{{ u.user_email }}">View Carpools</button>
+                      {% if u.sub_status == 'active' %}
+                      <form method="post" action="/admin/revoke-subscription" class="row-action-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}">
+                        <button type="submit" class="btn btn-sm row-action-btn row-action-rose"
+                          onclick="return confirm('Revoke subscription for {{ u.user_email }}?')">Revoke Sub</button>
+                      </form>
+                      {% endif %}
+                      <form method="post" action="/admin/delete-user" class="row-action-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="email" value="{{ u.user_email }}">
+                        <button type="submit" class="btn btn-sm btn-danger row-action-btn"
+                          onclick="return confirm('PERMANENTLY DELETE {{ u.user_email }}? This cannot be undone.') && confirm('Are you absolutely sure?')">Delete User</button>
+                      </form>
+                    </div>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -475,6 +480,33 @@
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
 
+      const actionMenus = Array.from(document.querySelectorAll('.row-action-menu'));
+
+      function closeActionMenus() {
+        actionMenus.forEach(menu => {
+          menu.querySelector('.row-action-popover')?.classList.remove('open');
+          menu.querySelector('.row-action-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+      }
+
+      actionMenus.forEach(menu => {
+        const trigger = menu.querySelector('.row-action-trigger');
+        const popover = menu.querySelector('.row-action-popover');
+        trigger?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const willOpen = !popover?.classList.contains('open');
+          closeActionMenus();
+          if (willOpen && popover) {
+            popover.classList.add('open');
+            trigger.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.row-action-menu')) closeActionMenus();
+      });
+
       // User Edit modal logic
       const userModal = document.getElementById('user-edit-modal');
       const userEditForm = document.getElementById('user-edit-form');
@@ -482,6 +514,7 @@
 
       document.querySelectorAll('.user-edit-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+          closeActionMenus();
           document.getElementById('user-edit-email').value = btn.dataset.email;
           document.getElementById('user-edit-email-display').textContent = btn.dataset.email;
           document.getElementById('user-edit-first_name').value = btn.dataset.first_name;
@@ -518,6 +551,7 @@
 
       document.querySelectorAll('.user-carpools-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
+          closeActionMenus();
           const email = btn.dataset.email;
           document.getElementById('carpools-modal-email').textContent = email;
           document.getElementById('carpools-created-list').innerHTML = 'Loading...';
