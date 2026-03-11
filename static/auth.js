@@ -85,6 +85,10 @@ signinBtn?.addEventListener('click', async () => {
     if (!res.ok) {
       if (res.status === 403) {
         await auth.signOut();
+        if (data.code === 'banned_account') {
+          window.location.href = '/login?error=banned_account';
+          return;
+        }
         window.location.href = '/login?error=ucr_only';
         return;
       }

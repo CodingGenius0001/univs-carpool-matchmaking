@@ -1024,13 +1024,13 @@ def firebase_callback() -> Any:
         return jsonify({"error": "Missing authentication data"}), 400
 
     if not email.endswith("@ucr.edu"):
-        return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
+        return jsonify({"error": "Only @ucr.edu accounts are allowed", "code": "ucr_only"}), 403
 
     p = db.placeholder
     try:
         ban_rows = db.query(f"SELECT is_banned FROM users WHERE user_email = {p}", (email,))
         if ban_rows and ban_rows[0].get("is_banned"):
-            return jsonify({"error": "Your account has been suspended. Contact support."}), 403
+            return jsonify({"error": "Logged in with a banned account. Contact support.", "code": "banned_account"}), 403
     except Exception:
         pass
 

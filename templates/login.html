@@ -37,6 +37,8 @@
 
           {% if error == "ucr_only" %}
           <div class="login-error">Please sign in with your <strong>@ucr.edu</strong> UCR Student Google Account.</div>
+          {% elif error == "banned_account" %}
+          <div class="login-error">Logged in with a banned account. Contact support if you believe this was a mistake.</div>
           {% elif error == "auth_failed" %}
           <div class="login-error">Authentication failed. Please try again.</div>
           {% endif %}
