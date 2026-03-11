@@ -2130,23 +2130,49 @@ html:not(.light-mode) .row-action-popover {
 }
 
 html:not(.light-mode) .row-action-mint {
-  color: #7fe8cc;
+  background: rgba(110, 231, 183, 0.14) !important;
+  border-color: rgba(110, 231, 183, 0.28) !important;
+  color: #7fe8cc !important;
 }
 
 html:not(.light-mode) .row-action-blue {
-  color: #8bb7ff;
+  background: rgba(125, 177, 255, 0.14) !important;
+  border-color: rgba(125, 177, 255, 0.26) !important;
+  color: #8bb7ff !important;
+}
+
+html:not(.light-mode) .row-action-blue-solid {
+  background: var(--button) !important;
+  border-color: transparent !important;
+  color: #eef4ff !important;
 }
 
 html:not(.light-mode) .row-action-violet {
-  color: #b9a5ff;
+  background: rgba(185, 165, 255, 0.14) !important;
+  border-color: rgba(185, 165, 255, 0.26) !important;
+  color: #b9a5ff !important;
 }
 
 html:not(.light-mode) .row-action-gold {
-  color: #ffd36f;
+  background: rgba(255, 211, 111, 0.14) !important;
+  border-color: rgba(255, 211, 111, 0.26) !important;
+  color: #ffd36f !important;
 }
 
 html:not(.light-mode) .row-action-rose {
-  color: #ff92a4;
+  background: rgba(255, 146, 164, 0.14) !important;
+  border-color: rgba(255, 146, 164, 0.26) !important;
+  color: #ff92a4 !important;
+}
+
+html:not(.light-mode) .row-action-mint:hover,
+html:not(.light-mode) .row-action-blue:hover,
+html:not(.light-mode) .row-action-blue-solid:hover,
+html:not(.light-mode) .row-action-violet:hover,
+html:not(.light-mode) .row-action-gold:hover,
+html:not(.light-mode) .row-action-rose:hover {
+  filter: brightness(1.08);
+  box-shadow: none !important;
 }
 
 html:not(.light-mode) .airline-option .code,
