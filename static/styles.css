@@ -1315,6 +1315,11 @@ select {
   overflow-y: auto;
 }
 
+.modal-copy {
+  color: var(--muted);
+  line-height: 1.75;
+}
+
 .modal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
