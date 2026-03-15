@@ -20,11 +20,6 @@ except ImportError:
 from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-try:
-    import stripe as stripe_lib
-except ImportError:
-    stripe_lib = None  # type: ignore[assignment]
-
 app = Flask(__name__)
 _flask_secret = os.getenv("FLASK_SECRET_KEY")
 if not _flask_secret:
@@ -59,23 +54,60 @@ STRIPE_PRICE_ANNUAL = os.getenv("STRIPE_PRICE_ANNUAL", "")      # $8.28/yr
 STRIPE_PRICE_SEARCH_PACK = os.getenv("STRIPE_PRICE_SEARCH_PACK", "")  # $2.99 one-time
 
 # ---------------------------------------------------------------------------
-# Firebase Admin SDK initialization (server-side token verification)
+# Optional SDK initialization (lazy-loaded to keep cold starts lighter)
 # ---------------------------------------------------------------------------
-import firebase_admin
-from firebase_admin import credentials as fb_credentials, auth as fb_auth
-
 _firebase_app = None
+_fb_auth = None
 _fb_sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
-if _fb_sa_json:
+_firebase_init_attempted = False
+_stripe_lib = None
+_stripe_import_attempted = False
+
+
+def _get_stripe_lib() -> Any | None:
+    """Import Stripe only for routes that actually use it."""
+    global _stripe_lib, _stripe_import_attempted
+    if not _stripe_import_attempted:
+        _stripe_import_attempted = True
+        try:
+            import stripe as stripe_module
+            _stripe_lib = stripe_module
+        except ImportError:
+            _stripe_lib = None
+    return _stripe_lib
+
+
+def _get_firebase_auth() -> Any | None:
+    """Initialize Firebase Admin only when token verification is needed."""
+    global _firebase_app, _fb_auth, _firebase_init_attempted
+    if _firebase_init_attempted:
+        return _fb_auth if _firebase_app else None
+
+    _firebase_init_attempted = True
+    if not _fb_sa_json:
+        app.logger.warning(
+            "FIREBASE_SERVICE_ACCOUNT_JSON not set. Firebase token verification is disabled."
+        )
+        return None
+
     try:
         import json as _json
+        import firebase_admin
+        from firebase_admin import auth as fb_auth_module, credentials as fb_credentials
+
         _sa_dict = _json.loads(_fb_sa_json)
         _fb_cred = fb_credentials.Certificate(_sa_dict)
         _firebase_app = firebase_admin.initialize_app(_fb_cred)
-    except Exception as _fb_err:
-        print(f"WARNING: Firebase Admin SDK init failed: {_fb_err}. Token verification disabled.")
-else:
-    print("WARNING: FIREBASE_SERVICE_ACCOUNT_JSON not set. Firebase token verification is DISABLED — not safe for production.")
+        _fb_auth = fb_auth_module
+    except Exception as exc:
+        app.logger.warning(
+            "Firebase Admin SDK init failed: %s. Token verification disabled.",
+            exc,
+        )
+        _firebase_app = None
+        _fb_auth = None
+
+    return _fb_auth if _firebase_app else None
 
 
 @app.context_processor
@@ -144,6 +176,11 @@ def _resolve_database_path() -> str:
 
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
 DATABASE_PATH = _resolve_database_path()
+AUTO_INIT_DB = os.getenv(
+    "AUTO_INIT_DB",
+    "1" if DB_ENGINE == "sqlite" and not os.getenv("VERCEL") else "0",
+).lower() in ("1", "true", "yes")
+LIGHTWEIGHT_PUBLIC_PATHS = {"/", "/landing", "/login"}
 
 # Expanded airport list
 AIRPORT_CODE_MAP = {
@@ -815,11 +852,17 @@ def close_db(_: Any) -> None:
 _db_initialized = False
 
 
+def _should_skip_db_bootstrap(path: str) -> bool:
+    return path in LIGHTWEIGHT_PUBLIC_PATHS or path.startswith("/static/") or path.startswith("/docs/")
+
+
 @app.before_request
 def _ensure_db() -> None:
-    """Ensure database table exists on every request (handles Vercel cold starts)."""
+    """Auto-bootstrap local SQLite and SQLite fallback without penalizing every cold start."""
     global _db_initialized
     if _db_initialized and not db._schema_needs_reinit:
+        return
+    if not AUTO_INIT_DB and not db._schema_needs_reinit and _should_skip_db_bootstrap(request.path):
         return
     db._schema_needs_reinit = False
     try:
@@ -1005,9 +1048,10 @@ def firebase_callback() -> Any:
     """Receive Firebase ID token from client, verify it server-side, set session."""
     data = request.get_json(silent=True) or {}
     id_token = data.get("idToken", "")
-    if _firebase_app:
+    firebase_auth = _get_firebase_auth()
+    if firebase_auth:
         try:
-            decoded = fb_auth.verify_id_token(id_token)
+            decoded = firebase_auth.verify_id_token(id_token)
             email = decoded.get("email", "").strip().lower()
             name = decoded.get("name", data.get("name", "")).strip()
             uid = decoded.get("uid", "").strip()
@@ -1296,6 +1340,18 @@ def search_carpools() -> Any:
 
     # For search_pack: atomically consume credit BEFORE running the search
     credit_consumed = False
+    credit_refunded = False
+
+    def refund_search_credit() -> None:
+        nonlocal credit_refunded
+        if not credit_consumed or credit_refunded:
+            return
+        db.execute(
+            f"UPDATE subscriptions SET search_credits = search_credits + 1, updated_at = {p} WHERE user_email = {p}",
+            (_now_utc().isoformat(), search_user),
+        )
+        credit_refunded = True
+
     if access.get("tier") == "search_pack":
         affected = db.execute(
             f"UPDATE subscriptions SET search_credits = search_credits - 1, updated_at = {p} WHERE user_email = {p} AND search_credits > 0",
@@ -1305,55 +1361,61 @@ def search_carpools() -> Any:
             return jsonify({"error": "No search credits remaining.", "upgrade": True}), 403
         credit_consumed = True
 
-    rows = db.query(f"SELECT * FROM carpools WHERE status = {p} ORDER BY created_at DESC", ("active",))
-
-    # Get member counts for all carpools
-    member_counts: dict[int, int] = {}
-    user_memberships: set[int] = set()
     try:
-        all_members = db.query("SELECT carpool_id, user_email FROM party_members")
-        for m in all_members:
-            cid = m["carpool_id"]
-            member_counts[cid] = member_counts.get(cid, 0) + 1
-            if m["user_email"] == current_user:
-                user_memberships.add(cid)
-    except Exception:
-        pass
+        rows = db.query(f"SELECT * FROM carpools WHERE status = {p} ORDER BY created_at DESC", ("active",))
 
-    results: list[dict[str, Any]] = []
-    for entry in rows:
-        score = 0
-        reasons: list[str] = []
-        if flight_code and entry["flight_code"] == flight_code:
-            score += 70
-            reasons.append("Exact flight code match")
-        if airport_code and entry["airport_code"] == airport_code:
-            score += 30
-            reasons.append("Same airport code")
-        if flight_date and entry.get("requested_flight_date") == flight_date:
-            score += 20
-            reasons.append("Same requested flight date")
-        if score > 0:
-            public_row = _serialize_entry(entry)
-            public_row["match_score"] = score
-            public_row["match_reasons"] = reasons
-            cid = entry["id"]
-            mc = member_counts.get(cid, 0)
-            public_row["member_count"] = mc
-            public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - mc)
-            public_row["is_member"] = cid in user_memberships
-            results.append(public_row)
+        # Get member counts for all carpools
+        member_counts: dict[int, int] = {}
+        user_memberships: set[int] = set()
+        try:
+            all_members = db.query("SELECT carpool_id, user_email FROM party_members")
+            for m in all_members:
+                cid = m["carpool_id"]
+                member_counts[cid] = member_counts.get(cid, 0) + 1
+                if m["user_email"] == current_user:
+                    user_memberships.add(cid)
+        except Exception:
+            pass
 
-    results.sort(key=lambda r: r["match_score"], reverse=True)
+        results: list[dict[str, Any]] = []
+        for entry in rows:
+            score = 0
+            reasons: list[str] = []
+            if flight_code and entry["flight_code"] == flight_code:
+                score += 70
+                reasons.append("Exact flight code match")
+            if airport_code and entry["airport_code"] == airport_code:
+                score += 30
+                reasons.append("Same airport code")
+            if flight_date and entry.get("requested_flight_date") == flight_date:
+                score += 20
+                reasons.append("Same requested flight date")
+            if score > 0:
+                public_row = _serialize_entry(entry)
+                public_row["match_score"] = score
+                public_row["match_reasons"] = reasons
+                cid = entry["id"]
+                mc = member_counts.get(cid, 0)
+                public_row["member_count"] = mc
+                public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - mc)
+                public_row["is_member"] = cid in user_memberships
+                results.append(public_row)
 
-    # If search_pack and no results found, refund the credit
-    if credit_consumed and not results:
-        db.execute(
-            f"UPDATE subscriptions SET search_credits = search_credits + 1, updated_at = {p} WHERE user_email = {p}",
-            (_now_utc().isoformat(), search_user),
-        )
+        results.sort(key=lambda r: r["match_score"], reverse=True)
 
-    return jsonify({"count": len(results), "results": results})
+        # If search_pack and no results found, refund the credit
+        if credit_consumed and not results:
+            refund_search_credit()
+
+        return jsonify({"count": len(results), "results": results})
+    except Exception as e:
+        if credit_consumed and not credit_refunded:
+            try:
+                refund_search_credit()
+            except Exception as refund_error:
+                app.logger.error(f"search_carpools credit refund failed: {refund_error}")
+        app.logger.error(f"search_carpools error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
 @app.get("/api/carpools/<int:entry_id>")
@@ -2376,6 +2438,7 @@ def account_page() -> Any:
 
     # Fetch live Stripe subscription data for upcoming billing panel
     stripe_sub_data = None
+    stripe_lib = _get_stripe_lib()
     if stripe_lib and STRIPE_SECRET_KEY and sub.get("stripe_subscription_id"):
         try:
             stripe_lib.api_key = STRIPE_SECRET_KEY
@@ -2423,6 +2486,7 @@ def sync_subscription() -> Any:
     """Called from the success page to sync subscription state directly from Stripe.
     Identifies the user from Stripe customer metadata so it works even if the
     Flask session cookie isn't available after a Stripe redirect."""
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib or not STRIPE_SECRET_KEY:
         return jsonify({"ok": True, "skipped": True})
 
@@ -2512,6 +2576,7 @@ def create_checkout_session() -> Any:
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib:
         return jsonify({"error": "Stripe is not configured on this server"}), 503
 
@@ -2580,6 +2645,7 @@ def upgrade_subscription() -> Any:
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib:
         return jsonify({"error": "Stripe is not configured on this server"}), 503
     if not STRIPE_PRICE_ANNUAL:
@@ -2618,6 +2684,7 @@ def customer_portal() -> Any:
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib:
         return jsonify({"error": "Stripe is not configured on this server"}), 503
 
@@ -2651,6 +2718,7 @@ def cancel_subscription() -> Any:
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Login required"}), 401
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib:
         return jsonify({"error": "Stripe is not configured on this server"}), 503
 
@@ -2673,6 +2741,7 @@ def cancel_subscription() -> Any:
 @app.post("/webhooks/stripe")
 @csrf.exempt
 def stripe_webhook() -> Any:
+    stripe_lib = _get_stripe_lib()
     if not stripe_lib:
         return jsonify({"error": "Stripe not configured"}), 503
 
@@ -2802,9 +2871,11 @@ try:
         db_dir = os.path.dirname(DATABASE_PATH)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-    with app.app_context():
-        db.init_schema()
-        db.ensure_columns()
+    if AUTO_INIT_DB:
+        with app.app_context():
+            db.init_schema()
+            db.ensure_columns()
+        _db_initialized = True
 except Exception as exc:
     print(f"[startup] database initialization failed: {exc}")
 
