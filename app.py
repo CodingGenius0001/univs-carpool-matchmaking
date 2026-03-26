@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import ssl
+from threading import Lock
 from typing import Any
 
 import traceback
@@ -23,6 +24,22 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+MYSQL_CONNECT_TIMEOUT = _positive_int_env("MYSQL_CONNECT_TIMEOUT", 2 if os.getenv("VERCEL") else 5)
+MYSQL_READ_TIMEOUT = _positive_int_env("MYSQL_READ_TIMEOUT", 10)
+MYSQL_WRITE_TIMEOUT = _positive_int_env("MYSQL_WRITE_TIMEOUT", 10)
+MYSQL_RETRY_COOLDOWN_SECONDS = _positive_int_env(
+    "MYSQL_RETRY_COOLDOWN_SECONDS",
+    600 if os.getenv("VERCEL") else 60,
+)
 
 
 @app.template_filter("to_pst")
@@ -132,15 +149,18 @@ class DBAdapter:
         self.placeholder = "%s" if self.engine == "mysql" else "?"
         self._mysql_failed = False
         self._mysql_failed_at: float | None = None  # timestamp of last failure
+        self._schema_ready = False
+        self._schema_lock = Lock()
 
     def _activate_sqlite_fallback(self, reason: str = "") -> None:
-        """Switch to SQLite fallback. Retries MySQL after 60 s of downtime."""
+        """Switch to SQLite fallback and retry MySQL after a cooldown."""
         import time
         if not self._mysql_failed:
             app.logger.warning(f"Switching to SQLite fallback. {reason}")
         self._mysql_failed = True
         self._mysql_failed_at = time.time()
         self.placeholder = "?"
+        self._schema_ready = False
         # Discard any broken MySQL connection on this request
         old = g.pop("db", None)
         if old is not None:
@@ -156,7 +176,40 @@ class DBAdapter:
             return False
         if self._mysql_failed_at is None:
             return False
-        return (time.time() - self._mysql_failed_at) > 60
+        return (time.time() - self._mysql_failed_at) > MYSQL_RETRY_COOLDOWN_SECONDS
+
+    def _reset_mysql_retry_state(self) -> None:
+        app.logger.info("Retrying MySQL connection after cooldown.")
+        self._mysql_failed = False
+        self._mysql_failed_at = None
+        self.placeholder = "%s"
+        self._schema_ready = False
+
+    def _ensure_sqlite_dir(self) -> None:
+        if DATABASE_PATH in ("", ":memory:"):
+            return
+        db_dir = os.path.dirname(DATABASE_PATH)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+
+    def ensure_ready(self) -> None:
+        with self._schema_lock:
+            if self.engine == "mysql" and self._should_retry_mysql():
+                self._reset_mysql_retry_state()
+            if self._schema_ready:
+                return
+            if self.engine == "sqlite" or self._mysql_failed:
+                self._ensure_sqlite_dir()
+            self.init_schema()
+            self.ensure_columns()
+            self._schema_ready = True
+
+    def _normalized_sql(self, sql: str, conn: Any | None = None) -> str:
+        if isinstance(conn, sqlite3.Connection):
+            return sql.replace("%s", "?")
+        if self.engine == "sqlite" or self._mysql_failed:
+            return sql.replace("%s", "?")
+        return sql
 
     def _get_sqlite_conn(self) -> Any:
         g.db = sqlite3.connect(DATABASE_PATH)
@@ -170,13 +223,6 @@ class DBAdapter:
     def get_conn(self) -> Any:
         if "db" in g:
             return g.db
-
-        # Reset failure flag after 60 s so transient MySQL outages self-heal
-        if self._should_retry_mysql():
-            app.logger.info("Retrying MySQL connection after cooldown.")
-            self._mysql_failed = False
-            self._mysql_failed_at = None
-            self.placeholder = "%s"
 
         if self.engine == "mysql" and not self._mysql_failed:
             try:
@@ -194,9 +240,9 @@ class DBAdapter:
                     port=int(os.getenv("MYSQL_PORT", "3306")),
                     autocommit=False,
                     cursorclass=DictCursor,
-                    connect_timeout=5,
-                    read_timeout=10,
-                    write_timeout=10,
+                    connect_timeout=MYSQL_CONNECT_TIMEOUT,
+                    read_timeout=MYSQL_READ_TIMEOUT,
+                    write_timeout=MYSQL_WRITE_TIMEOUT,
                 )
                 ssl_ctx = _mysql_ssl_ctx()
                 if ssl_ctx:
@@ -223,18 +269,20 @@ class DBAdapter:
             return False
 
     def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        self.ensure_ready()
         try:
             conn = self.get_conn()
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(self._normalized_sql(sql, conn), params)
             rows = cur.fetchall()
             cur.close()
         except Exception as exc:
             if self.engine == "mysql" and self._is_mysql_conn_error(exc):
                 self._activate_sqlite_fallback(f"MySQL query failed: {exc}")
-                conn = self._get_sqlite_conn()
+                self.ensure_ready()
+                conn = self.get_conn()
                 cur = conn.cursor()
-                cur.execute(sql.replace("%s", "?"), params)
+                cur.execute(self._normalized_sql(sql, conn), params)
                 rows = cur.fetchall()
                 cur.close()
             else:
@@ -244,19 +292,21 @@ class DBAdapter:
         return list(rows)
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> int:
+        self.ensure_ready()
         try:
             conn = self.get_conn()
             cur = conn.cursor()
-            cur.execute(sql, params)
+            cur.execute(self._normalized_sql(sql, conn), params)
             last_id = getattr(cur, "lastrowid", 0)
             conn.commit()
             cur.close()
         except Exception as exc:
             if self.engine == "mysql" and self._is_mysql_conn_error(exc):
                 self._activate_sqlite_fallback(f"MySQL execute failed: {exc}")
-                conn = self._get_sqlite_conn()
+                self.ensure_ready()
+                conn = self.get_conn()
                 cur = conn.cursor()
-                cur.execute(sql.replace("%s", "?"), params)
+                cur.execute(self._normalized_sql(sql, conn), params)
                 last_id = getattr(cur, "lastrowid", 0)
                 conn.commit()
                 cur.close()
@@ -277,7 +327,7 @@ class DBAdapter:
                     database=os.getenv("MYSQL_DATABASE", "carpool"),
                     port=int(os.getenv("MYSQL_PORT", "3306")),
                     autocommit=False,
-                    connect_timeout=5,
+                    connect_timeout=MYSQL_CONNECT_TIMEOUT,
                 )
                 ssl_ctx = _mysql_ssl_ctx()
                 if ssl_ctx:
@@ -544,23 +594,6 @@ def close_db(_: Any) -> None:
     conn = g.pop("db", None)
     if conn is not None:
         conn.close()
-
-
-_db_initialized = False
-
-
-@app.before_request
-def _ensure_db() -> None:
-    """Ensure database table exists on every request (handles Vercel cold starts)."""
-    global _db_initialized
-    if _db_initialized:
-        return
-    try:
-        db.init_schema()
-        db.ensure_columns()
-        _db_initialized = True
-    except Exception:
-        pass
 
 
 @app.errorhandler(Exception)
@@ -1556,7 +1589,7 @@ def health_check() -> Any:
         "db_engine_active": actual_engine,
         "mysql_fallback_active": db._mysql_failed,
         "db_path": DATABASE_PATH if actual_engine == "sqlite" else "(mysql)",
-"db_initialized": _db_initialized,
+        "db_initialized": db._schema_ready,
     }
     if db._mysql_failed:
         info["mysql_note"] = (
@@ -1577,16 +1610,10 @@ def health_check() -> Any:
 # Startup
 # ---------------------------------------------------------------------------
 
-try:
-    if DB_ENGINE == "sqlite" and DATABASE_PATH not in (":memory:",):
-        db_dir = os.path.dirname(DATABASE_PATH)
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
-    with app.app_context():
-        db.init_schema()
-        db.ensure_columns()
-except Exception as exc:
-    print(f"[startup] database initialization failed: {exc}")
-
 if __name__ == "__main__":
+    try:
+        with app.app_context():
+            db.ensure_ready()
+    except Exception as exc:
+        print(f"[startup] database initialization failed: {exc}")
     app.run(host="0.0.0.0", port=8000, debug=True)
