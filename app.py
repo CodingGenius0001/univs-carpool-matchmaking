@@ -1224,18 +1224,19 @@ def search_carpools() -> Any:
 
     results: list[dict[str, Any]] = []
     for entry in rows:
-        score = 0
+        matched_fields = 0
         reasons: list[str] = []
         if flight_code and entry["flight_code"] == flight_code:
-            score += 70
+            matched_fields += 1
             reasons.append("Exact flight code match")
         if airport_code and entry["airport_code"] == airport_code:
-            score += 30
+            matched_fields += 1
             reasons.append("Same airport code")
         if flight_date and entry.get("requested_flight_date") == flight_date:
-            score += 20
+            matched_fields += 1
             reasons.append("Same requested flight date")
-        if score > 0:
+        if matched_fields > 0:
+            score = round((matched_fields / 3) * 100)
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
             public_row["match_reasons"] = reasons
