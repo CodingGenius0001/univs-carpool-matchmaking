@@ -1,6 +1,8 @@
 // Notification popup — checks for unread notifications on page load
 // and shows a dismissible modal popup for each one.
 (function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
   function escHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -36,7 +38,10 @@
     const btn = e.target.closest('.notif-dismiss-btn');
     if (!btn) return;
     try {
-      await fetch(`/api/notifications/${btn.dataset.id}/dismiss`, { method: 'POST' });
+      await fetch(`/api/notifications/${btn.dataset.id}/dismiss`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken },
+      });
       btn.closest('.notif-item').remove();
       if (!list.querySelector('.notif-item')) popup.style.display = 'none';
     } catch {}

@@ -6,6 +6,7 @@ const flightCodeInput = document.querySelector('#flight_code');
 const departureDateInput = document.querySelector('#departure_date');
 const airlineDropdown = document.querySelector('#airline-dropdown');
 const airlineNameInput = document.querySelector('#airline_name');
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 // --- Set min date to today ---
 if (departureDateInput) {
@@ -110,7 +111,13 @@ const showAirlineDropdown = (matches) => {
   matches.forEach((airline) => {
     const opt = document.createElement('div');
     opt.className = 'airline-option';
-    opt.innerHTML = `<span class="code">${airline.code}</span><span class="name">${airline.name}</span>`;
+    const codeSpan = document.createElement('span');
+    codeSpan.className = 'code';
+    codeSpan.textContent = airline.code || '';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'name';
+    nameSpan.textContent = airline.name || '';
+    opt.append(codeSpan, nameSpan);
     opt.addEventListener('mousedown', (e) => {
       e.preventDefault();
       flightCodeInput.value = airline.code;
@@ -265,7 +272,10 @@ form?.addEventListener('submit', async (e) => {
 
     const res = await fetch('/api/carpools', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
       body: JSON.stringify(payload),
       signal: controller.signal
     });

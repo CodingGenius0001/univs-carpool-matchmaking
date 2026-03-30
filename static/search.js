@@ -1,5 +1,19 @@
 const searchForm = document.querySelector('#search-form');
 const results = document.querySelector('#results');
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, '&#96;');
+}
 
 // Auto-format inputs
 const searchAirport = searchForm?.querySelector('[name="airport_code"]');
@@ -57,12 +71,14 @@ async function loadUserPhone() {
 loadUserPhone();
 
 function renderResults(data) {
-  results.innerHTML = `<p class="text-muted text-sm mt-2">${data.count} carpool${data.count !== 1 ? 's' : ''} found</p>` +
+  results.innerHTML = `<p class="text-muted text-sm mt-2">${escapeHtml(data.count)} carpool${data.count !== 1 ? 's' : ''} found</p>` +
     data.results.map((r) => {
       const scoreClass = r.match_score >= 70 ? 'score-high' : r.match_score >= 30 ? 'score-medium' : 'score-low';
+      const creatorName = `${r.first_name || ''} ${r.last_initial ? `${r.last_initial}.` : ''}`.trim();
       const reasons = (r.match_reasons || []).map(reason =>
-        `<span class="match-tag">${reason}</span>`
+        `<span class="match-tag">${escapeHtml(reason)}</span>`
       ).join('');
+      const entryId = Number.isFinite(Number(r.id)) ? String(Number(r.id)) : '';
 
       const seatsRemaining = r.seats_remaining ?? r.seats_available;
       const isMember = r.is_member;
@@ -70,43 +86,43 @@ function renderResults(data) {
 
       let actionBtn;
       if (isMember) {
-        actionBtn = `<button data-id="${r.id}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
+        actionBtn = `<button data-id="${entryId}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                       <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Carpool</a>`;
       } else if (isFull) {
         actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Carpool Full</button>`;
       } else {
-        actionBtn = `<button data-id="${r.id}" class="join-carpool-btn btn btn-primary btn-sm">Join Carpool</button>`;
+        actionBtn = `<button data-id="${entryId}" class="join-carpool-btn btn btn-primary btn-sm">Join Carpool</button>`;
       }
 
       return `
         <article class="result">
           <div class="result-header">
             <div>
-              <div class="result-name">${r.first_name} ${r.last_initial}.</div>
+              <div class="result-name">${escapeHtml(creatorName)}</div>
               ${reasons ? `<div class="match-reasons">${reasons}</div>` : ''}
             </div>
-            ${r.match_score > 0 ? `<span class="result-badge ${scoreClass}">${r.match_score}% match</span>` : ''}
+            ${r.match_score > 0 ? `<span class="result-badge ${scoreClass}">${escapeHtml(r.match_score)}% match</span>` : ''}
           </div>
           <div class="result-info">
             <span>
               <span class="label">Flight</span>
-              <strong>${r.flight_code}</strong>
+              <strong>${escapeHtml(r.flight_code)}</strong>
             </span>
             <span>
               <span class="label">Airport</span>
-              ${r.airport_code}
+              ${escapeHtml(r.airport_code)}
             </span>
             <span>
               <span class="label">Date</span>
-              ${r.requested_flight_date || r.flight_date_utc || '\u2014'}
+              ${escapeHtml(r.requested_flight_date || r.flight_date_utc || '\u2014')}
             </span>
             <span>
               <span class="label">Seats</span>
-              ${isFull ? '<span style="color:var(--danger)">Full</span>' : `${seatsRemaining} left`}
+              ${isFull ? '<span style="color:var(--danger)">Full</span>' : `${escapeHtml(seatsRemaining)} left`}
             </span>
             <span>
               <span class="label">Carpool</span>
-              ${r.member_count || 1} member${(r.member_count || 1) !== 1 ? 's' : ''}
+              ${escapeHtml(r.member_count || 1)} member${(r.member_count || 1) !== 1 ? 's' : ''}
             </span>
           </div>
           <div class="result-actions">
@@ -118,7 +134,7 @@ function renderResults(data) {
   results.innerHTML += `
     <div class="text-center mt-3">
       <p class="text-muted text-sm">Can't find what you're looking for?</p>
-      <a href="${buildAddUrl()}" class="btn btn-primary mt-1">Create a Carpool</a>
+      <a href="${escapeAttr(buildAddUrl())}" class="btn btn-primary mt-1">Create a Carpool</a>
     </div>`;
 }
 
@@ -155,16 +171,11 @@ searchForm?.addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (!data.results?.length) {
-      const params = new URLSearchParams();
-      if (formData.flight_code) params.set('flight_code', searchForm.querySelector('[name="flight_code"]').value);
-      if (formData.airport_code) params.set('airport_code', searchForm.querySelector('[name="airport_code"]').value);
-      if (searchForm.querySelector('[name="departure_date"]').value) params.set('departure_date', searchForm.querySelector('[name="departure_date"]').value);
-      const addUrl = '/create-a-carpool' + (params.toString() ? '?' + params.toString() : '');
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
           <p>No matching carpools found. Try adjusting your search or create your own carpool!</p>
-          <a href="${buildAddUrl()}" class="btn btn-primary mt-2">Create a Carpool</a>
+          <a href="${escapeAttr(buildAddUrl())}" class="btn btn-primary mt-2">Create a Carpool</a>
         </div>`;
       return;
     }
@@ -201,7 +212,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
       <p class="text-muted text-sm">Your phone number helps carpool members coordinate. It will be saved for future use.</p>
       <form id="phone-join-form">
         <label class="mt-2">Phone Number
-          <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${cachedUserPhone}" />
+          <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${escapeAttr(cachedUserPhone)}" />
         </label>
         <div class="modal-actions mt-2">
           <button type="submit" class="btn btn-primary">Join Carpool</button>
@@ -244,7 +255,10 @@ function showPhonePrompt(carpoolId, joinBtn) {
     try {
       const res = await fetch(`/api/carpools/${carpoolId}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
         body: JSON.stringify({ phone })
       });
       const data = await res.json();
@@ -279,7 +293,10 @@ document.addEventListener('click', async (e) => {
   leaveBtn.textContent = 'Leaving...';
 
   try {
-    const res = await fetch(`/api/carpools/${id}/leave`, { method: 'POST' });
+    const res = await fetch(`/api/carpools/${id}/leave`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+    });
     if (res.ok) {
       leaveBtn.textContent = 'Left!';
       setTimeout(() => searchForm?.requestSubmit(), 500);

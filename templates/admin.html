@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Admin Panel - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
@@ -63,6 +64,7 @@
             data-confirm-label="Delete everything"
             data-cancel-label="Keep data"
           >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <button type="submit" class="danger btn-sm">Delete Entire Database</button>
           </form>
         </div>
@@ -129,6 +131,7 @@
                     data-confirm-label="Delete entry"
                     data-cancel-label="Cancel"
                   >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                     <button type="submit" class="danger btn-sm" style="margin-top:0.25rem;">Delete</button>
                   </form>
                 </td>
@@ -197,6 +200,7 @@
                 data-confirm-label="Delete entry"
                 data-cancel-label="Cancel"
               >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                 <button type="submit" class="danger btn-sm">Delete</button>
               </form>
             </div>
@@ -213,6 +217,7 @@
       <div class="modal-card card">
         <h3>Edit Entry</h3>
         <form id="edit-form" method="post" action="">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
           <div class="modal-grid">
             <label>First Name
               <input name="first_name" id="edit-first_name" placeholder="First name" />
