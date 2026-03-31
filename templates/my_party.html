@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>My Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
       </head>
   <body>
@@ -141,7 +142,8 @@
 
     <script>
       const content = document.getElementById('carpool-content');
-      const currentUserEmail = '{{ user_email }}';
+      const currentUserEmail = {{ user_email|tojson }};
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
       let currentParties = [];
       let confirmResolver = null;
 
@@ -150,6 +152,34 @@
       const confirmText = document.getElementById('confirm-text');
       const confirmCancel = document.getElementById('confirm-cancel');
       const confirmConfirm = document.getElementById('confirm-confirm');
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, '&#96;');
+      }
+
+      function memberDisplayName(member) {
+        if (member?.first_name) {
+          return `${member.first_name} ${member.last_initial ? `${member.last_initial}.` : ''}`.trim();
+        }
+        return String(member?.user_email || '').split('@')[0];
+      }
+
+      function carpoolDisplayName(carpool) {
+        return `${carpool?.first_name || ''} ${carpool?.last_initial ? `${carpool.last_initial}.` : ''}`.trim() || 'Campus2Air';
+      }
+
+      function safePhoneHref(phone) {
+        return String(phone || '').replace(/[^\d+]/g, '');
+      }
 
       function closeConfirmModal(result) {
         if (!confirmResolver) return;
@@ -204,23 +234,23 @@
             const c = p.carpool;
             const members = p.members || [];
             const isCreator = p.is_creator;
+            const creatorName = carpoolDisplayName(c);
 
-            const membersList = members.map((m, i) => {
-              const displayName = m.first_name
-                ? `${m.first_name} ${m.last_initial ? m.last_initial + '.' : ''}`
-                : m.user_email.split('@')[0];
-              const isCreatorMember = i === 0;
-              const phoneBtn = m.phone
-                ? `<a href="tel:${m.phone.replace(/\s/g, '')}" class="phone-btn" title="Call ${displayName}">
+            const membersList = members.map((m) => {
+              const displayName = memberDisplayName(m);
+              const isCreatorMember = m.user_email === c.creator_email;
+              const phoneHref = safePhoneHref(m.phone);
+              const phoneBtn = phoneHref
+                ? `<a href="tel:${escapeAttr(phoneHref)}" class="phone-btn" title="Call ${escapeAttr(displayName)}">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                   </a>`
                 : '';
               const removeBtn = isCreator && !isCreatorMember
-                ? `<button class="remove-member-btn btn btn-sm" data-carpool="${c.id}" data-email="${m.user_email}" title="Remove member" style="background:var(--danger-bg);color:var(--danger);border:1px solid rgba(248,113,113,0.2);padding:0.25rem 0.5rem;font-size:0.7rem;">Remove</button>`
+                ? `<button class="remove-member-btn btn btn-sm" data-carpool="${escapeAttr(c.id)}" data-email="${escapeAttr(m.user_email)}" title="Remove member" style="background:var(--danger-bg);color:var(--danger);border:1px solid rgba(248,113,113,0.2);padding:0.25rem 0.5rem;font-size:0.7rem;">Remove</button>`
                 : '';
               return `
                 <li class="member-item">
-                  <span class="member-name">${displayName}</span>
+                  <span class="member-name">${escapeHtml(displayName)}</span>
                   ${isCreatorMember ? '<span class="member-badge">Creator</span>' : ''}
                   <span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;">
                     ${phoneBtn}
@@ -230,29 +260,29 @@
             }).join('');
 
             const creatorActions = isCreator ? `
-              <button data-id="${c.id}" class="edit-carpool-btn btn btn-secondary btn-sm"
-                data-time="${c.planned_departure_time || ''}"
-                data-notes="${(c.notes || '').replace(/"/g, '&quot;')}"
-                data-seats="${c.seats_available || 3}">Edit Details</button>
-              <button data-id="${c.id}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
+              <button data-id="${escapeAttr(c.id)}" class="edit-carpool-btn btn btn-secondary btn-sm"
+                data-time="${escapeAttr(c.planned_departure_time || '')}"
+                data-notes="${escapeAttr(c.notes || '')}"
+                data-seats="${escapeAttr(c.seats_available || 3)}">Edit Details</button>
+              <button data-id="${escapeAttr(c.id)}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
             ` : '';
 
             return `
               <section class="card carpool-card">
                 <div class="carpool-header">
-                  <h2>${c.first_name} ${c.last_initial}.'s Carpool</h2>
-                  <span class="result-badge score-high">${members.length} member${members.length !== 1 ? 's' : ''}</span>
+                  <h2>${escapeHtml(creatorName)}'s Carpool</h2>
+                  <span class="result-badge score-high">${escapeHtml(members.length)} member${members.length !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="result-info">
-                  <span><span class="label">Flight</span><strong>${c.flight_code}</strong></span>
-                  <span><span class="label">Airport</span>${c.airport_code}</span>
-                  <span><span class="label">Date</span>${c.requested_flight_date || c.flight_date_utc || '\u2014'}</span>
-                  <span><span class="label">Departure Time</span>${c.planned_departure_time || '\u2014'}</span>
+                  <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
+                  <span><span class="label">Airport</span>${escapeHtml(c.airport_code)}</span>
+                  <span><span class="label">Date</span>${escapeHtml(c.requested_flight_date || c.flight_date_utc || '\u2014')}</span>
+                  <span><span class="label">Departure Time</span>${escapeHtml(c.planned_departure_time || '\u2014')}</span>
                   <span><span class="label">Notes</span>${(() => {
                     const n = c.notes || '';
                     if (!n) return 'None';
-                    if (n.length <= 15) return n;
-                    return `${n.slice(0, 15)}... <button class="see-more-notes-btn btn btn-secondary btn-sm" data-notes="${n.replace(/"/g, '&quot;')}">See more</button>`;
+                    if (n.length <= 15) return escapeHtml(n);
+                    return `${escapeHtml(n.slice(0, 15))}... <button class="see-more-notes-btn btn btn-secondary btn-sm" data-notes="${escapeAttr(n)}">See more</button>`;
                   })()}</span>
                 </div>
                 <div class="carpool-members">
@@ -262,7 +292,7 @@
                   </ul>
                 </div>
                 <div class="carpool-actions">
-                  <button data-id="${c.id}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
+                  <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
                 </div>
               </section>`;
@@ -287,8 +317,8 @@
           // Show transfer ownership modal
           const select = document.getElementById('transfer-select');
           select.innerHTML = otherMembers.map(m => {
-            const name = m.first_name ? `${m.first_name} ${m.last_initial ? m.last_initial + '.' : ''}` : m.user_email.split('@')[0];
-            return `<option value="${m.user_email}">${name}</option>`;
+            const name = memberDisplayName(m);
+            return `<option value="${escapeAttr(m.user_email)}">${escapeHtml(name)}</option>`;
           }).join('');
           document.getElementById('transfer-carpool-id').value = id;
           document.getElementById('transfer-message').textContent = '';
@@ -319,7 +349,10 @@
         btn.disabled = true;
         btn.textContent = 'Leaving...';
         try {
-          const res = await fetch(`/api/carpools/${id}/leave`, { method: 'POST' });
+          const res = await fetch(`/api/carpools/${id}/leave`, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken },
+          });
           if (res.ok) {
             btn.textContent = 'Left!';
             setTimeout(() => loadParties(), 500);
@@ -342,7 +375,10 @@
         try {
           const res = await fetch(`/api/carpools/${id}/transfer-and-leave`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
             body: JSON.stringify({ new_owner_email: newOwner })
           });
           const data = await res.json();
@@ -398,7 +434,10 @@
         try {
           const res = await fetch(`/api/carpools/${carpoolId}/remove-member`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
             body: JSON.stringify({ email })
           });
           if (res.ok) {
@@ -443,7 +482,10 @@
         try {
           const res = await fetch(`/api/carpools/${id}/edit`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
             body: JSON.stringify(payload)
           });
           const data = await res.json();
@@ -499,7 +541,10 @@
         try {
           const res = await fetch(`/api/carpools/${id}/disband`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
             body: JSON.stringify({ reason })
           });
           const data = await res.json();

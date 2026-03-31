@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Admin Login - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
@@ -32,11 +33,15 @@
           <h2>Admin Login</h2>
           <p class="card-subtitle">Enter your credentials to access the admin panel.</p>
 
-          {% if admin_error %}
+          {% if not admin_login_enabled %}
+          <p class="error-banner">Admin login is disabled until <code>ADMIN_PASSWORD</code> or <code>ADMIN_PASSWORD_HASH</code> is configured in the environment.</p>
+          {% elif admin_error %}
           <p class="error-banner">Incorrect username or password. Please try again.</p>
           {% endif %}
 
+          {% if admin_login_enabled %}
           <form method="post" action="/admin/login" class="admin-login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <label>Username
               <input name="username" placeholder="Username" required autocomplete="username" />
             </label>
@@ -45,6 +50,7 @@
             </label>
             <button type="submit" class="btn btn-primary btn-block mt-2">Sign In</button>
           </form>
+          {% endif %}
 
           <p class="text-center text-muted text-sm mt-2">
             <a href="/" style="color: var(--accent2); text-decoration: none;">Back to Home</a>
@@ -54,7 +60,7 @@
     </main>
 
     <footer class="site-footer">
-      <p>Campus2Air &mdash; Built for students, by students.</p>
+      <p>Campus2Air - Built for students, by students.</p>
     </footer>
     <script>
       const hbBtn = document.getElementById('hamburger-btn');
