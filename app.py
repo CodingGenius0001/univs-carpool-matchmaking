@@ -58,7 +58,8 @@ MYSQL_RETRY_COOLDOWN_SECONDS = _positive_int_env(
     600 if os.getenv("VERCEL") else 60,
 )
 
-FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool").strip()
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "campus2air-carpool").strip() or "campus2air-carpool"
+FIREBASE_TOKEN_CLOCK_SKEW_SECONDS = _positive_int_env("FIREBASE_TOKEN_CLOCK_SKEW_SECONDS", 300)
 ANDROID_APP_PACKAGE = os.getenv("ANDROID_APP_PACKAGE", "com.campus2air.android").strip()
 ANDROID_SHA256_CERT_FINGERPRINTS = [
     fp.strip().upper()
@@ -133,15 +134,24 @@ def _verify_firebase_id_token(id_token: str) -> dict[str, Any]:
             "Install dependencies from requirements.txt before running the app."
         ) from exc
 
-    if _firebase_request_adapter is None:
-        _firebase_request_adapter = GoogleRequest()
+    last_error: Exception | None = None
+    for _ in range(2):
+        if _firebase_request_adapter is None:
+            _firebase_request_adapter = GoogleRequest()
+        try:
+            claims = google_id_token.verify_firebase_token(
+                id_token,
+                _firebase_request_adapter,
+                audience=FIREBASE_PROJECT_ID,
+                clock_skew_in_seconds=FIREBASE_TOKEN_CLOCK_SKEW_SECONDS,
+            )
+            break
+        except Exception as exc:
+            last_error = exc
+            _firebase_request_adapter = GoogleRequest()
+    else:
+        raise last_error or ValueError("Invalid Firebase ID token")
 
-    claims = google_id_token.verify_firebase_token(
-        id_token,
-        _firebase_request_adapter,
-        audience=FIREBASE_PROJECT_ID,
-        clock_skew_in_seconds=60,
-    )
     if not claims:
         raise ValueError("Invalid Firebase ID token")
 
@@ -980,9 +990,12 @@ def firebase_callback() -> Any:
 
     try:
         claims = _verify_firebase_id_token(firebase_id_token)
-    except Exception as exc:
+    except ValueError as exc:
         app.logger.warning("Firebase token verification failed: %s", exc)
         return jsonify({"error": "Invalid authentication token"}), 401
+    except Exception as exc:
+        app.logger.error("Firebase token verification unavailable: %s", exc)
+        return jsonify({"error": "Authentication service unavailable"}), 503
 
     email = str(claims.get("email", "")).strip().lower()
     name = str(claims.get("name", "")).strip()
