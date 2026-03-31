@@ -126,11 +126,17 @@ def _verify_firebase_id_token(id_token: str) -> dict[str, Any]:
     global _firebase_request_adapter
 
     try:
-        from google.auth.transport.requests import Request as GoogleRequest
         from google.oauth2 import id_token as google_id_token
     except ImportError as exc:
         raise RuntimeError(
             "google-auth is required to verify Firebase sessions. "
+            "Install dependencies from requirements.txt before running the app."
+        ) from exc
+    try:
+        from google.auth.transport.requests import Request as GoogleRequest
+    except ImportError as exc:
+        raise RuntimeError(
+            "The requests package is required to verify Firebase sessions. "
             "Install dependencies from requirements.txt before running the app."
         ) from exc
 
