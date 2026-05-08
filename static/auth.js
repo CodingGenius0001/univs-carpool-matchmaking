@@ -23,6 +23,7 @@ const statusEl = document.getElementById('login-status');
 const defaultButtonHtml = signinBtn ? signinBtn.innerHTML : '';
 const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+let serverLoginPromise = null;
 
 function _bothChecked() {
   return !!termsCheckbox?.checked;
@@ -54,6 +55,15 @@ function prefersRedirectFlow() {
 }
 
 async function finishServerLogin(user) {
+  if (!user) {
+    throw new Error('Authentication completed, but no Firebase user session was available.');
+  }
+
+  if (serverLoginPromise) {
+    return serverLoginPromise;
+  }
+
+  serverLoginPromise = (async () => {
   const email = (user.email || '').toLowerCase();
   if (!email.endsWith('@ucr.edu')) {
     await auth.signOut();
@@ -82,6 +92,13 @@ async function finishServerLogin(user) {
   }
 
   window.location.href = data.redirect || '/start-now';
+  })();
+
+  try {
+    return await serverLoginPromise;
+  } finally {
+    serverLoginPromise = null;
+  }
 }
 
 function handleAuthError(err) {
@@ -133,6 +150,7 @@ async function bootstrapAuth() {
   if (!signinBtn) return;
 
   setButtonBusy('Checking session...');
+  const hadRedirectFlow = sessionStorage.getItem(REDIRECT_FLOW_KEY) === 'redirect';
 
   try {
     const result = await auth.getRedirectResult();
@@ -145,6 +163,47 @@ async function bootstrapAuth() {
   } catch (err) {
     sessionStorage.removeItem(REDIRECT_FLOW_KEY);
     handleAuthError(err);
+  }
+
+  if (auth.currentUser) {
+    try {
+      await finishServerLogin(auth.currentUser);
+      return;
+    } catch (err) {
+      handleAuthError(err);
+    }
+  }
+
+  if (hadRedirectFlow) {
+    setStatus('Finishing sign-in...');
+    try {
+      await new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+          unsubscribe();
+          resolve(null);
+        }, 4000);
+
+        const unsubscribe = auth.onAuthStateChanged(async (user) => {
+          if (!user) {
+            return;
+          }
+
+          window.clearTimeout(timeoutId);
+          unsubscribe();
+          try {
+            await finishServerLogin(user);
+            resolve(user);
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      return;
+    } catch (err) {
+      handleAuthError(err);
+    } finally {
+      sessionStorage.removeItem(REDIRECT_FLOW_KEY);
+    }
   }
 
   resetButton();
