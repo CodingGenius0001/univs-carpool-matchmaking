@@ -59,6 +59,8 @@
         {% endif %}
 
         <form id="join-form" class="wizard-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
           <div class="wizard-step is-active" data-step="0" data-title="Your phone number">
             <div class="wizard-step-copy">
               <span class="wizard-step-kicker">Step 1</span>

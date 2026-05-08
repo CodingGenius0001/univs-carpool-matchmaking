@@ -329,6 +329,11 @@ function applyUrlPrefill() {
 async function submitCarpool() {
   closeAirlineDropdown();
 
+  if (!csrfToken) {
+    setMessage('Security token missing. Please refresh the page and try again.', true);
+    return;
+  }
+
   if (!validateDateInput()) {
     showStep(2);
     return;
@@ -343,6 +348,7 @@ async function submitCarpool() {
 
   const payload = Object.fromEntries(new FormData(form).entries());
   payload.flight_code = String(payload.flight_code || '').toUpperCase().replace(/\s+/g, '');
+  payload.csrf_token = csrfToken;
 
   if (payload.departure_date && payload.departure_date.includes('-')) {
     const parts = payload.departure_date.split('-');
