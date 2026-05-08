@@ -830,6 +830,156 @@ select {
   font-size: 0.84rem;
 }
 
+.wizard-card::before {
+  content: "";
+  position: absolute;
+  inset: -10% auto auto 72%;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--button-rgb) / 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.wizard-progress {
+  margin-bottom: 1.35rem;
+}
+
+.wizard-progress-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.7rem;
+}
+
+.wizard-progress-label,
+.wizard-step-kicker {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.wizard-progress-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(17, 32, 51, 0.08);
+  overflow: hidden;
+}
+
+.wizard-progress-fill {
+  width: 20%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--button-rgb) / 0.88), rgb(var(--signal-rgb) / 0.96));
+  transition: width 220ms ease;
+}
+
+.wizard-form {
+  margin-top: 1.6rem;
+}
+
+.wizard-step {
+  display: none;
+  min-height: 24rem;
+  padding: clamp(1.15rem, 2.5vw, 1.6rem);
+  border-radius: 28px;
+  border: 1px solid rgba(17, 32, 51, 0.08);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(250, 251, 255, 0.86)),
+    radial-gradient(circle at top right, rgb(var(--signal-rgb) / 0.12), transparent 36%);
+}
+
+.wizard-step.is-active {
+  display: block;
+  animation: wizard-step-in 220ms ease;
+}
+
+.wizard-step-copy {
+  max-width: 38rem;
+  margin-bottom: 1.2rem;
+}
+
+.wizard-step-copy h3 {
+  margin: 0.35rem 0 0.35rem;
+  font-size: clamp(1.55rem, 3vw, 2rem);
+}
+
+.wizard-step-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+
+.wizard-field {
+  max-width: 100%;
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-top: 1.25rem;
+}
+
+.wizard-actions .btn {
+  min-width: 8.5rem;
+}
+
+.wizard-actions #wizard-next,
+.wizard-actions #wizard-submit {
+  margin-left: auto;
+}
+
+.wizard-review {
+  padding: 1.1rem;
+  border-radius: 24px;
+  border: 1px solid rgba(17, 32, 51, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.wizard-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.wizard-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 18px;
+  background: rgba(17, 32, 51, 0.04);
+}
+
+.wizard-review-item-wide {
+  grid-column: 1 / -1;
+}
+
+.wizard-review-item .label {
+  color: var(--muted);
+  opacity: 0.82;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+@keyframes wizard-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .flight-suggestions,
 .results-container {
   margin-top: 1.35rem;
@@ -1800,6 +1950,23 @@ html:not(.light-mode) .disclaimer {
   border-color: rgb(var(--signal-rgb) / 0.16);
 }
 
+html:not(.light-mode) .wizard-step,
+html:not(.light-mode) .wizard-review,
+html:not(.light-mode) .wizard-review-item {
+  background: rgba(236, 240, 242, 0.04);
+  border-color: rgba(236, 240, 242, 0.08);
+}
+
+html:not(.light-mode) .wizard-progress-track {
+  background: rgba(236, 240, 242, 0.08);
+}
+
+html:not(.light-mode) .wizard-step-copy h3,
+html:not(.light-mode) .wizard-review-item strong,
+html:not(.light-mode) #wizard-progress-text {
+  color: var(--foreground);
+}
+
 html:not(.light-mode) .entries-table th {
   background: rgba(8, 19, 38, 0.96);
   color: var(--muted);
@@ -1960,6 +2127,18 @@ html:not(.light-mode) .theme-toggle {
     grid-template-columns: 1fr;
   }
 
+  .wizard-step {
+    min-height: 0;
+  }
+
+  .wizard-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-actions {
+    flex-wrap: wrap;
+  }
+
   .my-party-btn {
     margin-left: auto;
   }
@@ -1967,6 +2146,26 @@ html:not(.light-mode) .theme-toggle {
   .eula-card {
     padding-right: 1.35rem;
     padding-top: 3.6rem;
+  }
+
+  .wizard-step {
+    padding: 1rem;
+    border-radius: 24px;
+  }
+
+  .wizard-progress-copy {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .wizard-actions .btn {
+    width: 100%;
+  }
+
+  .wizard-actions #wizard-next,
+  .wizard-actions #wizard-submit,
+  .wizard-actions #wizard-back {
+    margin-left: 0;
   }
 }
 

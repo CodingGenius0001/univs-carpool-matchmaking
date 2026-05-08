@@ -40,7 +40,17 @@
     </header>
 
     <main class="container">
-      <section class="card">
+      <section class="card wizard-card">
+        <div class="wizard-progress">
+          <div class="wizard-progress-copy">
+            <span class="wizard-progress-label">Create carpool</span>
+            <strong id="wizard-progress-text">Step 1 of 5</strong>
+          </div>
+          <div class="wizard-progress-track" aria-hidden="true">
+            <div class="wizard-progress-fill" id="wizard-progress-fill"></div>
+          </div>
+        </div>
+
         <h2>Create a Carpool</h2>
         <p class="disclaimer">Your info is only visible to matched carpool partners. Records are automatically removed after the flight lands.</p>
 
@@ -48,37 +58,87 @@
         <p class="text-muted text-sm">Creating carpool as <strong>{{ display_name }}</strong></p>
         {% endif %}
 
-        <form id="join-form">
-          <div class="grid">
-            <label>Phone Number
-              <input name="phone" id="phone" required placeholder="+1 (909) 555 1234" maxlength="17" />
-            </label>
-            <label class="autocomplete-wrap">Flight Code
-              <input name="flight_code" id="flight_code" placeholder="e.g. UA1375" required autocomplete="off" maxlength="6" />
-              <div id="airline-dropdown" class="airline-dropdown"></div>
-            </label>
-            <label>Airline
-              <input id="airline_name" placeholder="Auto-detected or type manually" />
-            </label>
-            <label>Date of Departure
-              <input type="date" name="departure_date" id="departure_date" required />
-            </label>
-            <label>Departure Airport
-              <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. SFO" required />
-            </label>
-            <label>Planned Departure Time (from campus)
-              <input type="time" name="planned_departure_time" id="planned_departure_time" />
-            </label>
-            <label>Total Seats
-              <input type="number" name="seats_available" value="4" min="1" max="7" />
+        <form id="join-form" class="wizard-form">
+          <div class="wizard-step is-active" data-step="0" data-title="Your phone number">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 1</span>
+              <h3>Your phone number</h3>
+              <p>This stays with your profile so you do not have to type it again next time.</p>
+            </div>
+            <label class="wizard-field">
+              <span>Phone Number</span>
+              <input name="phone" id="phone" required placeholder="+1 (909) 555 1234" maxlength="17" inputmode="tel" />
             </label>
           </div>
 
-          <label class="mt-2">Notes
-            <textarea name="notes" rows="3" placeholder="Pickup location preference, luggage info, etc."></textarea>
-          </label>
+          <div class="wizard-step" data-step="1" data-title="Flight details">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 2</span>
+              <h3>Tell us your flight</h3>
+              <p>We will use this to match you with students heading to the same airport.</p>
+            </div>
+            <div class="grid">
+              <label class="autocomplete-wrap wizard-field">Flight Code
+                <input name="flight_code" id="flight_code" placeholder="e.g. UA1375" required autocomplete="off" maxlength="6" />
+                <div id="airline-dropdown" class="airline-dropdown"></div>
+              </label>
+              <label class="wizard-field">Airline
+                <input id="airline_name" class="airline-readonly" placeholder="Auto-detected from flight code" readonly />
+              </label>
+            </div>
+          </div>
 
-          <button type="submit" class="btn btn-primary btn-block mt-2">Create Carpool</button>
+          <div class="wizard-step" data-step="2" data-title="Date and airport">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 3</span>
+              <h3>When and where are you flying?</h3>
+              <p>Just the date and departure airport are enough to place you in the right pool.</p>
+            </div>
+            <div class="grid">
+              <label class="wizard-field">Date of Departure
+                <input type="date" name="departure_date" id="departure_date" required />
+              </label>
+              <label class="wizard-field">Departure Airport
+                <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. SFO" required />
+              </label>
+            </div>
+          </div>
+
+          <div class="wizard-step" data-step="3" data-title="Ride details">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 4</span>
+              <h3>Set up the ride</h3>
+              <p>These details help people know how many can join and any plans you already have.</p>
+            </div>
+            <div class="grid">
+              <label class="wizard-field">Planned Departure Time (from campus)
+                <input type="time" name="planned_departure_time" id="planned_departure_time" />
+              </label>
+              <label class="wizard-field">Total Seats
+                <input type="number" name="seats_available" id="seats_available" value="4" min="1" max="7" />
+              </label>
+            </div>
+
+            <label class="wizard-field mt-2">Notes
+              <textarea name="notes" id="notes" rows="4" placeholder="Pickup location preference, luggage info, etc."></textarea>
+            </label>
+          </div>
+
+          <div class="wizard-step" data-step="4" data-title="Review and create">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 5</span>
+              <h3>Review your carpool</h3>
+              <p>Give it one last look, then we will publish it and take you to your carpool.</p>
+            </div>
+
+            <div class="wizard-review" id="wizard-review"></div>
+          </div>
+
+          <div class="wizard-actions">
+            <button type="button" class="btn btn-secondary" id="wizard-back" hidden>Back</button>
+            <button type="button" class="btn btn-primary" id="wizard-next">Next</button>
+            <button type="submit" class="btn btn-primary" id="wizard-submit" hidden>Create Carpool</button>
+          </div>
         </form>
         <p id="join-message"></p>
       </section>
@@ -87,17 +147,7 @@
     <footer class="site-footer">
       <p>Campus2Air &mdash; Built for students, by students.</p>
     </footer>
-
-    <script src="{{ url_for('static', filename='join.js') }}"></script>
     <script>
-      // Pre-fill form from URL params (carried over from Find a Carpool)
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('flight_code')) document.getElementById('flight_code').value = urlParams.get('flight_code');
-      if (urlParams.get('airport_code')) document.getElementById('airport_code').value = urlParams.get('airport_code');
-      if (urlParams.get('departure_date')) document.getElementById('departure_date').value = urlParams.get('departure_date');
-      // Trigger flight code input event so airline auto-detect kicks in
-      if (urlParams.get('flight_code')) document.getElementById('flight_code').dispatchEvent(new Event('input'));
-
       const hbBtn = document.getElementById('hamburger-btn');
       const hbMenu = document.getElementById('hamburger-menu');
       hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
@@ -105,7 +155,8 @@
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
     </script>
-      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='join.js') }}"></script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
     <script src="{{ url_for('static', filename='notifications.js') }}"></script>
   </body>
 </html>
