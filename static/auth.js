@@ -210,7 +210,7 @@ signinBtn?.addEventListener('click', async () => {
 async function bootstrapAuth() {
   if (!signinBtn) return;
 
-  setButtonBusy('Checking session...');
+  setButtonBusy('Logging in...');
   const hadRedirectFlow = hasPendingRedirectFlow();
 
   try {
