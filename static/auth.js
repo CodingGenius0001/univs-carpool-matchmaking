@@ -226,15 +226,6 @@ async function bootstrapAuth() {
     handleAuthError(err);
   }
 
-  if (auth.currentUser) {
-    try {
-      await finishServerLogin(auth.currentUser);
-      return;
-    } catch (err) {
-      handleAuthError(err);
-    }
-  }
-
   if (hadRedirectFlow) {
     setStatus('Finishing sign-in...');
     try {

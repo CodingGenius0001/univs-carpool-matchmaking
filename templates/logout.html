@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Signing Out - Campus2Air</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <main class="container">
+      <div class="login-page">
+        <section class="card login-card text-center">
+          <h2>Signing you out</h2>
+          <p class="card-subtitle">Clearing your Campus2Air session.</p>
+          <p id="logout-status" style="margin-top: 1rem; font-size: 0.9rem;"></p>
+        </section>
+      </div>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="{{ url_for('static', filename='logout.js') }}"></script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+  </body>
+</html>

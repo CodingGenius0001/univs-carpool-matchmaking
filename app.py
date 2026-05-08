@@ -1061,10 +1061,8 @@ def firebase_callback() -> Any:
 
 @app.get("/auth/logout")
 def user_logout() -> Any:
-    session.pop("user_email", None)
-    session.pop("user_name", None)
-    session.pop("user_uid", None)
-    return redirect(url_for("landing"))
+    session.clear()
+    return render_template("logout.html")
 
 
 @app.get("/search")
