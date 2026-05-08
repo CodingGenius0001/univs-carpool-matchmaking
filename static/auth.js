@@ -23,6 +23,7 @@ const statusEl = document.getElementById('login-status');
 const defaultButtonHtml = signinBtn ? signinBtn.innerHTML : '';
 const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const REDIRECT_FLOW_TIMEOUT_MS = 8000;
 let serverLoginPromise = null;
 
 function _bothChecked() {
@@ -52,6 +53,66 @@ function prefersRedirectFlow() {
   const isAndroidTwa = document.referrer.startsWith('android-app://');
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
   return !!(isStandalone || isAndroidTwa || isMobile);
+}
+
+function markRedirectFlowPending() {
+  try {
+    sessionStorage.setItem(REDIRECT_FLOW_KEY, 'redirect');
+  } catch (_) {}
+
+  try {
+    localStorage.setItem(REDIRECT_FLOW_KEY, 'redirect');
+  } catch (_) {}
+}
+
+function hasPendingRedirectFlow() {
+  try {
+    if (sessionStorage.getItem(REDIRECT_FLOW_KEY) === 'redirect') {
+      return true;
+    }
+  } catch (_) {}
+
+  try {
+    if (localStorage.getItem(REDIRECT_FLOW_KEY) === 'redirect') {
+      return true;
+    }
+  } catch (_) {}
+
+  return false;
+}
+
+function clearPendingRedirectFlow() {
+  try {
+    sessionStorage.removeItem(REDIRECT_FLOW_KEY);
+  } catch (_) {}
+
+  try {
+    localStorage.removeItem(REDIRECT_FLOW_KEY);
+  } catch (_) {}
+}
+
+async function waitForFirebaseUser(timeoutMs = REDIRECT_FLOW_TIMEOUT_MS) {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  return new Promise((resolve) => {
+    let finished = false;
+    let unsubscribe = () => {};
+
+    const finish = (user) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+      resolve(user || null);
+    };
+
+    const timeoutId = window.setTimeout(() => finish(null), timeoutMs);
+    unsubscribe = auth.onAuthStateChanged((user) => finish(user || auth.currentUser || null));
+  });
 }
 
 async function finishServerLogin(user) {
@@ -133,7 +194,7 @@ signinBtn?.addEventListener('click', async () => {
 
   try {
     if (prefersRedirectFlow()) {
-      sessionStorage.setItem(REDIRECT_FLOW_KEY, 'redirect');
+      markRedirectFlowPending();
       await auth.signInWithRedirect(googleProvider);
       return;
     }
@@ -150,18 +211,18 @@ async function bootstrapAuth() {
   if (!signinBtn) return;
 
   setButtonBusy('Checking session...');
-  const hadRedirectFlow = sessionStorage.getItem(REDIRECT_FLOW_KEY) === 'redirect';
+  const hadRedirectFlow = hasPendingRedirectFlow();
 
   try {
     const result = await auth.getRedirectResult();
-    sessionStorage.removeItem(REDIRECT_FLOW_KEY);
+    clearPendingRedirectFlow();
 
     if (result?.user) {
       await finishServerLogin(result.user);
       return;
     }
   } catch (err) {
-    sessionStorage.removeItem(REDIRECT_FLOW_KEY);
+    clearPendingRedirectFlow();
     handleAuthError(err);
   }
 
@@ -177,32 +238,15 @@ async function bootstrapAuth() {
   if (hadRedirectFlow) {
     setStatus('Finishing sign-in...');
     try {
-      await new Promise((resolve, reject) => {
-        const timeoutId = window.setTimeout(() => {
-          unsubscribe();
-          resolve(null);
-        }, 4000);
-
-        const unsubscribe = auth.onAuthStateChanged(async (user) => {
-          if (!user) {
-            return;
-          }
-
-          window.clearTimeout(timeoutId);
-          unsubscribe();
-          try {
-            await finishServerLogin(user);
-            resolve(user);
-          } catch (err) {
-            reject(err);
-          }
-        });
-      });
-      return;
+      const restoredUser = await waitForFirebaseUser();
+      if (restoredUser) {
+        await finishServerLogin(restoredUser);
+        return;
+      }
     } catch (err) {
       handleAuthError(err);
     } finally {
-      sessionStorage.removeItem(REDIRECT_FLOW_KEY);
+      clearPendingRedirectFlow();
     }
   }
 
