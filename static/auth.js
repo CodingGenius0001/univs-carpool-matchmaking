@@ -25,6 +25,7 @@ const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const REDIRECT_FLOW_TIMEOUT_MS = 8000;
 let serverLoginPromise = null;
+let persistenceReadyPromise = null;
 
 function _bothChecked() {
   return !!termsCheckbox?.checked;
@@ -40,6 +41,11 @@ function setButtonBusy(label) {
   if (!signinBtn) return;
   signinBtn.disabled = true;
   signinBtn.innerHTML = `<span class="spinner"></span> ${label}`;
+}
+
+function setAuthBusy(label) {
+  setStatus('');
+  setButtonBusy(label);
 }
 
 function resetButton() {
@@ -91,6 +97,18 @@ function clearPendingRedirectFlow() {
   } catch (_) {}
 }
 
+function ensureAuthPersistence() {
+  if (persistenceReadyPromise) {
+    return persistenceReadyPromise;
+  }
+
+  persistenceReadyPromise = auth
+    .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .catch(() => undefined);
+
+  return persistenceReadyPromise;
+}
+
 async function waitForFirebaseUser(timeoutMs = REDIRECT_FLOW_TIMEOUT_MS) {
   if (auth.currentUser) {
     return auth.currentUser;
@@ -124,7 +142,7 @@ async function finishServerLogin(user) {
     return serverLoginPromise;
   }
 
-  serverLoginPromise = (async () => {
+serverLoginPromise = (async () => {
   const email = (user.email || '').toLowerCase();
   if (!email.endsWith('@ucr.edu')) {
     await auth.signOut();
@@ -139,7 +157,7 @@ async function finishServerLogin(user) {
       'Content-Type': 'application/json',
       'X-CSRF-Token': csrfToken,
     },
-    body: JSON.stringify({ idToken })
+    body: JSON.stringify({ idToken, csrf_token: csrfToken })
   });
 
   const data = await res.json().catch(() => ({}));
@@ -189,10 +207,11 @@ signinBtn?.addEventListener('click', async () => {
     return;
   }
 
-  setStatus('');
-  setButtonBusy('Signing in...');
+  setAuthBusy('Signing in...');
 
   try {
+    await ensureAuthPersistence();
+
     if (prefersRedirectFlow()) {
       markRedirectFlowPending();
       await auth.signInWithRedirect(googleProvider);
@@ -210,8 +229,10 @@ signinBtn?.addEventListener('click', async () => {
 async function bootstrapAuth() {
   if (!signinBtn) return;
 
-  setButtonBusy('Logging in...');
+  setAuthBusy('Logging in...');
   const hadRedirectFlow = hasPendingRedirectFlow();
+
+  await ensureAuthPersistence();
 
   try {
     const result = await auth.getRedirectResult();
@@ -227,13 +248,14 @@ async function bootstrapAuth() {
   }
 
   if (hadRedirectFlow) {
-    setStatus('Finishing sign-in...');
+    setAuthBusy('Finishing sign-in...');
     try {
       const restoredUser = await waitForFirebaseUser();
       if (restoredUser) {
         await finishServerLogin(restoredUser);
         return;
       }
+      setStatus('Sign-in did not complete. Please tap Sign in with Google again.', 'login-error');
     } catch (err) {
       handleAuthError(err);
     } finally {
