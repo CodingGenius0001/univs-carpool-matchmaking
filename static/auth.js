@@ -55,13 +55,6 @@ function resetButton() {
   signinBtn.innerHTML = defaultButtonHtml;
 }
 
-function prefersRedirectFlow() {
-  const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches;
-  const isAndroidTwa = document.referrer.startsWith('android-app://');
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-  return !!(isStandalone || isAndroidTwa || isMobile);
-}
-
 function markRedirectFlowPending() {
   try {
     sessionStorage.setItem(REDIRECT_FLOW_KEY, 'redirect');
@@ -234,6 +227,15 @@ function handleAuthError(err) {
   setStatus(err?.message || 'Sign-in failed. Please try again.', 'login-error');
 }
 
+function shouldFallbackToRedirect(err) {
+  return [
+    'auth/popup-blocked',
+    'auth/popup-closed-by-user',
+    'auth/web-storage-unsupported',
+    'auth/operation-not-supported-in-this-environment',
+  ].includes(err?.code || '');
+}
+
 termsCheckbox?.addEventListener('change', () => {
   resetButton();
 });
@@ -250,15 +252,22 @@ signinBtn?.addEventListener('click', async () => {
   try {
     await ensureAuthPersistence();
 
-    if (prefersRedirectFlow()) {
-      markRedirectFlowPending();
-      await auth.signInWithRedirect(googleProvider);
-      return;
-    }
-
     const result = await auth.signInWithPopup(googleProvider);
     await finishServerLogin(result.user);
   } catch (err) {
+    if (shouldFallbackToRedirect(err)) {
+      try {
+        setAuthBusy('Redirecting to Google...');
+        markRedirectFlowPending();
+        await auth.signInWithRedirect(googleProvider);
+        return;
+      } catch (redirectErr) {
+        handleAuthError(redirectErr);
+        resetButton();
+        return;
+      }
+    }
+
     handleAuthError(err);
     resetButton();
   }
