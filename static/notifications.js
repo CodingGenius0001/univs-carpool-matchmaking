@@ -11,6 +11,47 @@
       .replace(/"/g, '&quot;');
   }
 
+  function formatNotificationTimestamp(isoValue) {
+    if (!isoValue) return '';
+    const parsed = new Date(isoValue);
+    if (Number.isNaN(parsed.getTime())) return '';
+
+    const parts = new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    }).formatToParts(parsed);
+
+    const time = parts
+      .filter((part) => ['hour', 'minute', 'dayPeriod', 'literal'].includes(part.type))
+      .map((part) => part.value)
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const tz = parts.find((part) => part.type === 'timeZoneName')?.value?.trim() || '';
+
+    if (!time && !tz) return '';
+    if (!tz) return time;
+    if (!time) return tz;
+    return `${time} ${tz}`;
+  }
+
+  function decorateNotificationMessage(notification) {
+    const message = String(notification?.message || '');
+    const isJoinLeave = / joined your carpool\.?$| left your carpool\.?$/i.test(message);
+    if (!isJoinLeave) {
+      return message;
+    }
+
+    const timestamp = formatNotificationTimestamp(notification?.created_at);
+    if (!timestamp) {
+      return message;
+    }
+
+    return `${message.replace(/\.*$/, '')} at ${timestamp}.`;
+  }
+
   // Inject modal HTML into body
   const modalHtml = `
     <div id="notif-popup" class="modal-overlay" style="display:none;z-index:1100;">
@@ -55,7 +96,7 @@
       if (!data.notifications?.length) return;
       list.innerHTML = data.notifications.map(n => `
         <div class="notif-item message message-warning" style="margin-bottom:0.75rem;display:flex;align-items:flex-start;gap:0.75rem;">
-          <div style="flex:1">${escHtml(n.message)}</div>
+          <div style="flex:1">${escHtml(decorateNotificationMessage(n))}</div>
           <button class="notif-dismiss-btn btn btn-sm btn-secondary" data-id="${n.id}" style="flex-shrink:0;">Dismiss</button>
         </div>`).join('');
       popup.style.display = 'flex';

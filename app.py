@@ -1393,9 +1393,7 @@ def join_party(carpool_id: int) -> Any:
 
     # Notify creator and all existing members that someone joined
     joiner_name = session.get("user_name", email.split("@")[0])
-    flight_code = carpool.get("flight_code", "") if carpool else ""
-    flight_date = carpool.get("requested_flight_date", "") if carpool else ""
-    msg = f"{joiner_name} joined your carpool for {flight_code} on {flight_date}."
+    msg = f"{joiner_name} joined your carpool."
     creator_email = carpool.get("creator_email", "") if carpool else ""
     notified = {email}  # don't notify the joiner themselves
     try:
@@ -1443,12 +1441,10 @@ def leave_party(carpool_id: int) -> Any:
     # Non-creators can leave immediately.
     if not is_creator:
         creator_email = carpool.get("creator_email", "")
-        flight_code = carpool.get("flight_code", "")
-        flight_date = carpool.get("requested_flight_date", "")
         leaver_name = session.get("user_name", email.split("@")[0])
         if creator_email:
             try:
-                notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} on {flight_date}.")
+                notify_user(creator_email, f"{leaver_name} left your carpool.")
             except Exception:
                 pass
         return jsonify({"ok": True, "message": "Left the carpool."})
