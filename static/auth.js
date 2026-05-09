@@ -22,8 +22,9 @@ const signinBtn = document.getElementById('google-signin-btn');
 const statusEl = document.getElementById('login-status');
 const defaultButtonHtml = signinBtn ? signinBtn.innerHTML : '';
 const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
+const LOGOUT_MARKER_KEY = 'campus2air-logged-out';
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-const REDIRECT_FLOW_TIMEOUT_MS = 8000;
+const REDIRECT_FLOW_TIMEOUT_MS = 12000;
 let serverLoginPromise = null;
 let persistenceReadyPromise = null;
 
@@ -95,6 +96,42 @@ function clearPendingRedirectFlow() {
   try {
     localStorage.removeItem(REDIRECT_FLOW_KEY);
   } catch (_) {}
+}
+
+function markLoggedOut() {
+  try {
+    sessionStorage.setItem(LOGOUT_MARKER_KEY, '1');
+  } catch (_) {}
+
+  try {
+    localStorage.setItem(LOGOUT_MARKER_KEY, '1');
+  } catch (_) {}
+}
+
+function clearLoggedOutMarker() {
+  try {
+    sessionStorage.removeItem(LOGOUT_MARKER_KEY);
+  } catch (_) {}
+
+  try {
+    localStorage.removeItem(LOGOUT_MARKER_KEY);
+  } catch (_) {}
+}
+
+function hasLoggedOutMarker() {
+  try {
+    if (sessionStorage.getItem(LOGOUT_MARKER_KEY) === '1') {
+      return true;
+    }
+  } catch (_) {}
+
+  try {
+    if (localStorage.getItem(LOGOUT_MARKER_KEY) === '1') {
+      return true;
+    }
+  } catch (_) {}
+
+  return false;
 }
 
 function ensureAuthPersistence() {
@@ -207,6 +244,7 @@ signinBtn?.addEventListener('click', async () => {
     return;
   }
 
+  clearLoggedOutMarker();
   setAuthBusy('Signing in...');
 
   try {
@@ -231,6 +269,15 @@ async function bootstrapAuth() {
 
   setAuthBusy('Logging in...');
   const hadRedirectFlow = hasPendingRedirectFlow();
+  const urlParams = new URLSearchParams(window.location.search);
+  const justLoggedOut = urlParams.get('logged_out') === '1';
+
+  if (justLoggedOut) {
+    markLoggedOut();
+    clearPendingRedirectFlow();
+    resetButton();
+    return;
+  }
 
   await ensureAuthPersistence();
 
@@ -247,11 +294,22 @@ async function bootstrapAuth() {
     handleAuthError(err);
   }
 
-  if (hadRedirectFlow) {
+  if (!hasLoggedOutMarker() && auth.currentUser) {
+    try {
+      setAuthBusy('Finishing sign-in...');
+      await finishServerLogin(auth.currentUser);
+      return;
+    } catch (err) {
+      handleAuthError(err);
+    }
+  }
+
+  if (hadRedirectFlow || !hasLoggedOutMarker()) {
     setAuthBusy('Finishing sign-in...');
     try {
       const restoredUser = await waitForFirebaseUser();
       if (restoredUser) {
+        clearLoggedOutMarker();
         await finishServerLogin(restoredUser);
         return;
       }

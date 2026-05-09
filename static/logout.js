@@ -13,6 +13,7 @@ if (!firebase.apps.length) {
 }
 
 const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
+const LOGOUT_MARKER_KEY = 'campus2air-logged-out';
 const statusEl = document.getElementById('logout-status');
 
 function setStatus(message) {
@@ -31,8 +32,19 @@ function clearPendingRedirectFlow() {
   } catch (_) {}
 }
 
+function markLoggedOut() {
+  try {
+    sessionStorage.setItem(LOGOUT_MARKER_KEY, '1');
+  } catch (_) {}
+
+  try {
+    localStorage.setItem(LOGOUT_MARKER_KEY, '1');
+  } catch (_) {}
+}
+
 async function logout() {
   setStatus('Finalizing sign-out...');
+  markLoggedOut();
   clearPendingRedirectFlow();
 
   try {
