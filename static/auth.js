@@ -313,7 +313,7 @@ async function bootstrapAuth() {
     }
   }
 
-  if (hadRedirectFlow || !hasLoggedOutMarker()) {
+  if (hadRedirectFlow) {
     setAuthBusy('Finishing sign-in...');
     try {
       const restoredUser = await waitForFirebaseUser();
