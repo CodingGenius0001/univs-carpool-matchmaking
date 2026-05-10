@@ -302,17 +302,20 @@ code {
 .hamburger-wrap {
   position: relative;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .site-header.app-header .hamburger-wrap {
   margin-left: 0;
 }
 
+.notif-bell-btn,
 .hamburger-btn {
   display: inline-flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 4px;
   width: 3rem;
   height: 3rem;
   padding: 0;
@@ -324,6 +327,36 @@ code {
   transform: none !important;
 }
 
+.hamburger-btn {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notif-bell-btn {
+  position: relative;
+}
+
+.notif-bell-btn svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.notif-bell-dot {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.notif-bell-dot[hidden] {
+  display: none !important;
+}
+
+.notif-bell-btn:hover,
 .hamburger-btn:hover {
   background: rgba(255, 255, 255, 0.78) !important;
   box-shadow: none !important;
@@ -1759,6 +1792,7 @@ html:not(.light-mode) .policy-body h4 {
 }
 
 html:not(.light-mode) .site-header .admin-login,
+html:not(.light-mode) .notif-bell-btn,
 html:not(.light-mode) .hamburger-btn,
 html:not(.light-mode) .btn-secondary,
 html:not(.light-mode) .scroll-button,
@@ -1781,6 +1815,11 @@ html:not(.light-mode) .hamburger-btn span {
   background: var(--foreground);
 }
 
+html:not(.light-mode) .notif-bell-dot {
+  box-shadow: 0 0 0 2px rgba(8, 19, 38, 0.96);
+}
+
+html:not(.light-mode) .notif-bell-btn:hover,
 html:not(.light-mode) .hamburger-btn:hover,
 html:not(.light-mode) .google-btn:hover {
   background: rgba(236, 240, 242, 0.08) !important;
@@ -2188,6 +2227,11 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .hamburger-btn {
+    width: 2.85rem;
+    height: 2.85rem;
+  }
+
+  .notif-bell-btn {
     width: 2.85rem;
     height: 2.85rem;
   }
