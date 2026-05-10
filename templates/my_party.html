@@ -116,10 +116,30 @@
             <textarea id="disband-reason" rows="3" required placeholder="e.g. Flight cancelled, plans changed..."></textarea>
           </label>
           <div class="modal-actions mt-2">
-            <button type="submit" class="btn btn-danger">Disband Carpool</button>
             <button type="button" class="btn btn-secondary" id="disband-cancel">Cancel</button>
+            <button type="submit" class="btn btn-danger">Disband Carpool</button>
           </div>
           <p id="disband-message" class="text-sm mt-1"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Remove Member Modal -->
+    <div id="remove-member-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card">
+        <h3>Remove Member</h3>
+        <p class="text-muted text-sm">This member will be removed immediately and they will see the reason you provide.</p>
+        <form id="remove-member-form">
+          <input type="hidden" id="remove-member-carpool-id" />
+          <input type="hidden" id="remove-member-email" />
+          <label class="mt-2">Reason for removal
+            <textarea id="remove-member-reason" rows="3" required placeholder="e.g. The carpool is full, timing changed, route no longer matches..."></textarea>
+          </label>
+          <div class="modal-actions mt-2">
+            <button type="button" class="btn btn-secondary" id="remove-member-cancel">Cancel</button>
+            <button type="submit" class="btn btn-danger">Remove Member</button>
+          </div>
+          <p id="remove-member-message" class="text-sm mt-1"></p>
         </form>
       </div>
     </div>
@@ -416,21 +436,34 @@
       });
 
       // Remove member handler
-      document.addEventListener('click', async (e) => {
+      document.addEventListener('click', (e) => {
         const btn = e.target.closest('.remove-member-btn');
         if (!btn) return;
-        const carpoolId = btn.dataset.carpool;
-        const email = btn.dataset.email;
-        const confirmed = await openConfirmModal({
-          title: 'Remove this member?',
-          message: 'This member will be removed from the carpool immediately.',
-          confirmLabel: 'Remove member',
-          cancelLabel: 'Cancel',
-          confirmTone: 'danger',
-        });
-        if (!confirmed) return;
-        btn.disabled = true;
-        btn.textContent = 'Removing...';
+        document.getElementById('remove-member-carpool-id').value = btn.dataset.carpool;
+        document.getElementById('remove-member-email').value = btn.dataset.email;
+        document.getElementById('remove-member-reason').value = '';
+        document.getElementById('remove-member-message').textContent = '';
+        document.getElementById('remove-member-modal').style.display = '';
+      });
+
+      document.getElementById('remove-member-cancel').addEventListener('click', () => {
+        document.getElementById('remove-member-modal').style.display = 'none';
+      });
+
+      document.getElementById('remove-member-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const carpoolId = document.getElementById('remove-member-carpool-id').value;
+        const email = document.getElementById('remove-member-email').value;
+        const reason = document.getElementById('remove-member-reason').value.trim();
+        const msgEl = document.getElementById('remove-member-message');
+        if (!reason) {
+          msgEl.textContent = 'Please provide a reason.';
+          return;
+        }
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Removing...';
         try {
           const res = await fetch(`/api/carpools/${carpoolId}/remove-member`, {
             method: 'POST',
@@ -438,19 +471,23 @@
               'Content-Type': 'application/json',
               'X-CSRF-Token': csrfToken,
             },
-            body: JSON.stringify({ email })
+            body: JSON.stringify({ email, reason })
           });
           if (res.ok) {
-            btn.textContent = 'Removed!';
-            setTimeout(() => loadParties(), 500);
+            msgEl.textContent = 'Member removed.';
+            setTimeout(() => {
+              document.getElementById('remove-member-modal').style.display = 'none';
+              loadParties();
+            }, 500);
           } else {
             const data = await res.json();
-            btn.textContent = data.error || 'Failed';
-            setTimeout(() => { btn.textContent = 'Remove'; btn.disabled = false; }, 2000);
+            msgEl.textContent = data.error || 'Failed to remove member.';
           }
         } catch {
-          btn.textContent = 'Error';
-          setTimeout(() => { btn.textContent = 'Remove'; btn.disabled = false; }, 2000);
+          msgEl.textContent = 'Network error. Please try again.';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
         }
       });
 

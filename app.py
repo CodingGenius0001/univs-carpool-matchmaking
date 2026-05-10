@@ -1393,7 +1393,9 @@ def join_party(carpool_id: int) -> Any:
 
     # Notify creator and all existing members that someone joined
     joiner_name = session.get("user_name", email.split("@")[0])
-    msg = f"{joiner_name} joined your carpool."
+    flight_code = carpool.get("flight_code", "") if carpool else ""
+    flight_date = carpool.get("requested_flight_date", "") if carpool else ""
+    msg = f"{joiner_name} joined your carpool for {flight_code} on {flight_date}."
     creator_email = carpool.get("creator_email", "") if carpool else ""
     notified = {email}  # don't notify the joiner themselves
     try:
@@ -1441,10 +1443,12 @@ def leave_party(carpool_id: int) -> Any:
     # Non-creators can leave immediately.
     if not is_creator:
         creator_email = carpool.get("creator_email", "")
+        flight_code = carpool.get("flight_code", "")
+        flight_date = carpool.get("requested_flight_date", "")
         leaver_name = session.get("user_name", email.split("@")[0])
         if creator_email:
             try:
-                notify_user(creator_email, f"{leaver_name} left your carpool.")
+                notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} on {flight_date}.")
             except Exception:
                 pass
         return jsonify({"ok": True, "message": "Left the carpool."})
@@ -1621,8 +1625,11 @@ def remove_member(carpool_id: int) -> Any:
         return jsonify({"error": "Login required"}), 401
     data = request.get_json(silent=True) or {}
     target_email = str(data.get("email", "")).strip().lower()
+    reason = str(data.get("reason", "")).strip()
     if not target_email:
         return jsonify({"error": "Missing member email"}), 400
+    if not reason:
+        return jsonify({"error": "A reason for removal is required"}), 400
     p = db.placeholder
     # Verify caller is the creator
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
@@ -1647,7 +1654,10 @@ def remove_member(carpool_id: int) -> Any:
     flight_code = carpool.get("flight_code", "")
     flight_date = carpool.get("requested_flight_date", "")
     try:
-        notify_user(target_email, f"You were removed from the carpool for {flight_code} on {flight_date} by {creator_name}.")
+        notify_user(
+            target_email,
+            f"You were removed from the carpool for {flight_code} on {flight_date} by {creator_name}. Reason: {reason}",
+        )
     except Exception:
         pass
     return jsonify({"ok": True, "message": "Member removed."})

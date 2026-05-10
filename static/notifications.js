@@ -40,7 +40,7 @@
 
   function decorateNotificationMessage(notification) {
     const message = String(notification?.message || '');
-    const isJoinLeave = / joined your carpool\.?$| left your carpool\.?$/i.test(message);
+    const isJoinLeave = / joined your carpool(?: for .+?)?\.?$| left your carpool(?: for .+?)?\.?$/i.test(message);
     if (!isJoinLeave) {
       return message;
     }
