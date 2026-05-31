@@ -2183,7 +2183,15 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .my-party-btn {
-    margin-left: auto;
+    margin-left: 0;
+  }
+
+  .site-header.app-header {
+    flex-wrap: nowrap;
+  }
+
+  .site-header.app-header .site-logo {
+    margin-right: auto;
   }
 
   .eula-card {

@@ -105,7 +105,7 @@ function updateReview() {
         <strong>${escapeHtml(airportCodeInput?.value || 'Not set')}</strong>
       </div>
       <div class="wizard-review-item">
-        <span class="label">Campus departure</span>
+        <span class="label">Leave time</span>
         <strong>${escapeHtml(formatDisplayTime(plannedDepartureInput?.value || ''))}</strong>
       </div>
       <div class="wizard-review-item">
@@ -232,8 +232,13 @@ function validateCurrentStep() {
       seatsInput?.focus();
       return false;
     }
-    if (plannedDepartureInput?.value && !/^\d{2}:\d{2}$/.test(plannedDepartureInput.value)) {
-      setMessage('Planned departure time must use HH:MM format.', true);
+    if (!plannedDepartureInput?.value) {
+      setMessage('Please enter a planned leave time.', true);
+      plannedDepartureInput?.focus();
+      return false;
+    }
+    if (!/^\d{2}:\d{2}$/.test(plannedDepartureInput.value)) {
+      setMessage('Planned leave time must use HH:MM format.', true);
       plannedDepartureInput?.focus();
       return false;
     }

@@ -42,7 +42,7 @@
     <main class="container">
       <section class="card">
         <h2>Find Available Carpools</h2>
-        <p class="card-subtitle">Search by flight code, airport, or date. At least one field is required.</p>
+        <p class="card-subtitle">Search by flight code, airport, date, or departure time. At least one field is required.</p>
 
         <form id="search-form">
           <div class="grid">
@@ -54,6 +54,9 @@
             </label>
             <label>Date of Departure
               <input type="date" name="departure_date" />
+            </label>
+            <label>Planned Leave Time (from origin)
+              <input type="time" name="planned_leave_time" />
             </label>
           </div>
           <button type="submit" class="btn btn-primary btn-block mt-2">Search Carpools</button>

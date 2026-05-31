@@ -23,6 +23,7 @@ const statusEl = document.getElementById('login-status');
 const defaultButtonHtml = signinBtn ? signinBtn.innerHTML : '';
 const REDIRECT_FLOW_KEY = 'campus2air-auth-flow';
 const LOGOUT_MARKER_KEY = 'campus2air-logged-out';
+const TERMS_AGREED_KEY = 'campus2air-terms-agreed';
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const REDIRECT_FLOW_TIMEOUT_MS = 12000;
 let serverLoginPromise = null;
@@ -124,6 +125,15 @@ function hasLoggedOutMarker() {
     }
   } catch (_) {}
 
+  return false;
+}
+
+function markTermsAgreed() {
+  try { localStorage.setItem(TERMS_AGREED_KEY, '1'); } catch (_) {}
+}
+
+function hasTermsAgreed() {
+  try { return localStorage.getItem(TERMS_AGREED_KEY) === '1'; } catch (_) {}
   return false;
 }
 
@@ -246,6 +256,7 @@ signinBtn?.addEventListener('click', async () => {
     return;
   }
 
+  markTermsAgreed();
   clearLoggedOutMarker();
   setAuthBusy('Signing in...');
 
@@ -303,7 +314,7 @@ async function bootstrapAuth() {
     handleAuthError(err);
   }
 
-  if (!hasLoggedOutMarker() && auth.currentUser) {
+  if (!hasLoggedOutMarker() && hasTermsAgreed() && auth.currentUser) {
     try {
       setAuthBusy('Finishing sign-in...');
       await finishServerLogin(auth.currentUser);

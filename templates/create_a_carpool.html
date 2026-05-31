@@ -52,7 +52,7 @@
         </div>
 
         <h2>Create a Carpool</h2>
-        <p class="disclaimer">Your info is only visible to matched carpool partners. Records are automatically removed after the flight lands.</p>
+        <p class="disclaimer">Your info is only visible to matched carpool partners.</p>
 
         {% if display_name %}
         <p class="text-muted text-sm">Creating carpool as <strong>{{ display_name }}</strong></p>
@@ -76,7 +76,7 @@
           <div class="wizard-step" data-step="1" data-title="Flight details">
             <div class="wizard-step-copy">
               <span class="wizard-step-kicker">Step 2</span>
-              <h3>Tell us your flight</h3>
+              <h3>Tell us about your flight</h3>
               <p>We will use this to match you with students heading to the same airport.</p>
             </div>
             <div class="grid">
@@ -93,7 +93,7 @@
           <div class="wizard-step" data-step="2" data-title="Date and airport">
             <div class="wizard-step-copy">
               <span class="wizard-step-kicker">Step 3</span>
-              <h3>When and where are you flying?</h3>
+              <h3>When and where are you flying from?</h3>
               <p>Just the date and departure airport are enough to place you in the right pool.</p>
             </div>
             <div class="grid">
@@ -113,8 +113,8 @@
               <p>These details help people know how many can join and any plans you already have.</p>
             </div>
             <div class="grid">
-              <label class="wizard-field">Planned Departure Time (from campus)
-                <input type="time" name="planned_departure_time" id="planned_departure_time" />
+              <label class="wizard-field">Planned Leave Time (from origin)
+                <input type="time" name="planned_departure_time" id="planned_departure_time" required />
               </label>
               <label class="wizard-field">Total Seats
                 <input type="number" name="seats_available" id="seats_available" value="4" min="1" max="7" />

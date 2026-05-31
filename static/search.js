@@ -147,7 +147,8 @@ searchForm?.addEventListener('submit', async (e) => {
   const fc = searchForm.querySelector('[name="flight_code"]')?.value.trim();
   const ac = searchForm.querySelector('[name="airport_code"]')?.value.trim();
   const dd = searchForm.querySelector('[name="departure_date"]')?.value.trim();
-  if (!fc && !ac && !dd) {
+  const pt = searchForm.querySelector('[name="planned_leave_time"]')?.value.trim();
+  if (!fc && !ac && !dd && !pt) {
     results.innerHTML = `
       <div class="message message-warning mt-2">
         At least 1 search field is required. Please enter a flight code, airport code, or departure date to search.

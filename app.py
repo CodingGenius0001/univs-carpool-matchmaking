@@ -1135,6 +1135,8 @@ def _create_carpool_inner() -> Any:
     planned_departure_time = _normalize_departure_time(data.get("planned_departure_time", ""))
     if planned_departure_time is None:
         return jsonify({"error": "planned_departure_time must use HH:MM format"}), 400
+    if not planned_departure_time:
+        return jsonify({"error": "Planned Leave Time is required"}), 400
 
     airport_name, airport_location = _resolve_airport(airport_code)
     created_at = _now_utc().isoformat()
@@ -1232,9 +1234,11 @@ def search_carpools() -> Any:
     flight_date_raw = (request.args.get("departure_date", "") or request.args.get("flight_date", "")).strip()
     parsed_search_date = _parse_user_flight_date(flight_date_raw) if flight_date_raw else None
     flight_date = _to_user_flight_date(parsed_search_date) if parsed_search_date else ""
+    planned_leave_time_raw = request.args.get("planned_leave_time", "").strip()
+    planned_leave_time = _normalize_departure_time(planned_leave_time_raw) if planned_leave_time_raw else ""
 
     # Require at least one search field
-    if not flight_code and not airport_code and not flight_date_raw:
+    if not flight_code and not airport_code and not flight_date_raw and not planned_leave_time:
         return jsonify({"error": "At least 1 search field is required", "count": 0, "results": []}), 400
 
     current_user = session.get("user_email", "")
@@ -1255,6 +1259,15 @@ def search_carpools() -> Any:
     except Exception:
         pass
 
+    def _time_to_minutes(t: str) -> int | None:
+        try:
+            h, m = t.split(":")
+            return int(h) * 60 + int(m)
+        except Exception:
+            return None
+
+    total_criteria = sum([bool(flight_code), bool(airport_code), bool(flight_date), bool(planned_leave_time)])
+
     results: list[dict[str, Any]] = []
     for entry in rows:
         matched_fields = 0
@@ -1268,8 +1281,14 @@ def search_carpools() -> Any:
         if flight_date and entry.get("requested_flight_date") == flight_date:
             matched_fields += 1
             reasons.append("Same requested flight date")
+        if planned_leave_time and entry.get("planned_departure_time"):
+            search_mins = _time_to_minutes(planned_leave_time)
+            entry_mins = _time_to_minutes(entry["planned_departure_time"])
+            if search_mins is not None and entry_mins is not None and abs(search_mins - entry_mins) <= 240:
+                matched_fields += 1
+                reasons.append("Similar leave time")
         if matched_fields > 0:
-            score = round((matched_fields / 3) * 100)
+            score = round((matched_fields / total_criteria) * 100) if total_criteria > 0 else 0
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
             public_row["match_reasons"] = reasons
