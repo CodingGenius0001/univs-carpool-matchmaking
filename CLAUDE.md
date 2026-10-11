@@ -38,12 +38,16 @@ There are no tests or linting configured in this project.
 
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
-**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Five tables:
+**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Seven tables:
 - `carpools` — main ride entries (flight details, contact info, seats, expiration, `share_token` for invite links)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, name, phone)
 - `notifications` — dismissible messages (e.g., disband notifications)
 - `join_log` — append-only join history for the rolling join limit (pruned after 48h)
+- `carpool_history` — one row per carpool, kept after the carpool is deleted (flight, airport, date, seats, peak members, outcome: departed/disbanded/abandoned/admin_deleted; no personal data). Written by `_history_open` / `_history_bump_peak` / `_history_close`
+- `activity_log` — admin-dashboard events (`signup`, `login`, `created`, `joined`, `left`, `removed`, `transferred`, `disbanded`, `shared`, `departed`, `admin_deleted`) via `_log_event()`; pruned after 180 days (`ACTIVITY_RETENTION`)
+
+**Admin dashboard**: `/admin?days=7|30|90` renders `_admin_dashboard()` (KPIs, per-day series in Pacific time, open carpools with riders, students, past carpools, activity feed). Charts are dependency-free SVG drawn by `static/admin-dashboard.js` from the `dash-data` JSON block
 
 **Authentication**: Two separate auth systems:
 1. **User auth** — Firebase-based (client-side), email stored in session via `/auth/firebase-callback`
