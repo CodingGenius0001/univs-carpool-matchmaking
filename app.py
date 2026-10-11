@@ -700,6 +700,67 @@ class DBAdapter:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_join_log_user ON join_log (user_email, joined_at)")
 
+        # Analytics. Carpools are deleted after departure, so a small record of
+        # each one is kept here for the admin dashboard (no phones or notes).
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS carpool_history (
+                    carpool_id INT PRIMARY KEY,
+                    flight_code VARCHAR(16) NOT NULL DEFAULT '',
+                    airport_code VARCHAR(3) NOT NULL DEFAULT '',
+                    flight_date VARCHAR(16) NOT NULL DEFAULT '',
+                    seats INT NOT NULL DEFAULT 0,
+                    peak_members INT NOT NULL DEFAULT 1,
+                    created_at VARCHAR(64) NOT NULL DEFAULT '',
+                    closed_at VARCHAR(64) NOT NULL DEFAULT '',
+                    outcome VARCHAR(32) NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    event VARCHAR(32) NOT NULL,
+                    user_email VARCHAR(255) NOT NULL DEFAULT '',
+                    carpool_id INT NOT NULL DEFAULT 0,
+                    detail VARCHAR(255) NOT NULL DEFAULT '',
+                    created_at VARCHAR(64) NOT NULL,
+                    INDEX idx_activity_created (created_at)
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS carpool_history (
+                    carpool_id INTEGER PRIMARY KEY,
+                    flight_code TEXT NOT NULL DEFAULT '',
+                    airport_code TEXT NOT NULL DEFAULT '',
+                    flight_date TEXT NOT NULL DEFAULT '',
+                    seats INTEGER NOT NULL DEFAULT 0,
+                    peak_members INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT '',
+                    closed_at TEXT NOT NULL DEFAULT '',
+                    outcome TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event TEXT NOT NULL,
+                    user_email TEXT NOT NULL DEFAULT '',
+                    carpool_id INTEGER NOT NULL DEFAULT 0,
+                    detail TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log (created_at)")
+
         conn.commit()
         cur.close()
         conn.close()
@@ -725,6 +786,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'share_token'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN share_token VARCHAR(32) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM users LIKE 'last_login_at'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE users ADD COLUMN last_login_at VARCHAR(64) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -738,6 +802,9 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
                 if "share_token" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN share_token TEXT NOT NULL DEFAULT ''")
+                cur.execute("PRAGMA table_info(users)")
+                if "last_login_at" not in [row[1] for row in cur.fetchall()]:
+                    cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -756,6 +823,70 @@ def notify_user(email: str, message: str) -> None:
         f"INSERT INTO notifications (user_email, message, created_at) VALUES ({p}, {p}, {p})",
         (email, message, _now_utc().isoformat()),
     )
+
+
+ACTIVITY_RETENTION = timedelta(days=180)
+
+
+def _log_event(event: str, email: str = "", carpool_id: int = 0, detail: str = "") -> None:
+    """Record an activity event for the admin dashboard. Never breaks the caller."""
+    try:
+        p = db.placeholder
+        db.execute(
+            f"INSERT INTO activity_log (event, user_email, carpool_id, detail, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+            (event, email or "", int(carpool_id or 0), str(detail or "")[:255], _now_utc().isoformat()),
+        )
+    except DatabaseUnavailable:
+        raise
+    except Exception as exc:
+        app.logger.warning("Could not log %s event: %s", event, exc)
+
+
+def _history_open(carpool: dict[str, Any]) -> None:
+    """Start the analytics record for a carpool (idempotent)."""
+    p = db.placeholder
+    if db.query(f"SELECT carpool_id FROM carpool_history WHERE carpool_id = {p}", (carpool["id"],)):
+        return
+    db.execute(
+        f"INSERT INTO carpool_history (carpool_id, flight_code, airport_code, flight_date, seats, peak_members, created_at) "
+        f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})",
+        (
+            carpool["id"],
+            str(carpool.get("flight_code") or ""),
+            str(carpool.get("airport_code") or ""),
+            str(carpool.get("requested_flight_date") or ""),
+            int(carpool.get("seats_available") or 0),
+            1,
+            str(carpool.get("created_at") or _now_utc().isoformat()),
+        ),
+    )
+
+
+def _history_bump_peak(carpool_id: int) -> None:
+    """Remember the largest the group ever got (members leave before departure)."""
+    p = db.placeholder
+    rows = db.query(f"SELECT COUNT(*) AS c FROM party_members WHERE carpool_id = {p}", (carpool_id,))
+    count = int(rows[0]["c"]) if rows else 0
+    db.execute(
+        f"UPDATE carpool_history SET peak_members = {p} WHERE carpool_id = {p} AND peak_members < {p}",
+        (count, carpool_id, count),
+    )
+
+
+def _history_close(carpool: dict[str, Any], outcome: str) -> None:
+    """Mark a carpool as finished: departed, disbanded, abandoned or admin_deleted."""
+    try:
+        _history_open(carpool)
+        _history_bump_peak(carpool["id"])
+        p = db.placeholder
+        db.execute(
+            f"UPDATE carpool_history SET closed_at = {p}, outcome = {p} WHERE carpool_id = {p} AND closed_at = ''",
+            (_now_utc().isoformat(), outcome, carpool["id"]),
+        )
+    except DatabaseUnavailable:
+        raise
+    except Exception as exc:
+        app.logger.warning("Could not record carpool %s outcome: %s", carpool.get("id"), exc)
 
 
 def _clean_flight_code(code: str) -> str:
@@ -885,6 +1016,9 @@ def _delete_carpool_party(carpool_id: int) -> None:
 
 
 def _clear_all_data() -> None:
+    db.execute("DELETE FROM activity_log")
+    db.execute("DELETE FROM carpool_history")
+    db.execute("DELETE FROM join_log")
     db.execute("DELETE FROM party_members")
     db.execute("DELETE FROM notifications")
     db.execute("DELETE FROM users")
@@ -942,14 +1076,20 @@ def _cleanup_expired_entries() -> None:
         p = db.placeholder
         now_iso = _now_utc().isoformat()
         # Find expired carpools first so we can clean up party_members too
-        expired = db.query(f"SELECT id FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
+        expired = db.query(f"SELECT * FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
         if expired:
             for row in expired:
+                _history_close(row, "departed")
+                _log_event("departed", "", row["id"], f"{row.get('flight_code', '')} {row.get('airport_code', '')}")
                 db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (row["id"],))
             db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
         # Join history is only needed for the rolling join limit window.
         join_log_cutoff = (_now_utc() - JOIN_LIMIT_WINDOW * 2).isoformat()
         db.execute(f"DELETE FROM join_log WHERE joined_at < {p}", (join_log_cutoff,))
+        activity_cutoff = (_now_utc() - ACTIVITY_RETENTION).isoformat()
+        db.execute(f"DELETE FROM activity_log WHERE created_at < {p}", (activity_cutoff,))
+    except DatabaseUnavailable:
+        raise
     except Exception as exc:
         app.logger.warning("Expired entry cleanup failed: %s", exc)
 
@@ -1165,17 +1305,20 @@ def firebase_callback() -> Any:
     first_name, last_initial = _derive_user_name_parts(name, email)
     p = db.placeholder
     try:
+        now_iso = _now_utc().isoformat()
         existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
         if not existing:
             db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, "", _now_utc().isoformat()),
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso, now_iso),
             )
+            _log_event("signup", email)
         else:
             db.execute(
-                f"UPDATE users SET first_name = {p}, last_initial = {p} WHERE user_email = {p}",
-                (first_name, last_initial, email),
+                f"UPDATE users SET first_name = {p}, last_initial = {p}, last_login_at = {p} WHERE user_email = {p}",
+                (first_name, last_initial, now_iso, email),
             )
+        _log_event("login", email)
     except Exception:
         pass
 
@@ -1344,6 +1487,12 @@ def _create_carpool_inner() -> Any:
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (last_id,))
     if not rows:
         return jsonify({"error": "Carpool was saved but could not be retrieved"}), 500
+
+    try:
+        _history_open(rows[0])
+    except Exception as exc:
+        app.logger.warning("Could not start carpool history: %s", exc)
+    _log_event("created", creator_email, last_id, f"{flight_code} {airport_code} {_display_date(flight_date_user)}")
 
     if creator_email:
         try:
@@ -1526,6 +1675,7 @@ def carpool_share_link(carpool_id: int) -> Any:
         )
         # If two members created a token at the same moment, use the winner.
         token = db.query(f"SELECT share_token FROM carpools WHERE id = {p}", (carpool_id,))[0]["share_token"]
+    _log_event("shared", email, carpool_id)
     return jsonify({"path": url_for("invite_page", token=token)})
 
 
@@ -1687,6 +1837,13 @@ def join_party(carpool_id: int) -> Any:
     finally:
         cur.close()
 
+    source = "invite" if data.get("source") == "invite" else "search"
+    _log_event("joined", email, carpool_id, f"via {source}")
+    try:
+        _history_bump_peak(carpool_id)
+    except Exception as exc:
+        app.logger.warning("Could not update carpool peak size: %s", exc)
+
     # Notify creator and all existing members that someone joined
     joiner_name = session.get("user_name", email.split("@")[0])
     flight_code = carpool.get("flight_code", "") if carpool else ""
@@ -1735,6 +1892,7 @@ def leave_party(carpool_id: int) -> Any:
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, email),
     )
+    _log_event("left", email, carpool_id)
 
     # Non-creators can leave immediately.
     if not is_creator:
@@ -1757,11 +1915,13 @@ def leave_party(carpool_id: int) -> Any:
 
     if not remaining_members:
         # Nobody is left -> auto-disband the party.
+        _history_close(carpool, "abandoned")
         _delete_carpool_party(carpool_id)
         return jsonify({"ok": True, "message": "You left and the carpool was disbanded because no members remained."})
 
     # Transfer to the earliest-joined remaining member.
     new_owner_email = remaining_members[0]["user_email"]
+    _log_event("transferred", new_owner_email, carpool_id, f"from {email}")
     first_name, last_initial, phone = _owner_profile_fields(new_owner_email)
     db.execute(
         f"UPDATE carpools SET creator_email = {p}, first_name = {p}, last_initial = {p}, phone = {p} WHERE id = {p}",
@@ -1824,6 +1984,8 @@ def transfer_and_leave(carpool_id: int) -> Any:
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, email),
     )
+    _log_event("left", email, carpool_id)
+    _log_event("transferred", new_owner_email, carpool_id, f"from {email}")
     carpool_row = rows[0]
     flight_code = carpool_row.get("flight_code", "")
     flight_date = _display_date(carpool_row.get("requested_flight_date", ""))
@@ -1954,6 +2116,7 @@ def remove_member(carpool_id: int) -> Any:
         f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
         (carpool_id, target_email),
     )
+    _log_event("removed", target_email, carpool_id, f"by {email}: {reason}")
     carpool = rows[0]
     creator_name = f"{carpool.get('first_name', '')} {carpool.get('last_initial', '')}."
     flight_code = carpool.get("flight_code", "")
@@ -2070,6 +2233,8 @@ def disband_party(carpool_id: int) -> Any:
             notify_user(m["user_email"], f"The carpool for flight {flight} created by {creator_name} has been disbanded. Reason: {reason}")
         except Exception:
             pass
+    _history_close(carpool, "disbanded")
+    _log_event("disbanded", email, carpool_id, reason)
     _delete_carpool_party(carpool_id)
     return jsonify({"ok": True, "message": "Carpool disbanded."})
 
@@ -2138,19 +2303,244 @@ def admin_login() -> Any:
     return redirect(url_for("admin_login_page", error=1))
 
 
+CAMPUS_TZ = ZoneInfo("America/Los_Angeles")
+ADMIN_RANGES = (7, 30, 90)
+EVENT_LABELS = {
+    "signup": "signed up",
+    "login": "logged in",
+    "created": "created a carpool",
+    "joined": "joined a carpool",
+    "left": "left a carpool",
+    "removed": "was removed from a carpool",
+    "transferred": "became organizer",
+    "disbanded": "disbanded a carpool",
+    "shared": "shared an invite link",
+    "departed": "Carpool departed",
+    "admin_deleted": "Admin deleted a carpool",
+}
+OUTCOME_LABELS = {
+    "departed": "Departed",
+    "disbanded": "Disbanded",
+    "abandoned": "Everyone left",
+    "admin_deleted": "Deleted by admin",
+}
+
+
+def _local_dt(iso: Any) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(CAMPUS_TZ)
+
+
+def _fmt_local(iso: Any) -> str:
+    dt = _local_dt(iso)
+    return dt.strftime("%m/%d/%Y %I:%M %p").replace(" 0", " ") if dt else "—"
+
+
+def _admin_dashboard(days: int) -> dict[str, Any]:
+    """Everything the admin dashboard shows, for the last `days` days (campus time)."""
+    today = datetime.now(CAMPUS_TZ).date()
+    start = today - timedelta(days=days - 1)
+    day_keys = [start + timedelta(days=i) for i in range(days)]
+
+    def in_range(iso: Any) -> bool:
+        dt = _local_dt(iso)
+        return bool(dt and dt.date() >= start)
+
+    def per_day(isos: list[Any]) -> list[dict[str, Any]]:
+        counts = {d: 0 for d in day_keys}
+        for iso in isos:
+            dt = _local_dt(iso)
+            if dt and dt.date() in counts:
+                counts[dt.date()] += 1
+        return [{"label": d.strftime("%m/%d"), "value": counts[d]} for d in day_keys]
+
+    users = db.query("SELECT * FROM users ORDER BY created_at DESC")
+    carpools = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
+    members = db.query("SELECT carpool_id, user_email, joined_at FROM party_members ORDER BY joined_at")
+
+    # Carpools created before history tracking existed get a record now.
+    known = {r["carpool_id"] for r in db.query("SELECT carpool_id FROM carpool_history")}
+    for c in carpools:
+        if c["id"] not in known:
+            try:
+                _history_open(c)
+                _history_bump_peak(c["id"])
+            except Exception as exc:
+                app.logger.warning("History backfill failed for %s: %s", c["id"], exc)
+    history = db.query("SELECT * FROM carpool_history ORDER BY created_at DESC")
+    activity = db.query("SELECT * FROM activity_log ORDER BY created_at DESC")
+
+    user_by_email = {u["user_email"]: u for u in users}
+
+    def person(email: str) -> dict[str, str]:
+        u = user_by_email.get(email, {})
+        first = str(u.get("first_name") or "").strip() or email.split("@")[0]
+        initial = str(u.get("last_initial") or "").strip()[:1]
+        return {
+            "name": f"{first} {initial}." if initial else first,
+            "email": email,
+            "phone": str(u.get("phone") or ""),
+        }
+
+    members_by_carpool: dict[int, list[dict[str, Any]]] = {}
+    for m in members:
+        members_by_carpool.setdefault(m["carpool_id"], []).append(m)
+    active_carpools = []
+    for c in carpools:
+        roster = members_by_carpool.get(c["id"], [])
+        seats = int(c.get("seats_available") or 0)
+        active_carpools.append({
+            "entry": c,
+            "date": _display_date(c.get("requested_flight_date")),
+            "leave_time": _display_time(c.get("planned_departure_time")) or "—",
+            "created": _fmt_local(c.get("created_at")),
+            "seats": seats,
+            "seats_left": max(0, seats - len(roster)),
+            "members": [
+                {**person(m["user_email"]),
+                 "is_organizer": m["user_email"] == c.get("creator_email"),
+                 "joined": _fmt_local(m.get("joined_at"))}
+                for m in roster
+            ],
+        })
+    riders = {m["user_email"] for m in members}
+
+    range_activity = [a for a in activity if in_range(a.get("created_at"))]
+    people_by_day: dict[Any, set[str]] = {}
+    for a in range_activity:
+        dt = _local_dt(a.get("created_at"))
+        if dt and a.get("user_email"):
+            people_by_day.setdefault(dt.date(), set()).add(a["user_email"])
+    joins = [a for a in range_activity if a["event"] == "joined"]
+    invite_joins = sum(1 for a in joins if "invite" in str(a.get("detail") or ""))
+    active_people = {a["user_email"] for a in range_activity if a.get("user_email")}
+
+    created_in_range = [h for h in history if in_range(h.get("created_at"))]
+    closed_in_range = [h for h in history if h.get("outcome") and in_range(h.get("closed_at"))]
+    departed = [h for h in closed_in_range if h["outcome"] == "departed"]
+    matched = [h for h in departed if int(h.get("peak_members") or 0) >= 2]
+    avg_group = (sum(int(h.get("peak_members") or 0) for h in departed) / len(departed)) if departed else 0
+
+    airports: dict[str, int] = {}
+    for h in created_in_range:
+        code = str(h.get("airport_code") or "?")
+        airports[code] = airports.get(code, 0) + 1
+    top_airports = [{"label": k, "value": v} for k, v in sorted(airports.items(), key=lambda kv: (-kv[1], kv[0]))[:8]]
+
+    outcome_counts = [
+        {"key": "matched", "label": "Departed with 2+ riders", "value": len(matched)},
+        {"key": "solo", "label": "Departed with 1 rider", "value": len(departed) - len(matched)},
+        {"key": "cancelled", "label": "Disbanded, abandoned or deleted",
+         "value": len(closed_in_range) - len(departed)},
+    ]
+
+    upcoming: dict[str, int] = {}
+    for c in carpools:
+        try:
+            d = datetime.strptime(str(c.get("requested_flight_date") or ""), "%m-%d-%Y").date()
+        except ValueError:
+            continue
+        if today <= d <= today + timedelta(days=13):
+            upcoming[d.isoformat()] = upcoming.get(d.isoformat(), 0) + 1
+    upcoming_series = []
+    for i in range(14):
+        d = today + timedelta(days=i)
+        upcoming_series.append({"label": d.strftime("%m/%d"), "value": upcoming.get(d.isoformat(), 0)})
+
+    carpools_per_user: dict[str, int] = {}
+    for m in members:
+        carpools_per_user[m["user_email"]] = carpools_per_user.get(m["user_email"], 0) + 1
+    joins_per_user: dict[str, int] = {}
+    for a in activity:
+        if a["event"] == "joined":
+            joins_per_user[a["user_email"]] = joins_per_user.get(a["user_email"], 0) + 1
+    students = [
+        {**person(u["user_email"]),
+         "signed_up": _fmt_local(u.get("created_at")),
+         "last_login": _fmt_local(u.get("last_login_at")) if u.get("last_login_at") else "—",
+         "active_carpools": carpools_per_user.get(u["user_email"], 0),
+         "joins": joins_per_user.get(u["user_email"], 0)}
+        for u in users
+    ]
+
+    past = [
+        {"id": h["carpool_id"],
+         "flight_code": h.get("flight_code") or "",
+         "airport_code": h.get("airport_code") or "",
+         "date": _display_date(h.get("flight_date")),
+         "seats": h.get("seats") or 0,
+         "peak": h.get("peak_members") or 0,
+         "outcome": OUTCOME_LABELS.get(h.get("outcome"), h.get("outcome")),
+         "outcome_key": h.get("outcome"),
+         "created": _fmt_local(h.get("created_at")),
+         "closed": _fmt_local(h.get("closed_at"))}
+        for h in history if h.get("outcome")
+    ][:200]
+
+    feed = []
+    for a in range_activity[:150]:
+        who = person(a["user_email"])["name"] if a.get("user_email") else ""
+        feed.append({
+            "when": _fmt_local(a.get("created_at")),
+            "event": a["event"],
+            "who": who,
+            "email": a.get("user_email") or "",
+            "what": EVENT_LABELS.get(a["event"], a["event"]),
+            "carpool_id": a.get("carpool_id") or "",
+            "detail": a.get("detail") or "",
+        })
+
+    return {
+        "days": days,
+        "ranges": ADMIN_RANGES,
+        "range_label": f"{start.strftime('%m/%d/%Y')} – {today.strftime('%m/%d/%Y')}",
+        "tracking_since": _fmt_local(min((a["created_at"] for a in activity), default="")) if activity else "",
+        "kpis": {
+            "students": len(users),
+            "new_students": sum(1 for u in users if in_range(u.get("created_at"))),
+            "active_students": len(active_people),
+            "active_carpools": len(carpools),
+            "riders": len(riders),
+            "created": len(created_in_range),
+            "joins": len(joins),
+            "invite_joins": invite_joins,
+            "departed": len(departed),
+            "match_rate": round(100 * len(matched) / len(departed)) if departed else None,
+            "avg_group": round(avg_group, 1) if departed else None,
+        },
+        "charts": {
+            "created": per_day([h.get("created_at") for h in history]),
+            "signups": per_day([u.get("created_at") for u in users]),
+            "joins": per_day([a.get("created_at") for a in activity if a["event"] == "joined"]),
+            "active_people": [{"label": d.strftime("%m/%d"), "value": len(people_by_day.get(d, ()))} for d in day_keys],
+            "airports": top_airports,
+            "upcoming": upcoming_series,
+            "outcomes": outcome_counts,
+        },
+        "active_carpools": active_carpools,
+        "students": students,
+        "past": past,
+        "feed": feed,
+    }
+
+
 @app.get("/admin")
 def admin_panel() -> Any:
     if not _require_admin():
         return redirect(url_for("admin_login_page"))
     try:
-        rows = db.query("SELECT * FROM carpools ORDER BY created_at DESC")
-    except Exception:
-        rows = []
-    total = len(rows)
-    unverified = sum(1 for r in rows if r.get("status") == "unverified")
-    unique_flights = len({r.get("flight_code", "") for r in rows})
-    return render_template("admin.html", entries=rows, total=total,
-                           unverified=unverified, unique_flights=unique_flights)
+        days = int(request.args.get("days", 30))
+    except ValueError:
+        days = 30
+    if days not in ADMIN_RANGES:
+        days = 30
+    _cleanup_expired_entries()
+    return render_template("admin.html", dash=_admin_dashboard(days))
 
 
 @app.post("/admin/delete-all")
@@ -2165,6 +2555,11 @@ def admin_delete_all() -> Any:
 def admin_delete_entry(entry_id: int) -> Any:
     if not _require_admin():
         return jsonify({"error": "Unauthorized"}), 401
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (entry_id,))
+    if rows:
+        _history_close(rows[0], "admin_deleted")
+        _log_event("admin_deleted", "", entry_id)
     _delete_carpool_party(entry_id)
     return redirect(url_for("admin_panel"))
 

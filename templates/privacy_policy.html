@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
     <style>
       .policy-body { font-size: 0.92rem; color: var(--text-muted); line-height: 1.75; }
@@ -119,6 +120,8 @@
             <li>Carpool listings are automatically deleted at 11:59 PM UTC on the day after your listed departure date (so listings are not removed early for users in U.S. time zones).</li>
             <li>Carpool membership records are deleted when the associated carpool expires or is disbanded.</li>
             <li>A record of which carpools you joined is kept for up to 48 hours to enforce the limit of 2 joins every 24 hours.</li>
+            <li>An activity log (for example: signed up, logged in, created, joined or left a carpool), linked to your email, is kept for up to 180 days so the Campus2Air administrators can see how the service is used and investigate abuse. Only administrators can see it.</li>
+            <li>After a carpool ends, a summary without names, emails, phone numbers or notes (flight code, airport, date, seat count, group size and whether it departed or was disbanded) is kept for usage statistics.</li>
             <li>You may manually leave a carpool or delete your carpool listing at any time.</li>
           </ul>
           <p>Your profile (email, first name, last initial, and phone number) and in-app notifications may be retained for a reasonable period after your last activity so you don't have to re-enter them, but are never used beyond this service. You may request deletion at any time (see Your Rights below).</p>

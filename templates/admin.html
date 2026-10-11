@@ -3,16 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Admin Panel - Campus2Air</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>Admin Dashboard - Campus2Air</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo">Campus2Air</a>
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -24,8 +22,11 @@
           <span></span><span></span><span></span>
         </button>
         <div class="hamburger-menu" id="hamburger-menu">
-          <a href="/eula">EULA &amp; ToS</a>
-          <a href="/privacy">Privacy Policy</a>
+          <a href="#overview">Overview</a>
+          <a href="#active">Active carpools</a>
+          <a href="#students">Students</a>
+          <a href="#past">Past carpools</a>
+          <a href="#activity">Activity</a>
           <div class="menu-divider"></div>
           <form method="post" action="/admin/logout" class="menu-logout-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
@@ -35,189 +36,297 @@
       </div>
     </header>
 
-    <main class="container">
-      <section class="card">
-        <h2>Admin Control Panel</h2>
-
-        <!-- Stats -->
-        <div class="admin-stats">
-          <div class="stat-card">
-            <div class="stat-value">{{ total }}</div>
-            <div class="stat-label">Total Entries</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ unverified }}</div>
-            <div class="stat-label">Unverified</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ unique_flights }}</div>
-            <div class="stat-label">Unique Flights</div>
-          </div>
+    {% set k = dash.kpis %}
+    <main class="container dash">
+      <!-- Title + range filter (scopes every number and chart below) -->
+      <section class="dash-head" id="overview">
+        <div>
+          <h1 class="dash-title">Admin Dashboard</h1>
+          <p class="text-muted text-sm">{{ dash.range_label }} · Pacific time</p>
         </div>
+        <nav class="dash-range" aria-label="Date range">
+          {% for d in dash.ranges %}
+          <a href="?days={{ d }}" class="{{ 'is-active' if d == dash.days }}" {% if d == dash.days %}aria-current="true"{% endif %}>Last {{ d }} days</a>
+          {% endfor %}
+        </nav>
+      </section>
 
-        <!-- Actions -->
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
-          <form
-            method="post"
-            action="/admin/delete-all"
-            class="confirmable-form"
-            data-confirm-title="Delete the entire database?"
-            data-confirm-message="This will permanently remove every entry. This action cannot be undone."
-            data-confirm-label="Delete everything"
-            data-cancel-label="Keep data"
-          >
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-            <button type="submit" class="danger btn-sm">Delete Entire Database</button>
-          </form>
-        </div>
+      {% if dash.tracking_since %}
+      <p class="dash-note">Activity tracking started {{ dash.tracking_since }}. Joins, logins and past carpools before then weren't recorded. Sign-ups and current carpools are complete.</p>
+      {% else %}
+      <p class="dash-note">Activity tracking starts now. Joins, logins and past carpools will appear here as students use the site. Sign-ups and current carpools are already complete.</p>
+      {% endif %}
 
-        {% if total == 0 %}
-        <div class="empty-state">
-          <div class="icon">0</div>
-          <p>No entries in the database yet.</p>
+      <!-- KPI tiles -->
+      <section class="dash-kpis" aria-label="Key numbers">
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Students on platform</span>
+          <span class="dash-kpi-value">{{ k.students }}</span>
+          <span class="dash-kpi-sub">+{{ k.new_students }} new in range</span>
         </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Active students</span>
+          <span class="dash-kpi-value">{{ k.active_students }}</span>
+          <span class="dash-kpi-sub">logged in or did something</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Open carpools</span>
+          <span class="dash-kpi-value">{{ k.active_carpools }}</span>
+          <span class="dash-kpi-sub">{{ k.riders }} student{{ '' if k.riders == 1 else 's' }} riding</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Carpools created</span>
+          <span class="dash-kpi-value">{{ k.created }}</span>
+          <span class="dash-kpi-sub">in range</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Joins</span>
+          <span class="dash-kpi-value">{{ k.joins }}</span>
+          <span class="dash-kpi-sub">{{ k.invite_joins }} via invite links</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Carpools departed</span>
+          <span class="dash-kpi-value">{{ k.departed }}</span>
+          <span class="dash-kpi-sub">reached their departure day</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Match rate</span>
+          <span class="dash-kpi-value">{{ (k.match_rate|string + '%') if k.match_rate is not none else '—' }}</span>
+          <span class="dash-kpi-sub">departed with 2+ riders</span>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi-label">Avg group size</span>
+          <span class="dash-kpi-value">{{ k.avg_group if k.avg_group is not none else '—' }}</span>
+          <span class="dash-kpi-sub">riders per departed carpool</span>
+        </div>
+      </section>
+
+      <!-- Charts -->
+      <section class="dash-charts">
+        <figure class="dash-chart card" data-chart="bars" data-key="created">
+          <figcaption><h3>Carpools created per day</h3></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="bars" data-key="signups">
+          <figcaption><h3>New students per day</h3></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="bars" data-key="joins">
+          <figcaption><h3>Joins per day</h3></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="bars" data-key="active_people">
+          <figcaption><h3>Active students per day</h3></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="bars" data-key="upcoming">
+          <figcaption><h3>Upcoming departures</h3><p class="text-muted text-sm">Open carpools by flight date, next 14 days</p></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="hbars" data-key="airports">
+          <figcaption><h3>Top departure airports</h3><p class="text-muted text-sm">Carpools created in range</p></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card dash-chart-wide" data-chart="stack" data-key="outcomes">
+          <figcaption><h3>What happened to finished carpools</h3><p class="text-muted text-sm">Carpools that closed in range</p></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+      </section>
+
+      <!-- Active carpools -->
+      <section class="card dash-section" id="active">
+        <div class="dash-section-head">
+          <h2>Open carpools <span class="dash-count">{{ dash.active_carpools|length }}</span></h2>
+        </div>
+        {% if not dash.active_carpools %}
+        <p class="text-muted">No open carpools right now.</p>
         {% else %}
-
-        <!-- Desktop table view -->
-        <div class="table-wrap">
-          <table class="entries-table">
+        <div class="dash-table-wrap">
+          <table class="dash-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Flight</th>
-                <th>Airport</th>
-                <th>Date</th>
-                <th>Depart Time</th>
-                <th>Seats</th>
-                <th>Status</th>
-                <th>Notes</th>
-                <th>Created</th>
-                <th>Actions</th>
+                <th>ID</th><th>Organizer</th><th>Flight</th><th>Airport</th><th>Date</th><th>Leaves</th>
+                <th class="num">Riders</th><th>Created</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {% for entry in entries %}
-              <tr>
-                <td>{{ entry.id }}</td>
-                <td>{{ entry.first_name }} {{ entry.last_initial }}.</td>
-                <td>{{ entry.phone }}</td>
-                <td><strong>{{ entry.flight_code }}</strong></td>
-                <td>{{ entry.airport_code }}</td>
-                <td>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</td>
-                <td>{{ entry.get('planned_departure_time', '') or '—' }}</td>
-                <td>{{ entry.seats_available }}</td>
-                <td>{{ entry.status }}</td>
-                <td title="{{ entry.notes or '' }}">{{ (entry.notes or '')[:30] }}{{ '...' if (entry.notes or '')|length > 30 else '' }}</td>
-                <td>{{ entry.created_at | to_pst }}</td>
-                <td style="white-space: nowrap;">
-                  <button type="button" class="btn btn-secondary btn-sm edit-btn"
-                    data-id="{{ entry.id }}"
-                    data-first_name="{{ entry.first_name }}"
-                    data-last_initial="{{ entry.last_initial }}"
-                    data-phone="{{ entry.phone }}"
-                    data-flight_code="{{ entry.flight_code }}"
-                    data-airport_code="{{ entry.airport_code }}"
-                    data-seats_available="{{ entry.seats_available }}"
-                    data-notes="{{ entry.notes or '' }}"
-                    data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
-                  >Edit</button>
-                  <form
-                    method="post"
-                    action="/admin/delete/{{ entry.id }}"
-                    style="display:inline;"
-                    class="confirmable-form"
-                    data-confirm-title="Delete this entry?"
-                    data-confirm-message="This carpool entry will be removed permanently."
-                    data-confirm-label="Delete entry"
-                    data-cancel-label="Cancel"
-                  >
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                    <button type="submit" class="danger btn-sm" style="margin-top:0.25rem;">Delete</button>
-                  </form>
+              {% for c in dash.active_carpools %}
+              {% set e = c.entry %}
+              <tr class="dash-row-toggle" data-target="members-{{ e.id }}" tabindex="0" aria-expanded="false">
+                <td>{{ e.id }}</td>
+                <td>{{ e.first_name }}{% if e.last_initial %} {{ e.last_initial }}.{% endif %}</td>
+                <td><strong>{{ e.flight_code }}</strong></td>
+                <td>{{ e.airport_code }}</td>
+                <td>{{ c.date }}</td>
+                <td>{{ c.leave_time }}</td>
+                <td class="num">{{ c.members|length }} / {{ c.seats }}</td>
+                <td>{{ c.created }}</td>
+                <td class="dash-chev" aria-hidden="true">▾</td>
+              </tr>
+              <tr class="dash-detail" id="members-{{ e.id }}" hidden>
+                <td colspan="9">
+                  <div class="dash-detail-grid">
+                    <div>
+                      <h4>Riders</h4>
+                      <ul class="dash-members">
+                        {% for m in c.members %}
+                        <li>
+                          <strong>{{ m.name }}</strong>{% if m.is_organizer %} <span class="member-badge">Organizer</span>{% endif %}
+                          <span>{{ m.email }}</span>
+                          <span>{{ m.phone or 'no phone' }}</span>
+                          <span class="text-muted">joined {{ m.joined }}</span>
+                        </li>
+                        {% else %}
+                        <li class="text-muted">No riders.</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                    <div>
+                      <h4>Notes</h4>
+                      <p class="dash-notes">{{ e.notes or 'None' }}</p>
+                      <div class="dash-actions">
+                        <button type="button" class="btn btn-secondary btn-sm edit-btn"
+                          data-id="{{ e.id }}"
+                          data-first_name="{{ e.first_name }}"
+                          data-last_initial="{{ e.last_initial }}"
+                          data-phone="{{ e.phone }}"
+                          data-flight_code="{{ e.flight_code }}"
+                          data-airport_code="{{ e.airport_code }}"
+                          data-seats_available="{{ e.seats_available }}"
+                          data-notes="{{ e.notes or '' }}"
+                          data-planned_departure_time="{{ e.planned_departure_time or '' }}"
+                        >Edit</button>
+                        <form method="post" action="/admin/delete/{{ e.id }}" class="confirmable-form"
+                          data-confirm-title="Delete this carpool?"
+                          data-confirm-message="The carpool and its rider list will be removed. Riders are not notified."
+                          data-confirm-label="Delete carpool">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-
-        <!-- Mobile card view -->
-        <div class="admin-entry-cards">
-          {% for entry in entries %}
-          <div class="admin-entry-card">
-            <div class="entry-header">
-              <strong>{{ entry.first_name }} {{ entry.last_initial }}. &mdash; {{ entry.flight_code }}</strong>
-              <span class="result-badge {{ 'score-high' if entry.status != 'unverified' else 'score-low' }}">{{ entry.status }}</span>
-            </div>
-            <div class="entry-grid">
-              <div class="entry-field">
-                <span class="label">Phone</span>
-                <span>{{ entry.phone }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Airport</span>
-                <span>{{ entry.airport_code }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Date</span>
-                <span>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Depart Time</span>
-                <span>{{ entry.get('planned_departure_time', '') or '—' }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Seats</span>
-                <span>{{ entry.seats_available }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Notes</span>
-                <span>{{ entry.notes or '—' }}</span>
-              </div>
-              <div class="entry-field">
-                <span class="label">Created</span>
-                <span>{{ entry.created_at | to_pst }}</span>
-              </div>
-            </div>
-            <div class="entry-actions">
-              <button type="button" class="btn btn-secondary btn-sm edit-btn"
-                data-id="{{ entry.id }}"
-                data-first_name="{{ entry.first_name }}"
-                data-last_initial="{{ entry.last_initial }}"
-                data-phone="{{ entry.phone }}"
-                data-flight_code="{{ entry.flight_code }}"
-                data-airport_code="{{ entry.airport_code }}"
-                data-seats_available="{{ entry.seats_available }}"
-                data-notes="{{ entry.notes or '' }}"
-                data-planned_departure_time="{{ entry.get('planned_departure_time', '') or '' }}"
-              >Edit</button>
-              <form
-                method="post"
-                action="/admin/delete/{{ entry.id }}"
-                class="confirmable-form"
-                data-confirm-title="Delete this entry?"
-                data-confirm-message="This carpool entry will be removed permanently."
-                data-confirm-label="Delete entry"
-                data-cancel-label="Cancel"
-              >
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                <button type="submit" class="danger btn-sm">Delete</button>
-              </form>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-
         {% endif %}
       </section>
+
+      <!-- Students -->
+      <section class="card dash-section" id="students">
+        <div class="dash-section-head">
+          <h2>Students <span class="dash-count">{{ dash.students|length }}</span></h2>
+          <input type="search" class="dash-filter" data-filter="students-table" placeholder="Search name, email or phone" aria-label="Search students" />
+        </div>
+        <div class="dash-table-wrap">
+          <table class="dash-table" id="students-table">
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
+            </thead>
+            <tbody>
+              {% for s in dash.students %}
+              <tr>
+                <td>{{ s.name }}</td>
+                <td>{{ s.email }}</td>
+                <td>{{ s.phone or '—' }}</td>
+                <td>{{ s.signed_up }}</td>
+                <td>{{ s.last_login }}</td>
+                <td class="num">{{ s.active_carpools }}</td>
+                <td class="num">{{ s.joins }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="7" class="text-muted">No students yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Past carpools -->
+      <section class="card dash-section" id="past">
+        <div class="dash-section-head">
+          <h2>Past carpools <span class="dash-count">{{ dash.past|length }}</span></h2>
+          <input type="search" class="dash-filter" data-filter="past-table" placeholder="Search flight, airport or outcome" aria-label="Search past carpools" />
+        </div>
+        {% if not dash.past %}
+        <p class="text-muted">No finished carpools recorded yet. They'll appear here after their departure day, or when disbanded.</p>
+        {% else %}
+        <div class="dash-table-wrap">
+          <table class="dash-table" id="past-table">
+            <thead>
+              <tr><th>ID</th><th>Flight</th><th>Airport</th><th>Date</th><th class="num">Riders (peak)</th><th class="num">Seats</th><th>Outcome</th><th>Created</th><th>Closed</th></tr>
+            </thead>
+            <tbody>
+              {% for h in dash.past %}
+              <tr>
+                <td>{{ h.id }}</td>
+                <td><strong>{{ h.flight_code }}</strong></td>
+                <td>{{ h.airport_code }}</td>
+                <td>{{ h.date }}</td>
+                <td class="num">{{ h.peak }}</td>
+                <td class="num">{{ h.seats }}</td>
+                <td><span class="dash-pill dash-pill-{{ h.outcome_key }}">{{ h.outcome }}</span></td>
+                <td>{{ h.created }}</td>
+                <td>{{ h.closed }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </section>
+
+      <!-- Activity feed -->
+      <section class="card dash-section" id="activity">
+        <div class="dash-section-head">
+          <h2>Recent activity <span class="dash-count">{{ dash.feed|length }}</span></h2>
+          <input type="search" class="dash-filter" data-filter="activity-table" placeholder="Search activity" aria-label="Search activity" />
+        </div>
+        {% if not dash.feed %}
+        <p class="text-muted">No activity in this range yet.</p>
+        {% else %}
+        <div class="dash-table-wrap">
+          <table class="dash-table" id="activity-table">
+            <thead><tr><th>When</th><th>Who</th><th>What</th><th>Carpool</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for a in dash.feed %}
+              <tr>
+                <td>{{ a.when }}</td>
+                <td>{% if a.who %}{{ a.who }}<br /><span class="text-muted text-sm">{{ a.email }}</span>{% else %}—{% endif %}</td>
+                <td>{{ a.what }}</td>
+                <td>{{ ('#' ~ a.carpool_id) if a.carpool_id else '—' }}</td>
+                <td class="dash-detail-text">{{ a.detail }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </section>
+
+      <!-- Danger zone -->
+      <section class="card dash-section dash-danger">
+        <h2>Danger zone</h2>
+        <p class="text-muted text-sm">Deletes every carpool, student, notification and all dashboard history. This can't be undone.</p>
+        <form method="post" action="/admin/delete-all" class="confirmable-form"
+          data-confirm-title="Delete the entire database?"
+          data-confirm-message="Every carpool, student, notification and all dashboard history will be permanently deleted."
+          data-confirm-label="Delete everything">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-danger btn-sm">Delete Entire Database</button>
+        </form>
+      </section>
     </main>
+
+    <div class="dash-tooltip" id="dash-tooltip" role="status" hidden></div>
 
     <!-- Edit Modal -->
     <div id="edit-modal" class="modal-overlay" style="display:none;">
       <div class="modal-card card">
-        <h3>Edit Entry</h3>
+        <h3>Edit Carpool</h3>
         <form id="edit-form" method="post" action="">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
           <div class="modal-grid">
@@ -236,15 +345,15 @@
             <label>Airport Code
               <input name="airport_code" id="edit-airport_code" maxlength="3" placeholder="Airport" />
             </label>
-            <label>Seats Available
+            <label>Seats
               <input name="seats_available" id="edit-seats_available" type="number" min="1" max="7" />
             </label>
-            <label>Planned Departure Time
+            <label>Leave Time
               <input name="planned_departure_time" id="edit-planned_departure_time" type="time" />
             </label>
           </div>
           <label class="mt-2">Notes
-            <textarea name="notes" id="edit-notes" rows="2" placeholder="Notes"></textarea>
+            <textarea name="notes" id="edit-notes" rows="2" placeholder="Notes" maxlength="500"></textarea>
           </label>
           <div class="modal-actions mt-2">
             <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -265,99 +374,8 @@
       </div>
     </div>
 
-    <script>
-      // Edit modal logic
-      const modal = document.getElementById('edit-modal');
-      const editForm = document.getElementById('edit-form');
-      const cancelBtn = document.getElementById('edit-cancel');
-      const confirmModal = document.getElementById('confirm-modal');
-      const confirmTitle = document.getElementById('confirm-title');
-      const confirmText = document.getElementById('confirm-text');
-      const confirmCancel = document.getElementById('confirm-cancel');
-      const confirmConfirm = document.getElementById('confirm-confirm');
-      let pendingConfirmAction = null;
-
-      function closeConfirmModal(confirmed) {
-        if (!pendingConfirmAction) {
-          confirmModal.style.display = 'none';
-          return;
-        }
-
-        const action = pendingConfirmAction;
-        pendingConfirmAction = null;
-        confirmModal.style.display = 'none';
-
-        if (confirmed) {
-          action();
-        }
-      }
-
-      function openConfirmModal({ title, message, confirmLabel, cancelLabel = 'Cancel' }) {
-        confirmTitle.textContent = title;
-        confirmText.textContent = message;
-        confirmConfirm.textContent = confirmLabel;
-        confirmCancel.textContent = cancelLabel;
-        confirmModal.style.display = 'flex';
-      }
-
-      document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.id;
-          editForm.action = `/admin/edit/${id}`;
-          document.getElementById('edit-first_name').value = btn.dataset.first_name;
-          document.getElementById('edit-last_initial').value = btn.dataset.last_initial;
-          document.getElementById('edit-phone').value = btn.dataset.phone;
-          document.getElementById('edit-flight_code').value = btn.dataset.flight_code;
-          document.getElementById('edit-airport_code').value = btn.dataset.airport_code;
-          document.getElementById('edit-seats_available').value = btn.dataset.seats_available;
-          document.getElementById('edit-notes').value = btn.dataset.notes;
-          document.getElementById('edit-planned_departure_time').value = btn.dataset.planned_departure_time || '';
-          modal.style.display = 'flex';
-        });
-      });
-
-      cancelBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-      });
-
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.style.display = 'none';
-      });
-
-      document.querySelectorAll('.confirmable-form').forEach(form => {
-        form.addEventListener('submit', (e) => {
-          e.preventDefault();
-          pendingConfirmAction = () => form.submit();
-          openConfirmModal({
-            title: form.dataset.confirmTitle || 'Confirm Action',
-            message: form.dataset.confirmMessage || 'Are you sure you want to continue?',
-            confirmLabel: form.dataset.confirmLabel || 'Continue',
-            cancelLabel: form.dataset.cancelLabel || 'Cancel',
-          });
-        });
-      });
-
-      confirmCancel.addEventListener('click', () => closeConfirmModal(false));
-      confirmConfirm.addEventListener('click', () => closeConfirmModal(true));
-
-      confirmModal.addEventListener('click', (e) => {
-        if (e.target === confirmModal) closeConfirmModal(false);
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && confirmModal.style.display !== 'none') {
-          closeConfirmModal(false);
-        }
-      });
-
-      // Hamburger menu
-      const hbBtn = document.getElementById('hamburger-btn');
-      const hbMenu = document.getElementById('hamburger-menu');
-      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
-      });
-    </script>
-      <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script id="dash-data" type="application/json">{{ dash.charts | tojson }}</script>
+    <script src="{{ url_for('static', filename='admin-dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
   </body>
 </html>

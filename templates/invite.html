@@ -180,7 +180,7 @@
             const res = await fetch('/api/carpools/{{ carpool.id }}/join', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-              body: JSON.stringify({ phone }),
+              body: JSON.stringify({ phone, source: 'invite' }),
             });
             const data = await res.json().catch(() => ({}));
             if (res.ok) {

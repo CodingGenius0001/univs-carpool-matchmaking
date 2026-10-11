@@ -2487,3 +2487,472 @@ html:not(.light-mode) .theme-toggle {
     font-size: 0.92rem;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Admin dashboard (templates/admin.html, static/admin-dashboard.js)
+   Chart colors are validated categorical slots 1-3, stepped per theme.
+   --------------------------------------------------------------------------- */
+.dash {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-grid: rgba(236, 240, 242, 0.08);
+  --viz-axis: rgba(236, 240, 242, 0.18);
+  width: min(1320px, calc(100% - 2rem));
+}
+
+.light-mode .dash {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-grid: rgba(17, 40, 74, 0.07);
+  --viz-axis: rgba(17, 40, 74, 0.18);
+}
+
+.dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.dash-title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+}
+
+.dash-range {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.dash-range a {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dash-range a.is-active,
+.dash-range a:hover {
+  background: var(--surface-accent);
+  color: var(--foreground);
+}
+
+.dash-note {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dash-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+}
+
+.dash-kpi-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Same sans as the rest of the UI, proportional figures. */
+.dash-kpi-value {
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.dash-kpi-sub {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dash-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dash-chart {
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  min-width: 0;
+}
+
+.dash-chart-wide {
+  grid-column: 1 / -1;
+}
+
+.dash-chart figcaption h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dash-chart figcaption p {
+  margin: 0.1rem 0 0;
+}
+
+.dash-plot {
+  margin-top: 0.75rem;
+  min-width: 0;
+}
+
+.dash-plot svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.dash-grid {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+}
+
+.dash-axis {
+  stroke: var(--viz-axis);
+  stroke-width: 1;
+}
+
+.dash-tick,
+.dash-cat {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-cat {
+  fill: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dash-value {
+  fill: var(--foreground);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dash-bar {
+  fill: var(--viz-1);
+  transition: opacity var(--transition);
+}
+
+.dash-bar.is-hover {
+  opacity: 0.75;
+}
+
+.dash-hit {
+  fill: transparent;
+  cursor: default;
+  outline: none;
+}
+
+.dash-hit:focus-visible {
+  stroke: var(--viz-1);
+  stroke-width: 1;
+}
+
+.dash-seg-matched { fill: var(--viz-1); background: var(--viz-1); }
+.dash-seg-solo { fill: var(--viz-2); background: var(--viz-2); }
+.dash-seg-cancelled { fill: var(--viz-3); background: var(--viz-3); }
+.dash-seg.is-hover { opacity: 0.8; }
+
+.dash-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dash-legend strong {
+  color: var(--foreground);
+}
+
+.dash-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.dash-chart-total {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.dash-empty {
+  padding: 1.5rem 0;
+}
+
+.dash-tableview {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.dash-tableview summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.dash-tableview .dash-table {
+  margin-top: 0.4rem;
+  max-height: 240px;
+}
+
+.dash-tooltip {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+
+.dash-tooltip strong {
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+html:not(.light-mode) .dash-tooltip,
+html:not(.light-mode) .dash-kpi {
+  background: rgba(8, 19, 38, 0.92);
+  border-color: rgba(236, 240, 242, 0.08);
+}
+
+.dash-section {
+  margin-bottom: 1rem;
+}
+
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.dash-section-head h2 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.dash-count {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.dash-filter {
+  width: min(320px, 100%);
+  min-height: 2.5rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.dash-table-wrap {
+  overflow: auto;
+  max-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.dash-tableview .dash-table {
+  display: block;
+  overflow-y: auto;
+}
+
+.dash-table th,
+.dash-table td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.dash-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+html:not(.light-mode) .dash-table th {
+  background: rgb(10 22 42);
+}
+
+.dash-table td.num,
+.dash-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dash-row-toggle {
+  cursor: pointer;
+}
+
+.dash-row-toggle:hover,
+.dash-row-toggle:focus-visible,
+.dash-row-toggle.is-open {
+  background: var(--surface-accent);
+  outline: none;
+}
+
+.dash-chev {
+  color: var(--muted);
+  transition: transform var(--transition);
+}
+
+.dash-row-toggle.is-open .dash-chev {
+  transform: rotate(180deg);
+}
+
+.dash-detail td {
+  white-space: normal;
+  background: var(--surface);
+}
+
+.dash-detail-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+  padding: 0.25rem 0;
+}
+
+.dash-detail-grid h4 {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-members {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-members li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+}
+
+.dash-notes {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+}
+
+.dash-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dash-actions form {
+  margin: 0;
+}
+
+.dash-detail-text {
+  max-width: 320px;
+  white-space: normal !important;
+  color: var(--muted);
+}
+
+.dash-pill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-accent);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.dash-danger {
+  border-color: var(--danger-bg);
+}
+
+.dash-danger h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.3rem;
+}
+
+.dash-danger form {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .dash-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-kpi-value {
+    font-size: 1.6rem;
+  }
+}
