@@ -6,7 +6,6 @@
     <title>Find a Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
@@ -42,7 +41,7 @@
     <main class="container">
       <section class="card">
         <h2>Find Available Carpools</h2>
-        <p class="card-subtitle">Search by flight code, airport, date, or departure time. At least one field is required.</p>
+        <p class="card-subtitle">Search by flight code, airport, date, or leave time. At least one field is required. Adding a leave time shows only carpools leaving within 2 hours of it.</p>
 
         <form id="search-form">
           <div class="grid">
@@ -55,7 +54,7 @@
             <label>Date of Departure
               <input type="date" name="departure_date" />
             </label>
-            <label>Planned Leave Time (from origin)
+            <label>Leave Time (&plusmn; 2 hrs)
               <input type="time" name="planned_leave_time" />
             </label>
           </div>

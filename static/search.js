@@ -55,6 +55,21 @@ function formatPhone(raw) {
   return out;
 }
 
+function formatTime12h(value) {
+  const [hour, minute] = String(value || '').split(':');
+  const hourNum = Number(hour);
+  if (!value || minute === undefined || Number.isNaN(hourNum)) return '\u2014';
+  const suffix = hourNum >= 12 ? 'PM' : 'AM';
+  return `${((hourNum + 11) % 12) + 1}:${minute} ${suffix}`;
+}
+
+function showResultsNotice(text, tone = 'warning') {
+  document.getElementById('results-notice')?.remove();
+  results.insertAdjacentHTML('afterbegin', `
+    <div id="results-notice" class="message message-${tone} mt-2" role="alert">${escapeHtml(text)}</div>`);
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // Cached user phone for auto-fill
 let cachedUserPhone = '';
 
@@ -85,9 +100,12 @@ function renderResults(data) {
       const isFull = seatsRemaining <= 0 && !isMember;
 
       let actionBtn;
-      if (isMember) {
+      if (r.is_creator) {
+        // Organizers leave from My Carpool, where they can pick the next organizer.
+        actionBtn = `<a href="/my-party" class="btn btn-primary btn-sm">Manage My Carpool</a>`;
+      } else if (isMember) {
         actionBtn = `<button data-id="${entryId}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
-                      <a href="/my-party" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">View My Carpool</a>`;
+                      <a href="/my-party" class="btn btn-primary btn-sm">View My Carpool</a>`;
       } else if (isFull) {
         actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Carpool Full</button>`;
       } else {
@@ -115,6 +133,10 @@ function renderResults(data) {
             <span>
               <span class="label">Date</span>
               ${escapeHtml(r.requested_flight_date || r.flight_date_utc || '\u2014')}
+            </span>
+            <span>
+              <span class="label">Leaves</span>
+              ${escapeHtml(formatTime12h(r.planned_departure_time))}
             </span>
             <span>
               <span class="label">Seats</span>
@@ -151,7 +173,7 @@ searchForm?.addEventListener('submit', async (e) => {
   if (!fc && !ac && !dd && !pt) {
     results.innerHTML = `
       <div class="message message-warning mt-2">
-        At least 1 search field is required. Please enter a flight code, airport code, or departure date to search.
+        At least 1 search field is required. Please enter a flight code, airport code, departure date, or leave time to search.
       </div>`;
     return;
   }
@@ -170,6 +192,11 @@ searchForm?.addEventListener('submit', async (e) => {
     const query = new URLSearchParams(formData);
     const res = await fetch(`/api/carpools/search?${query.toString()}`);
     const data = await res.json();
+
+    if (!res.ok) {
+      results.innerHTML = `<div class="message message-warning mt-2">${escapeHtml(data.error || 'Search failed. Please try again.')}</div>`;
+      return;
+    }
 
     if (!data.results?.length) {
       results.innerHTML = `
@@ -274,8 +301,9 @@ function showPhonePrompt(carpoolId, joinBtn) {
         const mobileLink = document.getElementById('mobile-my-party-link');
         if (mobileLink) mobileLink.style.display = '';
       } else {
-        joinBtn.textContent = data.error || 'Failed';
-        setTimeout(() => { joinBtn.textContent = 'Join Carpool'; joinBtn.disabled = false; }, 2000);
+        showResultsNotice(data.error || 'Could not join this carpool.');
+        joinBtn.textContent = 'Join Carpool';
+        joinBtn.disabled = false;
       }
     } catch {
       joinBtn.textContent = 'Error';
@@ -290,6 +318,7 @@ document.addEventListener('click', async (e) => {
   if (!leaveBtn) return;
 
   const id = leaveBtn.dataset.id;
+  if (!window.confirm('Leave this carpool? Leaving still counts toward your limit of 2 joins every 24 hours.')) return;
   leaveBtn.disabled = true;
   leaveBtn.textContent = 'Leaving...';
 
@@ -302,9 +331,10 @@ document.addEventListener('click', async (e) => {
       leaveBtn.textContent = 'Left!';
       setTimeout(() => searchForm?.requestSubmit(), 500);
     } else {
-      const data = await res.json();
-      leaveBtn.textContent = data.error || 'Failed';
-      setTimeout(() => { leaveBtn.textContent = 'Leave Carpool'; leaveBtn.disabled = false; }, 2000);
+      const data = await res.json().catch(() => ({}));
+      showResultsNotice(data.error || 'Could not leave this carpool.');
+      leaveBtn.textContent = 'Leave Carpool';
+      leaveBtn.disabled = false;
     }
   } catch {
     leaveBtn.textContent = 'Error';

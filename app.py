@@ -10,6 +10,7 @@ import sqlite3
 import ssl
 from threading import Lock
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import traceback
 
@@ -22,10 +23,20 @@ except ImportError:
     pass
 
 from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
+_configured_secret_key = os.getenv("FLASK_SECRET_KEY", "").strip()
+if not _configured_secret_key or _configured_secret_key == "dev-only-change-me":
+    # Never fall back to a well-known key: anyone who knows it could forge a
+    # session for any user. A random per-process key is safe, but sessions will
+    # not survive restarts or be shared across serverless instances, so set
+    # FLASK_SECRET_KEY in every deployed environment.
+    _configured_secret_key = secrets.token_urlsafe(32)
+    if os.getenv("VERCEL"):
+        print("[security] FLASK_SECRET_KEY is not set; using a random per-process key. Set it in Vercel.")
+app.secret_key = _configured_secret_key
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -68,35 +79,18 @@ ANDROID_SHA256_CERT_FINGERPRINTS = [
 ]
 
 
-def _positive_int_env(name: str, default: int) -> int:
-    try:
-        return max(1, int(os.getenv(name, str(default))))
-    except (TypeError, ValueError):
-        return default
-
-
-MYSQL_CONNECT_TIMEOUT = _positive_int_env("MYSQL_CONNECT_TIMEOUT", 2 if os.getenv("VERCEL") else 5)
-MYSQL_READ_TIMEOUT = _positive_int_env("MYSQL_READ_TIMEOUT", 10)
-MYSQL_WRITE_TIMEOUT = _positive_int_env("MYSQL_WRITE_TIMEOUT", 10)
-MYSQL_RETRY_COOLDOWN_SECONDS = _positive_int_env(
-    "MYSQL_RETRY_COOLDOWN_SECONDS",
-    600 if os.getenv("VERCEL") else 60,
-)
-
-
 @app.template_filter("to_pst")
 def to_pst_filter(utc_str: str) -> str:
-    """Convert a UTC ISO string to Pacific Standard Time (UTC-8) for display."""
+    """Convert a UTC ISO string to Pacific time (PST/PDT) for display."""
     if not utc_str:
         return ""
     try:
         dt = datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
-        pst = dt.astimezone(timezone(timedelta(hours=-8)))
-        return pst.strftime("%m/%d/%Y %I:%M %p PST")
+        pacific = dt.astimezone(ZoneInfo("America/Los_Angeles"))
+        return pacific.strftime("%m/%d/%Y %I:%M %p %Z")
     except Exception:
         return str(utc_str)[:16]
 
-ADMIN_USERNAME = "admin"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip() or "admin"
 _admin_password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
 _admin_password_plain = os.getenv("ADMIN_PASSWORD", "").strip()
@@ -112,6 +106,17 @@ FLIGHT_CODE_PATTERN = re.compile(r"^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$")
 PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+
+MAX_NOTES_LENGTH = 500
+MAX_REASON_LENGTH = 300
+MAX_DAYS_AHEAD = 366
+# Anti-abuse: how many carpools (created by someone else) a user may join in a
+# rolling window. Leaving does not refund a join, so join/leave loops are capped.
+JOIN_LIMIT_COUNT = 2
+JOIN_LIMIT_WINDOW = timedelta(hours=24)
+# Search treats leave times within this many minutes of each other as a match.
+LEAVE_TIME_WINDOW_MINUTES = 120
 
 
 # Airline IATA codes for autocomplete
@@ -625,6 +630,33 @@ class DBAdapter:
                 """
             )
 
+        # Append-only log of joins, used for the rolling join limit. Rows are
+        # kept after a user leaves so leaving does not reset the limit.
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS join_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_email VARCHAR(255) NOT NULL,
+                    carpool_id INT NOT NULL,
+                    joined_at VARCHAR(64) NOT NULL,
+                    INDEX idx_join_log_user (user_email, joined_at)
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS join_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL,
+                    carpool_id INTEGER NOT NULL,
+                    joined_at TEXT NOT NULL
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_join_log_user ON join_log (user_email, joined_at)")
+
         conn.commit()
         cur.close()
         conn.close()
@@ -766,6 +798,25 @@ def _owner_profile_fields(user_email: str) -> tuple[str, str, str]:
     return fallback_first_name, fallback_last_initial, ""
 
 
+def _normalize_phone(value: Any) -> str:
+    """Collapse all whitespace types (including non-breaking spaces from mobile
+    browsers) into single regular spaces."""
+    return re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", str(value or "")).strip()
+
+
+def _save_user_phone(email: str, phone: str) -> None:
+    p = db.placeholder
+    existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+    if existing:
+        db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (phone, email))
+    else:
+        first_name, last_initial = _derive_user_name_parts(session.get("user_name", ""), email)
+        db.execute(
+            f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
+            (email, first_name, last_initial, phone, _now_utc().isoformat()),
+        )
+
+
 def _delete_carpool_party(carpool_id: int) -> None:
     p = db.placeholder
     db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (carpool_id,))
@@ -808,6 +859,11 @@ def close_db(_: Any) -> None:
 @app.errorhandler(Exception)
 def handle_exception(e: Exception) -> Any:
     """Return JSON errors for API routes, HTML for pages."""
+    if isinstance(e, HTTPException):
+        # 404/405/etc. are normal client errors, not server crashes.
+        if request.path.startswith("/api/"):
+            return jsonify({"error": e.name}), e.code
+        return e
     tb = traceback.format_exc()
     app.logger.error(f"Unhandled exception: {e}\n{tb}")
     if request.path.startswith("/api/"):
@@ -825,8 +881,11 @@ def _cleanup_expired_entries() -> None:
             for row in expired:
                 db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (row["id"],))
             db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
-    except Exception:
-        pass
+        # Join history is only needed for the rolling join limit window.
+        join_log_cutoff = (_now_utc() - JOIN_LIMIT_WINDOW * 2).isoformat()
+        db.execute(f"DELETE FROM join_log WHERE joined_at < {p}", (join_log_cutoff,))
+    except Exception as exc:
+        app.logger.warning("Expired entry cleanup failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -873,17 +932,6 @@ def web_manifest() -> Any:
         mimetype="application/manifest+json",
     )
     return response
-
-
-@app.get("/service-worker.js")
-def service_worker() -> Any:
-    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-    return send_from_directory(static_dir, "service-worker.js", mimetype="application/javascript")
-
-
-@app.get("/offline")
-def offline_page() -> Any:
-    return render_template("offline.html", **_user_context())
 
 
 @app.get("/.well-known/assetlinks.json")
@@ -1102,8 +1150,8 @@ def _create_carpool_inner() -> Any:
     if not first_name:
         return jsonify({"error": "Could not determine your name from your login session"}), 400
 
-    airport_code = data["airport_code"].upper().strip()
-    if len(airport_code) != 3:
+    airport_code = str(data["airport_code"]).upper().strip()
+    if not AIRPORT_CODE_PATTERN.match(airport_code):
         return jsonify({"error": "airport_code must be a 3-letter airport code"}), 400
 
     raw_flight_code = str(data["flight_code"]).strip().upper()
@@ -1115,10 +1163,7 @@ def _create_carpool_inner() -> Any:
         return jsonify({"error": "Invalid flight_code format. Example: UA533"}), 400
 
 
-    # Normalize phone: collapse all whitespace types (including non-breaking
-    # spaces from mobile browsers) into single regular spaces, then strip.
-    raw_phone = str(data["phone"])
-    raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
+    raw_phone = _normalize_phone(data["phone"])
     if not PHONE_PATTERN.match(raw_phone):
         return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
 
@@ -1127,6 +1172,16 @@ def _create_carpool_inner() -> Any:
     if not parsed_flight_date:
         return jsonify({"error": "departure_date must be in MM-DD-YYYY format"}), 400
     flight_date_user = _to_user_flight_date(parsed_flight_date)
+    # Allow "yesterday" in UTC so users west of UTC can still post for their local today.
+    today_utc = _now_utc().date()
+    if parsed_flight_date.date() < today_utc - timedelta(days=1):
+        return jsonify({"error": "Departure date cannot be in the past"}), 400
+    if parsed_flight_date.date() > today_utc + timedelta(days=MAX_DAYS_AHEAD):
+        return jsonify({"error": "Departure date must be within the next year"}), 400
+
+    notes = str(data.get("notes", "")).strip()
+    if len(notes) > MAX_NOTES_LENGTH:
+        return jsonify({"error": f"Notes must be {MAX_NOTES_LENGTH} characters or fewer"}), 400
 
     seats_available = _parse_seat_count(data.get("seats_available", 4))
     if seats_available is None:
@@ -1147,7 +1202,9 @@ def _create_carpool_inner() -> Any:
     # is already "yesterday" in UTC.
     expires_at = (parsed_flight_date + timedelta(days=1)).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
-    destination_airport = str(data.get("destination_airport", "")).strip().upper()[:3]
+    destination_airport = str(data.get("destination_airport", "")).strip().upper()
+    if destination_airport and not AIRPORT_CODE_PATTERN.match(destination_airport):
+        return jsonify({"error": "destination_airport must be a 3-letter airport code"}), 400
 
     p = db.placeholder
     last_id = db.execute(
@@ -1169,7 +1226,7 @@ def _create_carpool_inner() -> Any:
             "TBD",
             _to_api_flight_date(parsed_flight_date),
             seats_available,
-            str(data.get("notes", "")).strip(),
+            notes,
             "direct",
             "active",
             expires_at,
@@ -1180,6 +1237,13 @@ def _create_carpool_inner() -> Any:
             creator_email,
         ),
     )
+
+    # Keep the phone on the creator's profile too: the member list reads phones
+    # from the users table, so without this other members can't see it.
+    try:
+        _save_user_phone(creator_email, raw_phone)
+    except Exception as exc:
+        app.logger.warning("Could not save creator phone: %s", exc)
 
     # Auto-add creator to party_members
     if creator_email:
@@ -1236,6 +1300,10 @@ def search_carpools() -> Any:
     flight_date = _to_user_flight_date(parsed_search_date) if parsed_search_date else ""
     planned_leave_time_raw = request.args.get("planned_leave_time", "").strip()
     planned_leave_time = _normalize_departure_time(planned_leave_time_raw) if planned_leave_time_raw else ""
+    if flight_date_raw and not parsed_search_date:
+        return jsonify({"error": "departure_date must be in MM-DD-YYYY format", "count": 0, "results": []}), 400
+    if planned_leave_time is None:
+        return jsonify({"error": "planned_leave_time must use HH:MM format", "count": 0, "results": []}), 400
 
     # Require at least one search field
     if not flight_code and not airport_code and not flight_date_raw and not planned_leave_time:
@@ -1281,12 +1349,18 @@ def search_carpools() -> Any:
         if flight_date and entry.get("requested_flight_date") == flight_date:
             matched_fields += 1
             reasons.append("Same requested flight date")
-        if planned_leave_time and entry.get("planned_departure_time"):
+        if planned_leave_time:
+            # Leave time is a hard filter: only carpools leaving within the
+            # window of the searched time are shown. A time window is only
+            # meaningful for one day, so the date must match too if given.
+            if flight_date and entry.get("requested_flight_date") != flight_date:
+                continue
             search_mins = _time_to_minutes(planned_leave_time)
-            entry_mins = _time_to_minutes(entry["planned_departure_time"])
-            if search_mins is not None and entry_mins is not None and abs(search_mins - entry_mins) <= 240:
-                matched_fields += 1
-                reasons.append("Similar leave time")
+            entry_mins = _time_to_minutes(str(entry.get("planned_departure_time") or ""))
+            if search_mins is None or entry_mins is None or abs(search_mins - entry_mins) > LEAVE_TIME_WINDOW_MINUTES:
+                continue
+            matched_fields += 1
+            reasons.append("Leaves within 2 hours")
         if matched_fields > 0:
             score = round((matched_fields / total_criteria) * 100) if total_criteria > 0 else 0
             public_row = _serialize_entry(entry)
@@ -1297,6 +1371,7 @@ def search_carpools() -> Any:
             public_row["member_count"] = mc
             public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - mc)
             public_row["is_member"] = cid in user_memberships
+            public_row["is_creator"] = entry.get("creator_email") == current_user
             results.append(public_row)
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
@@ -1333,22 +1408,12 @@ def join_party(carpool_id: int) -> Any:
     # Store phone number if provided
     p = db.placeholder
     data = request.get_json(silent=True) or {}
-    raw_phone = str(data.get("phone", "")).strip()
-    if raw_phone:
-        raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
-        if PHONE_PATTERN.match(raw_phone):
-            try:
-                existing_user = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
-                if existing_user:
-                    db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
-                else:
-                    first_name, last_initial = _derive_user_name_parts(session.get("user_name", ""), email)
-                    db.execute(
-                        f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
-                        (email, first_name, last_initial, raw_phone, _now_utc().isoformat()),
-                    )
-            except Exception:
-                pass
+    raw_phone = _normalize_phone(data.get("phone", ""))
+    if raw_phone and PHONE_PATTERN.match(raw_phone):
+        try:
+            _save_user_phone(email, raw_phone)
+        except Exception:
+            pass
 
     db.ensure_ready()
     conn = db.get_conn()
@@ -1370,7 +1435,9 @@ def join_party(carpool_id: int) -> Any:
             return jsonify({"error": "Carpool not found"}), 404
 
         carpool = dict(row)
-        if carpool.get("status") != "active":
+        now = _now_utc()
+        expires_at = str(carpool.get("expires_at") or "")
+        if carpool.get("status") != "active" or (expires_at and expires_at <= now.isoformat()):
             conn.rollback()
             return jsonify({"error": "This carpool is no longer active"}), 409
 
@@ -1395,11 +1462,39 @@ def join_party(carpool_id: int) -> Any:
             conn.rollback()
             return jsonify({"error": "This carpool is full"}), 409
 
+        # Rolling join limit. Leaving doesn't remove log rows, so join/leave
+        # loops (notification spam, phone-number harvesting) are capped.
+        window_start = now - JOIN_LIMIT_WINDOW
+        recent_joins_sql = db._normalized_sql(
+            f"SELECT joined_at FROM join_log WHERE user_email = {p} AND joined_at > {p} ORDER BY joined_at ASC",
+            conn,
+        )
+        cur.execute(recent_joins_sql, (email, window_start.isoformat()))
+        recent_joins = [dict(r) for r in cur.fetchall()]
+        if len(recent_joins) >= JOIN_LIMIT_COUNT:
+            conn.rollback()
+            oldest = datetime.fromisoformat(str(recent_joins[0]["joined_at"]))
+            retry_at = oldest + JOIN_LIMIT_WINDOW
+            hours_left = max(1, int((retry_at - now).total_seconds() // 3600) + 1)
+            return jsonify({
+                "error": (
+                    f"You can join up to {JOIN_LIMIT_COUNT} carpools every 24 hours. "
+                    f"Try again in about {hours_left} hour{'s' if hours_left != 1 else ''}."
+                ),
+                "retry_at": retry_at.isoformat(),
+            }), 429
+
+        joined_at = now.isoformat()
         insert_sql = db._normalized_sql(
             f"INSERT INTO party_members (carpool_id, user_email, joined_at) VALUES ({p}, {p}, {p})",
             conn,
         )
-        cur.execute(insert_sql, (carpool_id, email, _now_utc().isoformat()))
+        cur.execute(insert_sql, (carpool_id, email, joined_at))
+        log_sql = db._normalized_sql(
+            f"INSERT INTO join_log (user_email, carpool_id, joined_at) VALUES ({p}, {p}, {p})",
+            conn,
+        )
+        cur.execute(log_sql, (email, carpool_id, joined_at))
         conn.commit()
     except Exception:
         try:
@@ -1495,9 +1590,23 @@ def leave_party(carpool_id: int) -> Any:
     flight_date = carpool.get("requested_flight_date", "")
     try:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}. The previous creator left.")
+        _notify_new_organizer_to_members(carpool_id, new_owner_email, first_name, last_initial, flight_code, flight_date)
     except Exception:
         pass
     return jsonify({"ok": True, "message": f"Left the carpool. Ownership transferred to {new_owner_email}."})
+
+
+def _notify_new_organizer_to_members(
+    carpool_id: int, new_owner_email: str, first_name: str, last_initial: str, flight_code: str, flight_date: str
+) -> None:
+    p = db.placeholder
+    members = db.query(
+        f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
+        (carpool_id, new_owner_email),
+    )
+    owner_name = f"{first_name} {last_initial}.".strip() if last_initial else first_name
+    for m in members:
+        notify_user(m["user_email"], f"{owner_name} is now the organizer of the carpool for {flight_code} on {flight_date}.")
 
 
 @app.post("/api/carpools/<int:carpool_id>/transfer-and-leave")
@@ -1507,9 +1616,11 @@ def transfer_and_leave(carpool_id: int) -> Any:
     if not email:
         return jsonify({"error": "Login required"}), 401
     data = request.get_json(silent=True) or {}
-    new_owner_email = str(data.get("new_owner_email", "")).strip()
+    new_owner_email = str(data.get("new_owner_email", "")).strip().lower()
     if not new_owner_email:
         return jsonify({"error": "new_owner_email is required"}), 400
+    if new_owner_email == email:
+        return jsonify({"error": "Choose another member to become the organizer"}), 400
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
     if not rows:
@@ -1536,6 +1647,7 @@ def transfer_and_leave(carpool_id: int) -> Any:
     flight_date = carpool_row.get("requested_flight_date", "")
     try:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}.")
+        _notify_new_organizer_to_members(carpool_id, new_owner_email, fn, li, flight_code, flight_date)
     except Exception:
         pass
     return jsonify({"ok": True, "message": "Ownership transferred. You have left the carpool."})
@@ -1616,21 +1728,11 @@ def update_user_phone() -> Any:
     if not email:
         return jsonify({"error": "Login required"}), 401
     data = request.get_json(silent=True) or {}
-    raw_phone = str(data.get("phone", ""))
-    raw_phone = re.sub(r"[\s\u00a0\u2000-\u200b\u202f\u205f\u3000]+", " ", raw_phone).strip()
+    raw_phone = _normalize_phone(data.get("phone", ""))
     if not PHONE_PATTERN.match(raw_phone):
         return jsonify({"error": "Phone must be in format +1 (AAA) BBB CCCC"}), 400
-    p = db.placeholder
     try:
-        existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
-        if existing:
-            db.execute(f"UPDATE users SET phone = {p} WHERE user_email = {p}", (raw_phone, email))
-        else:
-            first_name, last_initial = _derive_user_name_parts(session.get("user_name", ""), email)
-            db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at) VALUES ({p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, raw_phone, _now_utc().isoformat()),
-            )
+        _save_user_phone(email, raw_phone)
     except Exception:
         return jsonify({"error": "Could not update your phone number"}), 500
     return jsonify({"ok": True})
@@ -1649,6 +1751,8 @@ def remove_member(carpool_id: int) -> Any:
         return jsonify({"error": "Missing member email"}), 400
     if not reason:
         return jsonify({"error": "A reason for removal is required"}), 400
+    if len(reason) > MAX_REASON_LENGTH:
+        return jsonify({"error": f"Reason must be {MAX_REASON_LENGTH} characters or fewer"}), 400
     p = db.placeholder
     # Verify caller is the creator
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
@@ -1702,12 +1806,17 @@ def edit_party(carpool_id: int) -> Any:
         normalized_time = _normalize_departure_time(data["planned_departure_time"])
         if normalized_time is None:
             return jsonify({"error": "planned_departure_time must use HH:MM format"}), 400
+        if not normalized_time:
+            return jsonify({"error": "Planned Leave Time is required"}), 400
         updates.append(f"planned_departure_time = {p}")
         params.append(normalized_time)
         changed.append("departure time")
     if "notes" in data:
+        notes = str(data["notes"]).strip()
+        if len(notes) > MAX_NOTES_LENGTH:
+            return jsonify({"error": f"Notes must be {MAX_NOTES_LENGTH} characters or fewer"}), 400
         updates.append(f"notes = {p}")
-        params.append(str(data["notes"]).strip())
+        params.append(notes)
         changed.append("notes")
     if "seats_available" in data:
         seats = _parse_seat_count(data["seats_available"])
@@ -1758,6 +1867,8 @@ def disband_party(carpool_id: int) -> Any:
     reason = str(data.get("reason", "")).strip()
     if not reason:
         return jsonify({"error": "A reason for disbanding is required"}), 400
+    if len(reason) > MAX_REASON_LENGTH:
+        return jsonify({"error": f"Reason must be {MAX_REASON_LENGTH} characters or fewer"}), 400
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
     if not rows:
@@ -1937,20 +2048,24 @@ def admin_logout() -> Any:
 
 
 @app.after_request
-def _add_admin_cache_headers(response: Any) -> Any:
-    """Prevent caching where stale state causes problems."""
+def _add_response_headers(response: Any) -> Any:
+    """Security headers everywhere; no caching where stale state causes problems."""
     if request.path.startswith("/admin"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-    elif request.path == "/service-worker.js":
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    # Basic hardening: no framing (clickjacking), no MIME sniffing.
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     return response
 
 
 @app.get("/health")
 def health_check() -> Any:
-    """Debug endpoint to check app status on Vercel."""
+    """Liveness check. Database details are only shown to a logged-in admin."""
+    if not _require_admin():
+        return jsonify({"status": "ok"})
     actual_engine = "sqlite" if db._mysql_failed else db.engine
     info: dict[str, Any] = {
         "status": "ok",
@@ -1985,4 +2100,5 @@ if __name__ == "__main__":
             db.ensure_ready()
     except Exception as exc:
         print(f"[startup] database initialization failed: {exc}")
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # Bind to localhost only: the Werkzeug debugger allows code execution.
+    app.run(host="127.0.0.1", port=8000, debug=_truthy_env("FLASK_DEBUG", True))

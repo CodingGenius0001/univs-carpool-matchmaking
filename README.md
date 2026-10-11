@@ -8,7 +8,8 @@ Campus2Air is a web application built for university students to coordinate shar
 - **Find a Carpool** - Search for other students flying on the same flight, from the same airport, or on the same date. Results are ranked by match score.
 - **Airline Autocomplete** - Airline names auto-detect from the flight code prefix using a built-in IATA code lookup.
 - **In-App Notifications** - Users receive in-app alerts when someone joins or leaves their carpool, when ownership transfers, and when a carpool is disbanded.
-- **Automatic Cleanup** - All records are automatically deleted at the end of the departure day (11:59 PM UTC), so no stale data lingers.
+- **Automatic Cleanup** - Carpool listings and memberships are automatically deleted at 11:59 PM UTC the day after the departure date, so no stale listings linger.
+- **Abuse Limits** - Each student can join up to 2 carpools every 24 hours (leaving doesn't reset the count).
 - **Admin Panel** - A password-protected admin dashboard for managing entries, with session-based authentication and 30-minute session expiry.
 
 ## Built For

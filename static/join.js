@@ -345,6 +345,7 @@ async function submitCarpool() {
   }
 
   setMessage('Saving your flight details...');
+  let created = false;
 
   const originalText = submitBtn.textContent;
   submitBtn.disabled = true;
@@ -383,6 +384,7 @@ async function submitCarpool() {
       return;
     }
 
+    created = true;
     setMessage('Carpool created! Redirecting to your carpool...');
     form.reset();
     if (airlineNameInput) airlineNameInput.value = '';
@@ -398,9 +400,13 @@ async function submitCarpool() {
       setMessage('Network error. Please check your connection and try again.', true);
     }
   } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = originalText;
-    if (backBtn) backBtn.disabled = false;
+    // Keep the button disabled while redirecting so a second click can't
+    // create a duplicate carpool.
+    if (!created) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+      if (backBtn) backBtn.disabled = false;
+    }
   }
 }
 

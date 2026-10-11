@@ -1092,6 +1092,12 @@ select {
   flex-wrap: wrap;
 }
 
+/* Keep result buttons grouped together instead of pushed to opposite edges. */
+.result-actions {
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+}
+
 .result-name {
   font-size: 1.04rem;
   font-weight: 700;
