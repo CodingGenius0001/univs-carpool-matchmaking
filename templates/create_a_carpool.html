@@ -46,7 +46,7 @@
         <div class="wizard-progress">
           <div class="wizard-progress-copy">
             <span class="wizard-progress-label">Create carpool</span>
-            <strong id="wizard-progress-text">Step 1 of 5</strong>
+            <strong id="wizard-progress-text">Step 1 of 6</strong>
           </div>
           <div class="wizard-progress-track" aria-hidden="true">
             <div class="wizard-progress-fill" id="wizard-progress-fill"></div>
@@ -54,7 +54,7 @@
         </div>
 
         <h2>Create a Carpool</h2>
-        <p class="disclaimer">Other students can see your first name, last initial, flight, airport, date, and leave time when they search. Your phone number is only shown to members of your carpool.</p>
+        <p class="disclaimer">Other students can see your first name, last initial, flight, airport, date, trip direction and time when they search. Your phone number is only shown to members of your carpool.</p>
 
         {% if display_name %}
         <p class="text-muted text-sm">Creating carpool as <strong>{{ display_name }}</strong></p>
@@ -63,9 +63,31 @@
         <form id="join-form" class="wizard-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
-          <div class="wizard-step is-active" data-step="0" data-title="Your phone number">
+          <div class="wizard-step is-active" data-key="direction" data-title="Trip direction">
             <div class="wizard-step-copy">
               <span class="wizard-step-kicker">Step 1</span>
+              <h3>Which way are you going?</h3>
+              <p>We'll match you with students making the same trip.</p>
+            </div>
+            <div class="direction-choice" role="radiogroup" aria-label="Trip direction">
+              <label class="direction-option">
+                <input type="radio" name="direction" value="to_airport" checked />
+                <span class="direction-icon" aria-hidden="true">🛫</span>
+                <span class="direction-title">Campus → Airport</span>
+                <span class="direction-sub">I'm catching a flight</span>
+              </label>
+              <label class="direction-option">
+                <input type="radio" name="direction" value="from_airport" />
+                <span class="direction-icon" aria-hidden="true">🛬</span>
+                <span class="direction-title">Airport → Campus</span>
+                <span class="direction-sub">I'm landing and heading back</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="wizard-step" data-key="phone" data-title="Your phone number">
+            <div class="wizard-step-copy">
+              <span class="wizard-step-kicker">Step 2</span>
               <h3>Your phone number</h3>
               <p>This stays with your profile so you do not have to type it again next time.</p>
             </div>
@@ -75,11 +97,11 @@
             </label>
           </div>
 
-          <div class="wizard-step" data-step="1" data-title="Flight details">
+          <div class="wizard-step" data-key="flight" data-title="Flight details">
             <div class="wizard-step-copy">
-              <span class="wizard-step-kicker">Step 2</span>
-              <h3>Tell us about your flight</h3>
-              <p>We will use this to match you with students heading to the same airport.</p>
+              <span class="wizard-step-kicker">Step 3</span>
+              <h3 data-to="Tell us about your flight" data-from="Tell us about your arriving flight">Tell us about your flight</h3>
+              <p data-to="Your departing flight. We'll use it to match you with students heading to the same airport." data-from="The flight you're landing on. We'll use it to match you with students landing at the same airport.">Your departing flight. We'll use it to match you with students heading to the same airport.</p>
             </div>
             <div class="grid">
               <label class="autocomplete-wrap wizard-field">Flight Code
@@ -92,30 +114,30 @@
             </div>
           </div>
 
-          <div class="wizard-step" data-step="2" data-title="Date and airport">
+          <div class="wizard-step" data-key="when" data-title="Date and airport">
             <div class="wizard-step-copy">
-              <span class="wizard-step-kicker">Step 3</span>
-              <h3>When and where are you flying from?</h3>
-              <p>Just the date and departure airport are enough to place you in the right pool.</p>
+              <span class="wizard-step-kicker">Step 4</span>
+              <h3 data-to="When and where are you flying from?" data-from="When and where are you landing?">When and where are you flying from?</h3>
+              <p data-to="Just the date and departure airport are enough to place you in the right pool." data-from="Just the landing date and arrival airport are enough to place you in the right pool.">Just the date and departure airport are enough to place you in the right pool.</p>
             </div>
             <div class="grid">
-              <label class="wizard-field">Date of Departure (MM/DD/YYYY)
+              <label class="wizard-field"><span data-to="Flight Date (MM/DD/YYYY)" data-from="Landing Date (MM/DD/YYYY)">Flight Date (MM/DD/YYYY)</span>
                 <input type="date" name="departure_date" id="departure_date" required data-us-date />
               </label>
-              <label class="wizard-field">Departure Airport
-                <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. SFO" required />
+              <label class="wizard-field"><span data-to="Departure Airport" data-from="Arrival Airport">Departure Airport</span>
+                <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. LAX" required />
               </label>
             </div>
           </div>
 
-          <div class="wizard-step" data-step="3" data-title="Ride details">
+          <div class="wizard-step" data-key="ride" data-title="Ride details">
             <div class="wizard-step-copy">
-              <span class="wizard-step-kicker">Step 4</span>
+              <span class="wizard-step-kicker">Step 5</span>
               <h3>Set up the ride</h3>
-              <p>These details help people know how many can join and any plans you already have.</p>
+              <p data-to="When you'll leave campus, and how many people can fit." data-from="Roughly when you'll be ready to leave the airport (after landing and bags), and how many people can fit.">When you'll leave campus, and how many people can fit.</p>
             </div>
             <div class="grid">
-              <label class="wizard-field">Planned Leave Time (from origin)
+              <label class="wizard-field"><span data-to="Leave Campus At" data-from="Meet at the Airport At">Leave Campus At</span>
                 <input type="time" name="planned_departure_time" id="planned_departure_time" required />
               </label>
               <label class="wizard-field">Total Seats (including you)
@@ -124,13 +146,13 @@
             </div>
 
             <label class="wizard-field mt-2">Notes
-              <textarea name="notes" id="notes" rows="4" maxlength="500" placeholder="Pickup location preference, luggage info, etc."></textarea>
+              <textarea name="notes" id="notes" rows="4" maxlength="500" placeholder="Pickup spot on campus, luggage info, etc." data-to-placeholder="Pickup spot on campus, luggage info, etc." data-from-placeholder="Where to meet at the airport (terminal, door), luggage info, etc."></textarea>
             </label>
           </div>
 
-          <div class="wizard-step" data-step="4" data-title="Review and create">
+          <div class="wizard-step" data-key="review" data-title="Review and create">
             <div class="wizard-step-copy">
-              <span class="wizard-step-kicker">Step 5</span>
+              <span class="wizard-step-kicker">Step 6</span>
               <h3>Review your carpool</h3>
               <p>Give it one last look, then we will publish it and take you to your carpool.</p>
             </div>

@@ -39,7 +39,7 @@ There are no tests or linting configured in this project.
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
 **Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Seven tables:
-- `carpools` — main ride entries (flight details, contact info, seats, expiration, `share_token` for invite links)
+- `carpools` — main ride entries (flight details, contact info, seats, expiration, `share_token` for invite links, `direction`)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, name, phone)
 - `notifications` — dismissible messages (e.g., disband notifications)
@@ -64,6 +64,7 @@ There are no tests or linting configured in this project.
 **Key patterns**:
 - Entries auto-expire at 23:59 UTC the day after the departure date; `_cleanup_expired_entries()` runs at the start of the create/search/details endpoints
 - Join limit: a user can join at most `JOIN_LIMIT_COUNT` (2) carpools created by others per rolling 24h (`join_log`); leaving does not refund a join
+- Trip direction: `carpools.direction` is `to_airport` (campus → airport, the default and what older rows are) or `from_airport` (airport → campus). For `from_airport`, `airport_code` is the arrival airport, the date is the landing date and `planned_departure_time` is when to meet at the airport. Search treats `direction` as a hard filter; UI wording switches via `data-to` / `data-from` attributes; `_trip_label()` gives "to LAX" / "from LAX" for messages
 - Search: leave time is a hard filter (±`LEAVE_TIME_WINDOW_MINUTES`, 120); other fields add to the match score
 - Flight codes validated against `^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$`; airport codes must be 3 letters; notes ≤500 chars, removal/disband reasons ≤300; departure date must be today (UTC, minus one day of slack) through one year out
 - Phone format enforced as `+1 (XXX) XXX XXXX`

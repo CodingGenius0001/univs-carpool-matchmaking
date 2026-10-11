@@ -2703,6 +2703,8 @@ html:not(.light-mode) .theme-toggle {
 .dash-seg-matched { fill: var(--viz-1); background: var(--viz-1); }
 .dash-seg-solo { fill: var(--viz-2); background: var(--viz-2); }
 .dash-seg-cancelled { fill: var(--viz-3); background: var(--viz-3); }
+.dash-seg-to { fill: var(--viz-1); background: var(--viz-1); }
+.dash-seg-from { fill: var(--viz-2); background: var(--viz-2); }
 .dash-seg.is-hover { opacity: 0.8; }
 
 .dash-legend {
@@ -3015,5 +3017,136 @@ h2 {
   .pdf-viewer object {
     min-height: 0;
     height: auto;
+  }
+}
+
+/* Trip direction picker (create carpool, step 1) */
+.direction-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.direction-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  /* These are <label>s; undo the small-caps form-label styling. */
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 1rem;
+  font-weight: 400;
+  padding: 1.1rem 1.2rem;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.direction-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.direction-option:hover {
+  border-color: rgb(var(--button-rgb) / 0.35);
+}
+
+.direction-option.is-selected {
+  border-color: var(--button);
+  background: var(--surface-accent);
+}
+
+.direction-option:focus-within {
+  box-shadow: 0 0 0 4px rgb(var(--button-rgb) / 0.18);
+}
+
+.direction-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+
+.direction-title {
+  color: var(--foreground);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.direction-sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Small "To LAX" / "From LAX" label used on cards */
+.trip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-accent);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Direction switch on Find a Carpool */
+.direction-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.direction-switch label {
+  position: relative;
+  margin: 0;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.direction-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.direction-switch label:has(input:checked) {
+  background: var(--surface-accent);
+  color: var(--foreground);
+}
+
+.direction-switch label:focus-within {
+  box-shadow: 0 0 0 3px rgb(var(--button-rgb) / 0.2);
+}
+
+@media (max-width: 560px) {
+  .direction-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .direction-switch {
+    display: flex;
+  }
+
+  .direction-switch label {
+    flex: 1;
+    text-align: center;
+    padding: 0.45rem 0.5rem;
   }
 }

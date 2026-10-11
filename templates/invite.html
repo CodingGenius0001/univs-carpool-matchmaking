@@ -57,15 +57,18 @@
       <section class="card carpool-card invite-card">
         <p class="invite-kicker">You've been invited to a carpool</p>
         <div class="carpool-header">
-          <h2>{{ carpool.organizer }}'s Carpool</h2>
+          <div>
+            <h2>{{ carpool.organizer }}'s Carpool</h2>
+            <span class="trip-badge">{% if carpool.direction == 'from_airport' %}🛬 Airport → Campus{% else %}🛫 Campus → Airport{% endif %}</span>
+          </div>
           <span class="result-badge score-high">{{ carpool.member_count }} member{{ '' if carpool.member_count == 1 else 's' }}</span>
         </div>
 
         <div class="result-info">
           <span><span class="label">Flight</span><strong>{{ carpool.flight_code }}</strong>{% if carpool.airline %}<small>{{ carpool.airline }}</small>{% endif %}</span>
-          <span><span class="label">Airport</span>{{ carpool.airport_code }}</span>
+          <span><span class="label">{{ 'Arrival Airport' if carpool.direction == 'from_airport' else 'Departure Airport' }}</span>{{ carpool.airport_code }}</span>
           <span><span class="label">Date</span>{{ carpool.date or '—' }}</span>
-          <span><span class="label">Leave Time</span>{{ carpool.leave_time or '—' }}</span>
+          <span><span class="label">{{ 'Meet at Airport' if carpool.direction == 'from_airport' else 'Leave Campus' }}</span>{{ carpool.leave_time or '—' }}</span>
           <span>
             <span class="label">Seats Left</span>
             {% if carpool.seats_left > 0 %}{{ carpool.seats_left }} of {{ carpool.seats_total }}{% else %}<span style="color:var(--danger)">Full</span>{% endif %}

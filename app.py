@@ -107,6 +107,9 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+# Which way the ride goes. Carpools created before this existed are campus -> airport.
+DIRECTIONS = ("to_airport", "from_airport")
+DEFAULT_DIRECTION = "to_airport"
 SHARE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
 INVITE_PATH_PATTERN = re.compile(r"^/c/[A-Za-z0-9_-]{8,32}$")
 
@@ -786,6 +789,12 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'share_token'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN share_token VARCHAR(32) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM carpools LIKE 'direction'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpools ADD COLUMN direction VARCHAR(16) NOT NULL DEFAULT 'to_airport'")
+                cur.execute("SHOW COLUMNS FROM carpool_history LIKE 'direction'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpool_history ADD COLUMN direction VARCHAR(16) NOT NULL DEFAULT 'to_airport'")
                 cur.execute("SHOW COLUMNS FROM users LIKE 'last_login_at'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE users ADD COLUMN last_login_at VARCHAR(64) NOT NULL DEFAULT ''")
@@ -802,6 +811,11 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
                 if "share_token" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN share_token TEXT NOT NULL DEFAULT ''")
+                if "direction" not in cols:
+                    cur.execute("ALTER TABLE carpools ADD COLUMN direction TEXT NOT NULL DEFAULT 'to_airport'")
+                cur.execute("PRAGMA table_info(carpool_history)")
+                if "direction" not in [row[1] for row in cur.fetchall()]:
+                    cur.execute("ALTER TABLE carpool_history ADD COLUMN direction TEXT NOT NULL DEFAULT 'to_airport'")
                 cur.execute("PRAGMA table_info(users)")
                 if "last_login_at" not in [row[1] for row in cur.fetchall()]:
                     cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
@@ -848,8 +862,8 @@ def _history_open(carpool: dict[str, Any]) -> None:
     if db.query(f"SELECT carpool_id FROM carpool_history WHERE carpool_id = {p}", (carpool["id"],)):
         return
     db.execute(
-        f"INSERT INTO carpool_history (carpool_id, flight_code, airport_code, flight_date, seats, peak_members, created_at) "
-        f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p})",
+        f"INSERT INTO carpool_history (carpool_id, flight_code, airport_code, flight_date, seats, peak_members, created_at, direction) "
+        f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
         (
             carpool["id"],
             str(carpool.get("flight_code") or ""),
@@ -858,6 +872,7 @@ def _history_open(carpool: dict[str, Any]) -> None:
             int(carpool.get("seats_available") or 0),
             1,
             str(carpool.get("created_at") or _now_utc().isoformat()),
+            _direction(carpool),
         ),
     )
 
@@ -907,6 +922,17 @@ def _to_user_flight_date(dt: datetime) -> str:
     return dt.strftime("%m-%d-%Y")
 
 
+def _direction(row: dict[str, Any]) -> str:
+    value = str(row.get("direction") or "")
+    return value if value in DIRECTIONS else DEFAULT_DIRECTION
+
+
+def _trip_label(row: dict[str, Any]) -> str:
+    """'to LAX' or 'from LAX' for messages."""
+    word = "from" if _direction(row) == "from_airport" else "to"
+    return f"{word} {row.get('airport_code', '')}".strip()
+
+
 def _display_date(stored: Any) -> str:
     """Stored dates are MM-DD-YYYY; show them US-style as MM/DD/YYYY."""
     return str(stored or "").replace("-", "/")
@@ -940,6 +966,7 @@ def _serialize_entry(row: dict[str, Any], view: str = "public") -> dict[str, Any
         hidden_fields.update({"phone", "creator_email", "notes"})
     for field in hidden_fields:
         data.pop(field, None)
+    data["direction"] = _direction(row)
     return data
 
 
@@ -1431,6 +1458,10 @@ def _create_carpool_inner() -> Any:
     # is already "yesterday" in UTC.
     expires_at = (parsed_flight_date + timedelta(days=1)).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).isoformat()
 
+    direction = str(data.get("direction") or DEFAULT_DIRECTION).strip()
+    if direction not in DIRECTIONS:
+        return jsonify({"error": "direction must be to_airport or from_airport"}), 400
+
     destination_airport = str(data.get("destination_airport", "")).strip().upper()
     if destination_airport and not AIRPORT_CODE_PATTERN.match(destination_airport):
         return jsonify({"error": "destination_airport must be a 3-letter airport code"}), 400
@@ -1441,8 +1472,8 @@ def _create_carpool_inner() -> Any:
         INSERT INTO carpools (
             first_name,last_initial,phone,flight_code,airport_code,airport_name,airport_location,
             flight_time_utc,flight_date_utc,seats_available,notes,fetched_from,status,expires_at,created_at,
-            requested_flight_date,destination_airport,planned_departure_time,creator_email
-        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            requested_flight_date,destination_airport,planned_departure_time,creator_email,direction
+        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
         """,
         (
             first_name,
@@ -1464,6 +1495,7 @@ def _create_carpool_inner() -> Any:
             destination_airport,
             planned_departure_time,
             creator_email,
+            direction,
         ),
     )
 
@@ -1494,11 +1526,11 @@ def _create_carpool_inner() -> Any:
         _history_open(rows[0])
     except Exception as exc:
         app.logger.warning("Could not start carpool history: %s", exc)
-    _log_event("created", creator_email, last_id, f"{flight_code} {airport_code} {_display_date(flight_date_user)}")
+    _log_event("created", creator_email, last_id, f"{flight_code} {_trip_label({'direction': direction, 'airport_code': airport_code})} {_display_date(flight_date_user)}")
 
     if creator_email:
         try:
-            notify_user(creator_email, f"Your carpool for {flight_code} on {_display_date(flight_date_user)} has been created! Share your carpool to find ride partners.")
+            notify_user(creator_email, f"Your carpool for {flight_code} ({_trip_label({'direction': direction, 'airport_code': airport_code})}) on {_display_date(flight_date_user)} has been created! Share your carpool to find ride partners.")
         except Exception:
             pass
 
@@ -1539,6 +1571,11 @@ def search_carpools() -> Any:
         return jsonify({"error": "departure_date must be in MM-DD-YYYY format", "count": 0, "results": []}), 400
     if planned_leave_time is None:
         return jsonify({"error": "planned_leave_time must use HH:MM format", "count": 0, "results": []}), 400
+    # Direction is a hard filter when given: someone landing at LAX should
+    # never see carpools heading to LAX. Omitted = both (older clients).
+    direction = request.args.get("direction", "").strip()
+    if direction and direction not in DIRECTIONS:
+        return jsonify({"error": "direction must be to_airport or from_airport", "count": 0, "results": []}), 400
 
     # Require at least one search field
     if not flight_code and not airport_code and not flight_date_raw and not planned_leave_time:
@@ -1573,6 +1610,8 @@ def search_carpools() -> Any:
 
     results: list[dict[str, Any]] = []
     for entry in rows:
+        if direction and _direction(entry) != direction:
+            continue
         matched_fields = 0
         reasons: list[str] = []
         if flight_code and entry["flight_code"] == flight_code:
@@ -1607,6 +1646,7 @@ def search_carpools() -> Any:
             public_row["seats_remaining"] = max(0, int(entry.get("seats_available", 3)) - mc)
             public_row["is_member"] = cid in user_memberships
             public_row["is_creator"] = entry.get("creator_email") == current_user
+            public_row["direction"] = _direction(entry)
             results.append(public_row)
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
@@ -1715,6 +1755,7 @@ def invite_page(token: str) -> Any:
         "airline": airline,
         "airport_code": entry.get("airport_code", ""),
         "airport_name": entry.get("airport_name", ""),
+        "direction": _direction(entry),
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
         "notes": entry.get("notes", ""),
@@ -1850,7 +1891,7 @@ def join_party(carpool_id: int) -> Any:
     joiner_name = session.get("user_name", email.split("@")[0])
     flight_code = carpool.get("flight_code", "") if carpool else ""
     flight_date = _display_date(carpool.get("requested_flight_date", "")) if carpool else ""
-    msg = f"{joiner_name} joined your carpool for {flight_code} on {flight_date}."
+    msg = f"{joiner_name} joined your carpool for {flight_code} ({_trip_label(carpool or {})}) on {flight_date}."
     creator_email = carpool.get("creator_email", "") if carpool else ""
     notified = {email}  # don't notify the joiner themselves
     try:
@@ -1904,7 +1945,7 @@ def leave_party(carpool_id: int) -> Any:
         leaver_name = session.get("user_name", email.split("@")[0])
         if creator_email:
             try:
-                notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} on {flight_date}.")
+                notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} ({_trip_label(carpool)}) on {flight_date}.")
             except Exception:
                 pass
         return jsonify({"ok": True, "message": "Left the carpool."})
@@ -1933,7 +1974,7 @@ def leave_party(carpool_id: int) -> Any:
     flight_code = carpool.get("flight_code", "")
     flight_date = _display_date(carpool.get("requested_flight_date", ""))
     try:
-        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}. The previous creator left.")
+        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} ({_trip_label(carpool)}) on {flight_date}. The previous creator left.")
         _notify_new_organizer_to_members(carpool_id, new_owner_email, first_name, last_initial, flight_code, flight_date)
     except Exception:
         pass
@@ -1992,7 +2033,7 @@ def transfer_and_leave(carpool_id: int) -> Any:
     flight_code = carpool_row.get("flight_code", "")
     flight_date = _display_date(carpool_row.get("requested_flight_date", ""))
     try:
-        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}.")
+        notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} ({_trip_label(carpool_row)}) on {flight_date}.")
         _notify_new_organizer_to_members(carpool_id, new_owner_email, fn, li, flight_code, flight_date)
     except Exception:
         pass
@@ -2126,7 +2167,7 @@ def remove_member(carpool_id: int) -> Any:
     try:
         notify_user(
             target_email,
-            f"You were removed from the carpool for {flight_code} on {flight_date} by {creator_name}. Reason: {reason}",
+            f"You were removed from the carpool for {flight_code} ({_trip_label(carpool)}) on {flight_date} by {creator_name}. Reason: {reason}",
         )
     except Exception:
         pass
@@ -2198,7 +2239,7 @@ def edit_party(carpool_id: int) -> Any:
         )
         for m in members:
             try:
-                notify_user(m["user_email"], f"The carpool for {flight_code} on {flight_date} has been updated ({changed_str}) by the organizer.")
+                notify_user(m["user_email"], f"The carpool for {flight_code} ({_trip_label(carpool)}) on {flight_date} has been updated ({changed_str}) by the organizer.")
             except Exception:
                 pass
     return jsonify({"ok": True, "message": "Carpool updated."})
@@ -2232,7 +2273,7 @@ def disband_party(carpool_id: int) -> Any:
     flight = carpool["flight_code"]
     for m in members:
         try:
-            notify_user(m["user_email"], f"The carpool for flight {flight} created by {creator_name} has been disbanded. Reason: {reason}")
+            notify_user(m["user_email"], f"The carpool for flight {flight} ({_trip_label(carpool)}) created by {creator_name} has been disbanded. Reason: {reason}")
         except Exception:
             pass
     _history_close(carpool, "disbanded")
@@ -2399,6 +2440,8 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
         active_carpools.append({
             "entry": c,
             "date": _display_date(c.get("requested_flight_date")),
+            "trip": _trip_label(c),
+            "direction": _direction(c),
             "leave_time": _display_time(c.get("planned_departure_time")) or "—",
             "created": _fmt_local(c.get("created_at")),
             "seats": seats,
@@ -2474,6 +2517,8 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
         {"id": h["carpool_id"],
          "flight_code": h.get("flight_code") or "",
          "airport_code": h.get("airport_code") or "",
+         "trip": _trip_label(h),
+         "direction": _direction(h),
          "date": _display_date(h.get("flight_date")),
          "seats": h.get("seats") or 0,
          "peak": h.get("peak_members") or 0,
@@ -2523,6 +2568,12 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
             "airports": top_airports,
             "upcoming": upcoming_series,
             "outcomes": outcome_counts,
+            "directions": [
+                {"key": "to", "label": "Campus → Airport",
+                 "value": sum(1 for h in created_in_range if _direction(h) == "to_airport")},
+                {"key": "from", "label": "Airport → Campus",
+                 "value": sum(1 for h in created_in_range if _direction(h) == "from_airport")},
+            ],
         },
         "active_carpools": active_carpools,
         "students": students,
