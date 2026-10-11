@@ -6,7 +6,6 @@
     <title>My Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
@@ -38,7 +37,10 @@
           <a href="/privacy">Privacy Policy</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
-          <a href="/auth/logout" class="menu-logout">Logout</a>
+          <form method="post" action="/auth/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Logout</button>
+          </form>
         </div>
       </div>
     </header>
@@ -56,15 +58,15 @@
         <form id="edit-form">
           <input type="hidden" id="edit-carpool-id" />
           <div class="modal-grid">
-            <label>Departure Time
-              <input type="time" id="edit-departure-time" />
+            <label>Leave Time
+              <input type="time" id="edit-departure-time" required />
             </label>
-            <label>Seats Available
-              <input type="number" id="edit-seats" min="1" max="7" />
+            <label>Total Seats (incl. you)
+              <input type="number" id="edit-seats" min="1" max="7" required />
             </label>
           </div>
           <label class="mt-2">Notes
-            <textarea id="edit-notes" rows="3"></textarea>
+            <textarea id="edit-notes" rows="3" maxlength="500"></textarea>
           </label>
           <div class="modal-actions mt-2">
             <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -113,7 +115,7 @@
         <form id="disband-form">
           <input type="hidden" id="disband-carpool-id" />
           <label class="mt-2">Reason for disbanding
-            <textarea id="disband-reason" rows="3" required placeholder="e.g. Flight cancelled, plans changed..."></textarea>
+            <textarea id="disband-reason" rows="3" required maxlength="300" placeholder="e.g. Flight cancelled, plans changed..."></textarea>
           </label>
           <div class="modal-actions mt-2">
             <button type="button" class="btn btn-secondary" id="disband-cancel">Cancel</button>
@@ -133,7 +135,7 @@
           <input type="hidden" id="remove-member-carpool-id" />
           <input type="hidden" id="remove-member-email" />
           <label class="mt-2">Reason for removal
-            <textarea id="remove-member-reason" rows="3" required placeholder="e.g. The carpool is full, timing changed, route no longer matches..."></textarea>
+            <textarea id="remove-member-reason" rows="3" required maxlength="300" placeholder="e.g. The carpool is full, timing changed, route no longer matches..."></textarea>
           </label>
           <div class="modal-actions mt-2">
             <button type="button" class="btn btn-secondary" id="remove-member-cancel">Cancel</button>
@@ -195,6 +197,14 @@
 
       function carpoolDisplayName(carpool) {
         return `${carpool?.first_name || ''} ${carpool?.last_initial ? `${carpool.last_initial}.` : ''}`.trim() || 'Campus2Air';
+      }
+
+      function formatTime12h(value) {
+        const [hour, minute] = String(value || '').split(':');
+        const hourNum = Number(hour);
+        if (!value || minute === undefined || Number.isNaN(hourNum)) return '\u2014';
+        const suffix = hourNum >= 12 ? 'PM' : 'AM';
+        return `${((hourNum + 11) % 12) + 1}:${minute} ${suffix}`;
       }
 
       function safePhoneHref(phone) {
@@ -296,13 +306,13 @@
                 <div class="result-info">
                   <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
                   <span><span class="label">Airport</span>${escapeHtml(c.airport_code)}</span>
-                  <span><span class="label">Date</span>${escapeHtml(c.requested_flight_date || c.flight_date_utc || '\u2014')}</span>
-                  <span><span class="label">Departure Time</span>${escapeHtml(c.planned_departure_time || '\u2014')}</span>
+                  <span><span class="label">Date</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
+                  <span><span class="label">Leave Time</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
                   <span><span class="label">Notes</span>${(() => {
                     const n = c.notes || '';
                     if (!n) return 'None';
-                    if (n.length <= 15) return escapeHtml(n);
-                    return `${escapeHtml(n.slice(0, 15))}... <button class="see-more-notes-btn btn btn-secondary btn-sm" data-notes="${escapeAttr(n)}">See more</button>`;
+                    if (n.length <= 60) return escapeHtml(n);
+                    return `${escapeHtml(n.slice(0, 60))}... <button class="see-more-notes-btn btn btn-secondary btn-sm" data-notes="${escapeAttr(n)}">See more</button>`;
                   })()}</span>
                 </div>
                 <div class="carpool-members">
@@ -312,6 +322,7 @@
                   </ul>
                 </div>
                 <div class="carpool-actions">
+                  <button data-id="${escapeAttr(c.id)}" data-title="${escapeAttr(`${creatorName}'s carpool for ${c.flight_code}`)}" class="share-carpool-btn btn btn-primary btn-sm">Share Invite Link</button>
                   <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
                 </div>
@@ -376,10 +387,49 @@
           if (res.ok) {
             btn.textContent = 'Left!';
             setTimeout(() => loadParties(), 500);
+          } else {
+            const data = await res.json().catch(() => ({}));
+            btn.textContent = data.error || 'Could not leave';
+            setTimeout(() => { btn.textContent = 'Leave Carpool'; btn.disabled = false; }, 2500);
           }
         } catch {
           btn.textContent = 'Error';
           setTimeout(() => { btn.textContent = 'Leave Carpool'; btn.disabled = false; }, 2000);
+        }
+      });
+
+      // Share invite link: native share sheet on phones, otherwise copy.
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.share-carpool-btn');
+        if (!btn) return;
+        const original = 'Share Invite Link';
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/carpools/${btn.dataset.id}/share-link`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.path) throw new Error(data.error || 'Could not create a link');
+          const url = `${window.location.origin}${data.path}`;
+          if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+            try {
+              await navigator.share({ title: 'Join my carpool on Campus2Air', text: btn.dataset.title, url });
+              btn.textContent = original;
+              return;
+            } catch (err) {
+              if (err?.name === 'AbortError') { btn.textContent = original; return; }
+            }
+          }
+          try {
+            await navigator.clipboard.writeText(url);
+            btn.textContent = 'Link copied!';
+          } catch {
+            window.prompt('Copy this invite link:', url);
+            btn.textContent = original;
+          }
+        } catch (err) {
+          btn.textContent = err.message || 'Could not share';
+        } finally {
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = original; }, 2500);
         }
       });
 
@@ -513,7 +563,7 @@
         const payload = {
           planned_departure_time: document.getElementById('edit-departure-time').value,
           notes: document.getElementById('edit-notes').value,
-          seats_available: parseInt(document.getElementById('edit-seats').value) || 3,
+          seats_available: document.getElementById('edit-seats').value,
         };
         const msgEl = document.getElementById('edit-message');
         try {
@@ -575,6 +625,8 @@
           confirmTone: 'danger',
         });
         if (!confirmed) return;
+        const disbandSubmit = e.target.querySelector('button[type="submit"]');
+        disbandSubmit.disabled = true;
         try {
           const res = await fetch(`/api/carpools/${id}/disband`, {
             method: 'POST',
@@ -595,10 +647,12 @@
           } else {
             msgEl.textContent = data.error || 'Failed to disband';
             msgEl.style.color = 'var(--danger)';
+            disbandSubmit.disabled = false;
           }
         } catch {
           msgEl.textContent = 'Network error';
           msgEl.style.color = 'var(--danger)';
+          disbandSubmit.disabled = false;
         }
       });
 

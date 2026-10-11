@@ -6,7 +6,6 @@
     <title>Find a Carpool - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
@@ -34,7 +33,10 @@
           <a href="/privacy">Privacy Policy</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
-          <a href="/auth/logout" class="menu-logout">Logout</a>
+          <form method="post" action="/auth/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Logout</button>
+          </form>
         </div>
       </div>
     </header>
@@ -42,7 +44,7 @@
     <main class="container">
       <section class="card">
         <h2>Find Available Carpools</h2>
-        <p class="card-subtitle">Search by flight code, airport, date, or departure time. At least one field is required.</p>
+        <p class="card-subtitle">Search by flight code, airport, date, or leave time. At least one field is required. Adding a leave time shows only carpools leaving within 2 hours of it.</p>
 
         <form id="search-form">
           <div class="grid">
@@ -52,10 +54,10 @@
             <label>Airport Code
               <input name="airport_code" maxlength="3" placeholder="e.g. SFO" />
             </label>
-            <label>Date of Departure
-              <input type="date" name="departure_date" />
+            <label>Date of Departure (MM/DD/YYYY)
+              <input type="date" name="departure_date" data-us-date />
             </label>
-            <label>Planned Leave Time (from origin)
+            <label>Leave Time (&plusmn; 2 hrs)
               <input type="time" name="planned_leave_time" />
             </label>
           </div>
@@ -70,6 +72,7 @@
       <p>Campus2Air &mdash; Built for students, by students.</p>
     </footer>
 
+    <script src="{{ url_for('static', filename='date-input.js') }}"></script>
     <script src="{{ url_for('static', filename='search.js') }}"></script>
     <script>
       const hbBtn = document.getElementById('hamburger-btn');

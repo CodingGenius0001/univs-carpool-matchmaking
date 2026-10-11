@@ -6,7 +6,6 @@
     <title>Admin Panel - Campus2Air</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
@@ -28,7 +27,10 @@
           <a href="/eula">EULA &amp; ToS</a>
           <a href="/privacy">Privacy Policy</a>
           <div class="menu-divider"></div>
-          <a href="/admin/logout" class="menu-logout">Admin Logout</a>
+          <form method="post" action="/admin/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Admin Logout</button>
+          </form>
         </div>
       </div>
     </header>
@@ -103,7 +105,7 @@
                 <td>{{ entry.phone }}</td>
                 <td><strong>{{ entry.flight_code }}</strong></td>
                 <td>{{ entry.airport_code }}</td>
-                <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
+                <td>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</td>
                 <td>{{ entry.get('planned_departure_time', '') or '—' }}</td>
                 <td>{{ entry.seats_available }}</td>
                 <td>{{ entry.status }}</td>
@@ -160,7 +162,7 @@
               </div>
               <div class="entry-field">
                 <span class="label">Date</span>
-                <span>{{ entry.requested_flight_date or entry.flight_date_utc }}</span>
+                <span>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</span>
               </div>
               <div class="entry-field">
                 <span class="label">Depart Time</span>
