@@ -1662,13 +1662,16 @@ select {
 }
 
 .phone-btn {
-  width: 2.15rem;
   height: 2.15rem;
+  padding: 0 0.95rem 0 0.8rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.4rem;
   flex-shrink: 0;
   border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
   text-decoration: none;
   background: rgb(var(--button-rgb) / 0.12);
   color: var(--button);
@@ -2307,6 +2310,9 @@ html:not(.light-mode) .theme-toggle {
 
   .action-card {
     max-width: none;
+    /* In the stacked (column) layout the 260px flex-basis would become a
+       minimum height and leave empty space at the bottom of each card. */
+    flex: 0 0 auto;
   }
 
   .grid,
@@ -2381,14 +2387,32 @@ html:not(.light-mode) .theme-toggle {
     flex: 0 0 auto;
   }
 
-  .hamburger-btn {
-    width: 2.85rem;
-    height: 2.85rem;
+  .hamburger-btn,
+  .notif-bell-btn {
+    width: 2.6rem;
+    height: 2.6rem;
+    flex: 0 0 auto;
   }
 
-  .notif-bell-btn {
-    width: 2.85rem;
-    height: 2.85rem;
+  .hamburger-wrap {
+    gap: 0.4rem;
+  }
+
+  .site-header.app-header {
+    gap: 0.45rem;
+  }
+
+  .site-header .site-logo {
+    min-width: 0;
+  }
+
+  /* Keep "My Carpool" on one line next to the bell and menu buttons. */
+  .my-party-btn {
+    flex: 0 0 auto;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   .hamburger-menu {
@@ -2397,7 +2421,7 @@ html:not(.light-mode) .theme-toggle {
   }
 
   .site-logo {
-    font-size: 1.2rem;
+    font-size: 1.08rem;
   }
 
   .nav-links {
@@ -2954,5 +2978,42 @@ html:not(.light-mode) .dash-table th {
 
   .dash-kpi-value {
     font-size: 1.6rem;
+  }
+}
+
+/* Very narrow phones (e.g. iPhone SE): "My Carpool" is also in the menu. */
+@media (max-width: 370px) {
+  .site-header .my-party-btn {
+    display: none !important;
+  }
+}
+
+/* Avoid a lone word on the last line of big headings. */
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+.home-actions {
+  margin-top: 4rem;
+}
+
+@media (max-width: 560px) {
+  .home-actions {
+    margin-top: 0.5rem;
+  }
+}
+
+/* Keep long page titles clear of the close (✕) button. */
+.eula-card h2 {
+  padding-right: 3.2rem;
+}
+
+/* Phones can't show a PDF inside the page; don't reserve a tall empty box
+   for it. The fallback text and the "Open PDF" button remain. */
+@media (max-width: 860px) {
+  .pdf-viewer object {
+    min-height: 0;
+    height: auto;
   }
 }

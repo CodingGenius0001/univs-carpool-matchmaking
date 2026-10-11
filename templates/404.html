@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Page not found - Campus2Air</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+    </header>
+    <main class="container">
+      <section class="card text-center home-actions">
+        <h2>Page not found</h2>
+        <p class="card-subtitle">That link doesn't go anywhere. It may be mistyped, or the page was moved.</p>
+        <div class="invite-actions" style="justify-content:center;">
+          <a href="/" class="btn btn-primary">Go to Campus2Air</a>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+  </body>
+</html>
