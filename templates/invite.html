@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>{% if carpool %}Join {{ carpool.organizer }}'s Carpool{% else %}Carpool not found{% endif %} - Campus2Air</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header app-header">
+      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <nav class="nav-links">
+        <a href="/start-now">Home</a>
+        <a href="/find-a-carpool">Find a Carpool</a>
+        <a href="/create-a-carpool">Create Carpool</a>
+      </nav>
+      {% if has_party %}
+      <a href="/my-party" class="my-party-btn" id="my-party-btn">My Carpool</a>
+      {% endif %}
+      <div class="hamburger-wrap">
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu">
+          <a href="/start-now" class="mobile-nav-link">Home</a>
+          <a href="/find-a-carpool" class="mobile-nav-link">Find a Carpool</a>
+          <a href="/create-a-carpool" class="mobile-nav-link">Create Carpool</a>
+          {% if has_party %}
+          <a href="/my-party" class="mobile-party-link">My Carpool</a>
+          {% endif %}
+          <div class="menu-divider"></div>
+          <a href="/eula">EULA &amp; ToS</a>
+          <a href="/privacy">Privacy Policy</a>
+          <div class="menu-divider"></div>
+          <span class="menu-email">{{ user_email }}</span>
+          <form method="post" action="/auth/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Logout</button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      {% if not carpool %}
+      <section class="card text-center" style="margin-top:3rem;">
+        <h2>This carpool isn't available</h2>
+        <p class="card-subtitle">The link may be wrong, or the carpool was disbanded or has already departed.</p>
+        <div class="invite-actions" style="justify-content:center;">
+          <a href="/find-a-carpool" class="btn btn-primary">Find a Carpool</a>
+          <a href="/create-a-carpool" class="btn btn-secondary">Create a Carpool</a>
+        </div>
+      </section>
+      {% else %}
+      <section class="card carpool-card invite-card">
+        <p class="invite-kicker">You've been invited to a carpool</p>
+        <div class="carpool-header">
+          <h2>{{ carpool.organizer }}'s Carpool</h2>
+          <span class="result-badge score-high">{{ carpool.member_count }} member{{ '' if carpool.member_count == 1 else 's' }}</span>
+        </div>
+
+        <div class="result-info">
+          <span><span class="label">Flight</span><strong>{{ carpool.flight_code }}</strong>{% if carpool.airline %}<small>{{ carpool.airline }}</small>{% endif %}</span>
+          <span><span class="label">Airport</span>{{ carpool.airport_code }}</span>
+          <span><span class="label">Date</span>{{ carpool.date or '—' }}</span>
+          <span><span class="label">Leave Time</span>{{ carpool.leave_time or '—' }}</span>
+          <span>
+            <span class="label">Seats Left</span>
+            {% if carpool.seats_left > 0 %}{{ carpool.seats_left }} of {{ carpool.seats_total }}{% else %}<span style="color:var(--danger)">Full</span>{% endif %}
+          </span>
+        </div>
+
+        {% if carpool.notes %}
+        <div class="invite-notes">
+          <span class="label">Notes</span>
+          <p>{{ carpool.notes }}</p>
+        </div>
+        {% endif %}
+
+        <div class="carpool-members">
+          <h3>Carpool Members</h3>
+          <ul class="member-list">
+            {% for m in carpool.members %}
+            <li class="member-item">
+              <span class="member-name">{{ m.name }}</span>
+              {% if m.is_organizer %}<span class="member-badge">Creator</span>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        {% if carpool.is_member %}
+        <div class="message mt-2">
+          {% if carpool.is_organizer %}This is your carpool.{% else %}You're already in this carpool.{% endif %}
+        </div>
+        <div class="invite-actions">
+          <a href="/my-party" class="btn btn-primary">View My Carpool</a>
+        </div>
+        {% elif carpool.seats_left <= 0 %}
+        <div class="message message-warning mt-2">This carpool is full.</div>
+        <div class="invite-actions">
+          <a href="/find-a-carpool" class="btn btn-primary">Find Another Carpool</a>
+        </div>
+        {% else %}
+        <form id="invite-join-form" class="invite-join" novalidate>
+          <h3>Would you like to join this carpool?</h3>
+          <p class="text-muted text-sm">Your phone number is shared with carpool members so you can coordinate. Members' numbers are shown to you after you join.</p>
+          <label class="mt-2">Your Phone Number
+            <input type="tel" id="invite-phone" required placeholder="+1 (909) 555 1234" maxlength="17" inputmode="tel" value="{{ user_phone }}" />
+          </label>
+          <p id="invite-message" class="text-sm mt-1" role="alert"></p>
+          <div class="invite-actions">
+            <button type="submit" class="btn btn-primary" id="invite-join-btn">Yes, Join Carpool</button>
+            <a href="/start-now" class="btn btn-secondary">No Thanks</a>
+          </div>
+        </form>
+        {% endif %}
+      </section>
+      {% endif %}
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+
+    <script>
+      const hbBtn = document.getElementById('hamburger-btn');
+      const hbMenu = document.getElementById('hamburger-menu');
+      hbBtn?.addEventListener('click', () => hbMenu.classList.toggle('open'));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
+      });
+
+      {% if carpool and not carpool.is_member and carpool.seats_left > 0 %}
+      (function () {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const form = document.getElementById('invite-join-form');
+        const phoneInput = document.getElementById('invite-phone');
+        const msg = document.getElementById('invite-message');
+        const joinBtn = document.getElementById('invite-join-btn');
+
+        function formatPhone(raw) {
+          const digits = raw.replace(/\D/g, '').slice(0, 11);
+          const withCountry = digits.startsWith('1') ? digits : `1${digits}`;
+          const limited = withCountry.slice(0, 11);
+          const a = limited.slice(1, 4);
+          const b = limited.slice(4, 7);
+          const c = limited.slice(7, 11);
+          let out = '+1';
+          if (a) out += ` (${a}`;
+          if (a.length === 3) out += ')';
+          if (b) out += ` ${b}`;
+          if (c) out += ` ${c}`;
+          return out;
+        }
+
+        function showError(text) {
+          msg.textContent = text;
+          msg.style.color = 'var(--danger)';
+        }
+
+        phoneInput.addEventListener('input', () => {
+          phoneInput.value = formatPhone(phoneInput.value);
+        });
+
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const phone = phoneInput.value.trim();
+          if (!/^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$/.test(phone)) {
+            showError('Please enter a valid phone number in format +1 (XXX) XXX XXXX.');
+            phoneInput.focus();
+            return;
+          }
+          joinBtn.disabled = true;
+          joinBtn.textContent = 'Joining...';
+          msg.textContent = '';
+          try {
+            const res = await fetch('/api/carpools/{{ carpool.id }}/join', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+              body: JSON.stringify({ phone }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+              joinBtn.textContent = 'Joined!';
+              msg.textContent = 'You joined the carpool. Taking you there...';
+              msg.style.color = 'var(--success)';
+              setTimeout(() => { window.location.href = '/my-party'; }, 800);
+              return;
+            }
+            showError(data.error || 'Could not join this carpool.');
+          } catch {
+            showError('Network error. Please try again.');
+          }
+          joinBtn.disabled = false;
+          joinBtn.textContent = 'Yes, Join Carpool';
+        });
+      })();
+      {% endif %}
+    </script>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
+  </body>
+</html>

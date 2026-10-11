@@ -105,7 +105,7 @@
                 <td>{{ entry.phone }}</td>
                 <td><strong>{{ entry.flight_code }}</strong></td>
                 <td>{{ entry.airport_code }}</td>
-                <td>{{ entry.requested_flight_date or entry.flight_date_utc }}</td>
+                <td>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</td>
                 <td>{{ entry.get('planned_departure_time', '') or '—' }}</td>
                 <td>{{ entry.seats_available }}</td>
                 <td>{{ entry.status }}</td>
@@ -162,7 +162,7 @@
               </div>
               <div class="entry-field">
                 <span class="label">Date</span>
-                <span>{{ entry.requested_flight_date or entry.flight_date_utc }}</span>
+                <span>{{ (entry.requested_flight_date or entry.flight_date_utc) | replace('-', '/') }}</span>
               </div>
               <div class="entry-field">
                 <span class="label">Depart Time</span>

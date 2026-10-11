@@ -99,8 +99,8 @@
               <p>Just the date and departure airport are enough to place you in the right pool.</p>
             </div>
             <div class="grid">
-              <label class="wizard-field">Date of Departure
-                <input type="date" name="departure_date" id="departure_date" required />
+              <label class="wizard-field">Date of Departure (MM/DD/YYYY)
+                <input type="date" name="departure_date" id="departure_date" required data-us-date />
               </label>
               <label class="wizard-field">Departure Airport
                 <input name="airport_code" id="airport_code" maxlength="3" placeholder="e.g. SFO" required />
@@ -159,6 +159,7 @@
         if (!e.target.closest('.hamburger-wrap')) hbMenu.classList.remove('open');
       });
     </script>
+    <script src="{{ url_for('static', filename='date-input.js') }}"></script>
     <script src="{{ url_for('static', filename='join.js') }}"></script>
     <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
     <script src="{{ url_for('static', filename='notifications.js') }}"></script>

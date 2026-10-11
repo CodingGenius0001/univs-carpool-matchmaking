@@ -159,7 +159,7 @@ function showStep(stepIndex) {
 function validateDateInput() {
   const val = departureDateInput?.value;
   if (!val) {
-    setMessage('Please select a departure date from the calendar.', true);
+    setMessage('Please enter your departure date as MM/DD/YYYY (or pick it from the calendar).', true);
     departureDateInput?.focus();
     return false;
   }

@@ -132,7 +132,7 @@ function renderResults(data) {
             </span>
             <span>
               <span class="label">Date</span>
-              ${escapeHtml(r.requested_flight_date || r.flight_date_utc || '\u2014')}
+              ${escapeHtml(String(r.requested_flight_date || r.flight_date_utc || '\u2014').replace(/-/g, '/'))}
             </span>
             <span>
               <span class="label">Leaves</span>

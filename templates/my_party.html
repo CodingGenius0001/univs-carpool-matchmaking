@@ -306,7 +306,7 @@
                 <div class="result-info">
                   <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
                   <span><span class="label">Airport</span>${escapeHtml(c.airport_code)}</span>
-                  <span><span class="label">Date</span>${escapeHtml(c.requested_flight_date || c.flight_date_utc || '\u2014')}</span>
+                  <span><span class="label">Date</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
                   <span><span class="label">Leave Time</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
                   <span><span class="label">Notes</span>${(() => {
                     const n = c.notes || '';
@@ -322,6 +322,7 @@
                   </ul>
                 </div>
                 <div class="carpool-actions">
+                  <button data-id="${escapeAttr(c.id)}" data-title="${escapeAttr(`${creatorName}'s carpool for ${c.flight_code}`)}" class="share-carpool-btn btn btn-primary btn-sm">Share Invite Link</button>
                   <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
                 </div>
@@ -394,6 +395,41 @@
         } catch {
           btn.textContent = 'Error';
           setTimeout(() => { btn.textContent = 'Leave Carpool'; btn.disabled = false; }, 2000);
+        }
+      });
+
+      // Share invite link: native share sheet on phones, otherwise copy.
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.share-carpool-btn');
+        if (!btn) return;
+        const original = 'Share Invite Link';
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/carpools/${btn.dataset.id}/share-link`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.path) throw new Error(data.error || 'Could not create a link');
+          const url = `${window.location.origin}${data.path}`;
+          if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+            try {
+              await navigator.share({ title: 'Join my carpool on Campus2Air', text: btn.dataset.title, url });
+              btn.textContent = original;
+              return;
+            } catch (err) {
+              if (err?.name === 'AbortError') { btn.textContent = original; return; }
+            }
+          }
+          try {
+            await navigator.clipboard.writeText(url);
+            btn.textContent = 'Link copied!';
+          } catch {
+            window.prompt('Copy this invite link:', url);
+            btn.textContent = original;
+          }
+        } catch (err) {
+          btn.textContent = err.message || 'Could not share';
+        } finally {
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = original; }, 2500);
         }
       });
 

@@ -54,8 +54,8 @@
             <label>Airport Code
               <input name="airport_code" maxlength="3" placeholder="e.g. SFO" />
             </label>
-            <label>Date of Departure
-              <input type="date" name="departure_date" />
+            <label>Date of Departure (MM/DD/YYYY)
+              <input type="date" name="departure_date" data-us-date />
             </label>
             <label>Leave Time (&plusmn; 2 hrs)
               <input type="time" name="planned_leave_time" />
@@ -72,6 +72,7 @@
       <p>Campus2Air &mdash; Built for students, by students.</p>
     </footer>
 
+    <script src="{{ url_for('static', filename='date-input.js') }}"></script>
     <script src="{{ url_for('static', filename='search.js') }}"></script>
     <script>
       const hbBtn = document.getElementById('hamburger-btn');

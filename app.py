@@ -107,6 +107,8 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+SHARE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+INVITE_PATH_PATTERN = re.compile(r"^/c/[A-Za-z0-9_-]{8,32}$")
 
 MAX_NOTES_LENGTH = 500
 MAX_REASON_LENGTH = 300
@@ -720,6 +722,9 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpools LIKE 'creator_email'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email VARCHAR(255) NOT NULL DEFAULT ''")
+                cur.execute("SHOW COLUMNS FROM carpools LIKE 'share_token'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE carpools ADD COLUMN share_token VARCHAR(32) NOT NULL DEFAULT ''")
             else:
                 cur.execute("PRAGMA table_info(carpools)")
                 cols = [row[1] for row in cur.fetchall()]
@@ -731,6 +736,8 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpools ADD COLUMN planned_departure_time TEXT NOT NULL DEFAULT ''")
                 if "creator_email" not in cols:
                     cur.execute("ALTER TABLE carpools ADD COLUMN creator_email TEXT NOT NULL DEFAULT ''")
+                if "share_token" not in cols:
+                    cur.execute("ALTER TABLE carpools ADD COLUMN share_token TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -769,6 +776,19 @@ def _to_user_flight_date(dt: datetime) -> str:
     return dt.strftime("%m-%d-%Y")
 
 
+def _display_date(stored: Any) -> str:
+    """Stored dates are MM-DD-YYYY; show them US-style as MM/DD/YYYY."""
+    return str(stored or "").replace("-", "/")
+
+
+def _display_time(value: Any) -> str:
+    """'14:30' -> '2:30 PM'."""
+    try:
+        return datetime.strptime(str(value), "%H:%M").strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        return ""
+
+
 def _to_api_flight_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
@@ -784,7 +804,7 @@ def _resolve_airport(code: str) -> tuple[str, str]:
 
 def _serialize_entry(row: dict[str, Any], view: str = "public") -> dict[str, Any]:
     data = dict(row)
-    hidden_fields = {"expires_at", "created_at", "fetched_from", "status"}
+    hidden_fields = {"expires_at", "created_at", "fetched_from", "status", "share_token"}
     if view == "public":
         hidden_fields.update({"phone", "creator_email", "notes"})
     for field in hidden_fields:
@@ -1087,10 +1107,17 @@ def serve_docs(filename: str) -> Any:
     return send_from_directory(docs_dir, filename, mimetype="application/pdf")
 
 
+def _safe_next_path(value: Any) -> str:
+    """Only allow redirecting back to an invite page (no open redirects)."""
+    path = str(value or "")
+    return path if INVITE_PATH_PATTERN.match(path) else ""
+
+
 @app.get("/login")
 def login_page() -> Any:
     if session.get("user_email"):
-        return redirect(url_for("start_now_page"))
+        next_path = _safe_next_path(session.pop("post_login_next", ""))
+        return redirect(next_path or url_for("start_now_page"))
     error = request.args.get("error", "")
     return render_template("login.html", error=error)
 
@@ -1125,6 +1152,8 @@ def firebase_callback() -> Any:
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
 
+    # Remember an invite link the user was sent to before signing in.
+    next_path = _safe_next_path(session.get("post_login_next", ""))
     session.clear()
     session.permanent = True
     session["user_email"] = email
@@ -1150,7 +1179,7 @@ def firebase_callback() -> Any:
     except Exception:
         pass
 
-    return jsonify({"ok": True, "redirect": url_for("start_now_page")})
+    return jsonify({"ok": True, "redirect": next_path or url_for("start_now_page")})
 
 
 @app.get("/auth/logout")
@@ -1318,7 +1347,7 @@ def _create_carpool_inner() -> Any:
 
     if creator_email:
         try:
-            notify_user(creator_email, f"Your carpool for {flight_code} on {flight_date_user} has been created! Share your carpool to find ride partners.")
+            notify_user(creator_email, f"Your carpool for {flight_code} on {_display_date(flight_date_user)} has been created! Share your carpool to find ride partners.")
         except Exception:
             pass
 
@@ -1454,6 +1483,104 @@ def carpool_details(entry_id: int) -> Any:
     return jsonify({"entry": _serialize_entry(rows[0], view="member")})
 
 
+def _carpool_members(carpool_id: int) -> list[dict[str, Any]]:
+    """Members in join order with display names (no emails or phones)."""
+    p = db.placeholder
+    rows = db.query(
+        f"SELECT pm.user_email, u.first_name, u.last_initial FROM party_members pm "
+        f"LEFT JOIN users u ON u.user_email = pm.user_email "
+        f"WHERE pm.carpool_id = {p} ORDER BY pm.joined_at",
+        (carpool_id,),
+    )
+    members = []
+    for row in rows:
+        first = str(row.get("first_name") or "").strip() or str(row["user_email"]).split("@")[0]
+        initial = str(row.get("last_initial") or "").strip()[:1]
+        members.append({"email": row["user_email"], "name": f"{first} {initial}." if initial else first})
+    return members
+
+
+@app.get("/api/carpools/<int:carpool_id>/share-link")
+def carpool_share_link(carpool_id: int) -> Any:
+    """Return the invite link for a carpool. Any member may share it."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    rows = db.query(f"SELECT id, share_token FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    member = db.query(
+        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}",
+        (carpool_id, email),
+    )
+    if not member:
+        return jsonify({"error": "Only carpool members can share this carpool"}), 403
+    token = str(rows[0].get("share_token") or "")
+    if not token:
+        # Random and unguessable, so carpools can't be found by counting ids.
+        token = secrets.token_urlsafe(12)
+        db.execute(
+            f"UPDATE carpools SET share_token = {p} WHERE id = {p} AND share_token = ''",
+            (token, carpool_id),
+        )
+        # If two members created a token at the same moment, use the winner.
+        token = db.query(f"SELECT share_token FROM carpools WHERE id = {p}", (carpool_id,))[0]["share_token"]
+    return jsonify({"path": url_for("invite_page", token=token)})
+
+
+@app.get("/c/<token>")
+def invite_page(token: str) -> Any:
+    """Shared invite link: summary of a carpool and an offer to join it."""
+    if not SHARE_TOKEN_PATTERN.match(token):
+        return render_template("invite.html", carpool=None, **_user_context()), 404
+    if not _require_user_login():
+        # Come back here after signing in.
+        session["post_login_next"] = request.path
+        return redirect(url_for("login_page"))
+
+    _cleanup_expired_entries()
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE share_token = {p}", (token,))
+    if not rows:
+        return render_template("invite.html", carpool=None, **_user_context()), 404
+
+    entry = rows[0]
+    email = session.get("user_email", "")
+    members = _carpool_members(entry["id"])
+    seats_total = int(entry.get("seats_available") or 0)
+    flight_code = str(entry.get("flight_code") or "")
+    airline = AIRLINE_CODES.get(flight_code[:2], "")
+    first_name = str(entry.get("first_name") or "")
+    last_initial = str(entry.get("last_initial") or "")
+    organizer = f"{first_name} {last_initial}." if last_initial else first_name
+    profile = db.query(f"SELECT phone FROM users WHERE user_email = {p}", (email,))
+
+    carpool = {
+        "id": entry["id"],
+        "organizer": organizer,
+        "flight_code": flight_code,
+        "airline": airline,
+        "airport_code": entry.get("airport_code", ""),
+        "airport_name": entry.get("airport_name", ""),
+        "date": _display_date(entry.get("requested_flight_date", "")),
+        "leave_time": _display_time(entry.get("planned_departure_time", "")),
+        "notes": entry.get("notes", ""),
+        "members": [{"name": m["name"], "is_organizer": m["email"] == entry.get("creator_email")} for m in members],
+        "member_count": len(members),
+        "seats_total": seats_total,
+        "seats_left": max(0, seats_total - len(members)),
+        "is_member": any(m["email"] == email for m in members),
+        "is_organizer": entry.get("creator_email") == email,
+    }
+    return render_template(
+        "invite.html",
+        carpool=carpool,
+        user_phone=(profile[0].get("phone") if profile else "") or "",
+        **_user_context(),
+    )
+
+
 @app.post("/api/carpools/<int:carpool_id>/join")
 def join_party(carpool_id: int) -> Any:
     email = session.get("user_email")
@@ -1563,7 +1690,7 @@ def join_party(carpool_id: int) -> Any:
     # Notify creator and all existing members that someone joined
     joiner_name = session.get("user_name", email.split("@")[0])
     flight_code = carpool.get("flight_code", "") if carpool else ""
-    flight_date = carpool.get("requested_flight_date", "") if carpool else ""
+    flight_date = _display_date(carpool.get("requested_flight_date", "")) if carpool else ""
     msg = f"{joiner_name} joined your carpool for {flight_code} on {flight_date}."
     creator_email = carpool.get("creator_email", "") if carpool else ""
     notified = {email}  # don't notify the joiner themselves
@@ -1613,7 +1740,7 @@ def leave_party(carpool_id: int) -> Any:
     if not is_creator:
         creator_email = carpool.get("creator_email", "")
         flight_code = carpool.get("flight_code", "")
-        flight_date = carpool.get("requested_flight_date", "")
+        flight_date = _display_date(carpool.get("requested_flight_date", ""))
         leaver_name = session.get("user_name", email.split("@")[0])
         if creator_email:
             try:
@@ -1642,7 +1769,7 @@ def leave_party(carpool_id: int) -> Any:
     )
 
     flight_code = carpool.get("flight_code", "")
-    flight_date = carpool.get("requested_flight_date", "")
+    flight_date = _display_date(carpool.get("requested_flight_date", ""))
     try:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}. The previous creator left.")
         _notify_new_organizer_to_members(carpool_id, new_owner_email, first_name, last_initial, flight_code, flight_date)
@@ -1699,7 +1826,7 @@ def transfer_and_leave(carpool_id: int) -> Any:
     )
     carpool_row = rows[0]
     flight_code = carpool_row.get("flight_code", "")
-    flight_date = carpool_row.get("requested_flight_date", "")
+    flight_date = _display_date(carpool_row.get("requested_flight_date", ""))
     try:
         notify_user(new_owner_email, f"You are now the organizer of the carpool for {flight_code} on {flight_date}.")
         _notify_new_organizer_to_members(carpool_id, new_owner_email, fn, li, flight_code, flight_date)
@@ -1830,7 +1957,7 @@ def remove_member(carpool_id: int) -> Any:
     carpool = rows[0]
     creator_name = f"{carpool.get('first_name', '')} {carpool.get('last_initial', '')}."
     flight_code = carpool.get("flight_code", "")
-    flight_date = carpool.get("requested_flight_date", "")
+    flight_date = _display_date(carpool.get("requested_flight_date", ""))
     try:
         notify_user(
             target_email,
@@ -1898,7 +2025,7 @@ def edit_party(carpool_id: int) -> Any:
     if changed:
         carpool = rows[0]
         flight_code = carpool.get("flight_code", "")
-        flight_date = carpool.get("requested_flight_date", "")
+        flight_date = _display_date(carpool.get("requested_flight_date", ""))
         changed_str = ", ".join(changed)
         members = db.query(
             f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",

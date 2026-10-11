@@ -39,7 +39,7 @@ There are no tests or linting configured in this project.
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
 **Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Five tables:
-- `carpools` — main ride entries (flight details, contact info, seats, expiration)
+- `carpools` — main ride entries (flight details, contact info, seats, expiration, `share_token` for invite links)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, name, phone)
 - `notifications` — dismissible messages (e.g., disband notifications)
@@ -63,4 +63,6 @@ There are no tests or linting configured in this project.
 - Search: leave time is a hard filter (±`LEAVE_TIME_WINDOW_MINUTES`, 120); other fields add to the match score
 - Flight codes validated against `^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$`; airport codes must be 3 letters; notes ≤500 chars, removal/disband reasons ≤300; departure date must be today (UTC, minus one day of slack) through one year out
 - Phone format enforced as `+1 (XXX) XXX XXXX`
+- Dates are shown and entered US-style (MM/DD/YYYY). Date fields use `<input type="date" data-us-date>` enhanced by `static/date-input.js` (a MM/DD/YYYY text box + calendar button; the hidden native input keeps the YYYY-MM-DD value), because native date inputs follow the browser's region format
+- Invite links: `/c/<share_token>` shows a carpool summary and a join prompt. Tokens are random, created on first `GET /api/carpools/<id>/share-link` (members only) and never included in search/member API responses. Logged-out visitors are sent to login and returned to the invite via `session["post_login_next"]` (only `/c/...` paths are allowed)
 - API endpoints under `/api/`, pages at root paths, admin under `/admin/`
