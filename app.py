@@ -1063,6 +1063,8 @@ def handle_exception(e: Exception) -> Any:
         # 404/405/etc. are normal client errors, not server crashes.
         if request.path.startswith("/api/"):
             return jsonify({"error": e.name}), e.code
+        if e.code == 404:
+            return render_template("404.html"), 404
         return e
     tb = traceback.format_exc()
     app.logger.error(f"Unhandled exception: {e}\n{tb}")
