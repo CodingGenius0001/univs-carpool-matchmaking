@@ -251,6 +251,11 @@ def _resolve_database_path() -> str:
 
 
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
+# When DB_ENGINE=mysql and MySQL is unreachable, should the app quietly switch
+# to a local SQLite file? Fine for local development, but on Vercel that file
+# lives in /tmp: it is per-instance and wiped on cold starts, so writes are
+# silently lost. Off by default on Vercel (requests fail with 503 instead).
+ALLOW_SQLITE_FALLBACK = _truthy_env("ALLOW_SQLITE_FALLBACK", not os.getenv("VERCEL"))
 DATABASE_PATH = _resolve_database_path()
 
 # Expanded airport list
@@ -302,6 +307,10 @@ def _mysql_ssl_ctx() -> ssl.SSLContext | None:
     return ssl.create_default_context()
 
 
+class DatabaseUnavailable(Exception):
+    """MySQL is unreachable and SQLite fallback is disabled."""
+
+
 class DBAdapter:
     def __init__(self) -> None:
         self.engine = DB_ENGINE
@@ -328,6 +337,30 @@ class DBAdapter:
             except Exception:
                 pass
 
+    def _handle_mysql_failure(self, reason: str, exc: Exception | None = None) -> None:
+        """Fall back to SQLite if allowed; otherwise fail this request loudly.
+
+        Without fallback nothing is remembered across requests, so the next
+        request tries MySQL again. Within one request we fail fast so a
+        request doesn't wait out several connect timeouts.
+        """
+        if ALLOW_SQLITE_FALLBACK:
+            self._activate_sqlite_fallback(reason)
+            return
+        app.logger.error(f"Database unavailable (SQLite fallback disabled): {reason}")
+        old = g.pop("db", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        g.db_unavailable = True
+        raise DatabaseUnavailable(reason) from exc
+
+    def _raise_if_unavailable(self) -> None:
+        if g.get("db_unavailable"):
+            raise DatabaseUnavailable("MySQL connection already failed during this request")
+
     def _should_retry_mysql(self) -> bool:
         """Return True if enough time has passed to retry MySQL after a failure."""
         import time
@@ -352,6 +385,7 @@ class DBAdapter:
             os.makedirs(db_dir, exist_ok=True)
 
     def ensure_ready(self) -> None:
+        self._raise_if_unavailable()
         with self._schema_lock:
             if self.engine == "mysql" and self._should_retry_mysql():
                 self._reset_mysql_retry_state()
@@ -382,6 +416,7 @@ class DBAdapter:
     def get_conn(self) -> Any:
         if "db" in g:
             return g.db
+        self._raise_if_unavailable()
 
         if self.engine == "mysql" and not self._mysql_failed:
             try:
@@ -410,11 +445,12 @@ class DBAdapter:
                 return g.db
             except Exception as exc:
                 mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
-                self._activate_sqlite_fallback(
+                self._handle_mysql_failure(
                     f"MySQL connection failed to {mysql_host}: {exc}. "
                     "If using InfinityFree or similar shared hosting, their MySQL "
                     "only accepts connections from their own servers — not from "
-                    "Vercel/external services."
+                    "Vercel/external services.",
+                    exc,
                 )
 
         return self._get_sqlite_conn()
@@ -437,7 +473,7 @@ class DBAdapter:
             cur.close()
         except Exception as exc:
             if self.engine == "mysql" and self._is_mysql_conn_error(exc):
-                self._activate_sqlite_fallback(f"MySQL query failed: {exc}")
+                self._handle_mysql_failure(f"MySQL query failed: {exc}", exc)
                 self.ensure_ready()
                 conn = self.get_conn()
                 cur = conn.cursor()
@@ -461,7 +497,7 @@ class DBAdapter:
             cur.close()
         except Exception as exc:
             if self.engine == "mysql" and self._is_mysql_conn_error(exc):
-                self._activate_sqlite_fallback(f"MySQL execute failed: {exc}")
+                self._handle_mysql_failure(f"MySQL execute failed: {exc}", exc)
                 self.ensure_ready()
                 conn = self.get_conn()
                 cur = conn.cursor()
@@ -494,11 +530,8 @@ class DBAdapter:
                 conn = pymysql.connect(**init_kwargs)
             except Exception as exc:
                 mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
-                app.logger.error(
-                    f"MySQL init_schema failed ({mysql_host}): {exc}. Falling back to SQLite."
-                )
-                self._mysql_failed = True
-                self.placeholder = "?"
+                # Raises DatabaseUnavailable unless fallback is allowed.
+                self._handle_mysql_failure(f"MySQL init_schema failed ({mysql_host}): {exc}", exc)
                 use_mysql = False
 
         if not use_mysql:
@@ -867,6 +900,11 @@ def close_db(_: Any) -> None:
 @app.errorhandler(Exception)
 def handle_exception(e: Exception) -> Any:
     """Return JSON errors for API routes, HTML for pages."""
+    if isinstance(e, DatabaseUnavailable):
+        message = "Campus2Air is temporarily unavailable. Please try again in a minute."
+        if request.path.startswith("/api/") or request.path == "/auth/firebase-callback":
+            return jsonify({"error": message}), 503
+        return f"<h1>Temporarily unavailable</h1><p>{message}</p>", 503
     if isinstance(e, HTTPException):
         # 404/405/etc. are normal client errors, not server crashes.
         if request.path.startswith("/api/"):
@@ -1141,6 +1179,8 @@ def search_page() -> Any:
 def create_carpool() -> Any:
     try:
         return _create_carpool_inner()
+    except DatabaseUnavailable:
+        raise
     except Exception as e:
         app.logger.error(f"create_carpool error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": "Server error"}), 500

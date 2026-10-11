@@ -29,6 +29,7 @@ There are no tests or linting configured in this project.
 - `FLASK_DEBUG` — enables the Werkzeug debugger for `python app.py` (default on; binds to 127.0.0.1 only)
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (preferred) or `ADMIN_PASSWORD` — admin panel is disabled unless one of these is set
 - `FIREBASE_PROJECT_ID` — Firebase project used to verify ID tokens
+- `ALLOW_SQLITE_FALLBACK` — if MySQL is unreachable, fall back to SQLite (default: on locally, off on Vercel, where requests fail with 503 instead of writing to ephemeral `/tmp`)
 - MySQL: `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_PORT`, `MYSQL_SSL`
 
 ## Architecture
@@ -37,7 +38,7 @@ There are no tests or linting configured in this project.
 
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
-**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. It auto-falls back to SQLite if MySQL connection fails. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Five tables:
+**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Five tables:
 - `carpools` — main ride entries (flight details, contact info, seats, expiration)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, name, phone)
