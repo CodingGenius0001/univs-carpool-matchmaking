@@ -42,7 +42,7 @@
           <form method="post" action="/admin/login" class="admin-login-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <label>Username
-              <input name="username" placeholder="Username" required autocomplete="username" />
+              <input name="username" placeholder="Username" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
             </label>
             <label>Password
               <input name="password" type="password" placeholder="Password" required autocomplete="current-password" />

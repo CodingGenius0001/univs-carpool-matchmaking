@@ -2125,9 +2125,12 @@ def admin_login_page() -> Any:
 def admin_login() -> Any:
     if not ADMIN_LOGIN_ENABLED:
         return redirect(url_for("admin_login_page"))
-    username = request.form.get("username", "")
+    # Usernames are matched case-insensitively and trimmed: phone keyboards
+    # auto-capitalize ("Admin") and autofill can add spaces. Passwords are exact.
+    username = request.form.get("username", "").strip().lower()
     password = request.form.get("password", "")
-    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+    username_ok = hmac.compare_digest(username, ADMIN_USERNAME.lower())
+    if username_ok and check_password_hash(ADMIN_PASSWORD_HASH, password):
         session.permanent = True
         session["admin_authed"] = True
         session["admin_login_at"] = _now_utc().isoformat()
