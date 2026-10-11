@@ -35,7 +35,10 @@
           <a href="/privacy">Privacy Policy</a>
           <div class="menu-divider"></div>
           <span class="menu-email">{{ user_email }}</span>
-          <a href="/auth/logout" class="menu-logout">Logout</a>
+          <form method="post" action="/auth/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Logout</button>
+          </form>
           {% else %}
           <a href="/" class="mobile-nav-link">Home</a>
           <a href="/eula" class="active">EULA &amp; ToS</a>

@@ -26,5 +26,28 @@
     });
 
     document.body.appendChild(toggle);
+
+    // Phone-sized screens: offer the toggle inside the hamburger menu instead
+    // of the floating button (CSS decides which one is visible).
+    const menu = document.getElementById('hamburger-menu');
+    if (menu) {
+      const menuToggle = document.createElement('button');
+      menuToggle.type = 'button';
+      menuToggle.className = 'menu-button menu-theme-toggle';
+      const syncLabel = function () {
+        menuToggle.textContent = document.documentElement.classList.contains('light-mode')
+          ? 'Switch to dark mode'
+          : 'Switch to light mode';
+      };
+      syncLabel();
+      menuToggle.addEventListener('click', function () {
+        toggle.click();
+        syncLabel();
+      });
+      const divider = document.createElement('div');
+      divider.className = 'menu-divider menu-theme-toggle';
+      menu.append(divider, menuToggle);
+      document.body.classList.add('has-menu-theme-toggle');
+    }
   });
 })();

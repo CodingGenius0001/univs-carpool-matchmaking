@@ -27,7 +27,10 @@
           <a href="/eula">EULA &amp; ToS</a>
           <a href="/privacy">Privacy Policy</a>
           <div class="menu-divider"></div>
-          <a href="/admin/logout" class="menu-logout">Admin Logout</a>
+          <form method="post" action="/admin/logout" class="menu-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="menu-button menu-logout">Admin Logout</button>
+          </form>
         </div>
       </div>
     </header>

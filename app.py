@@ -228,6 +228,14 @@ def protect_csrf() -> Any:
     if expected and provided and hmac.compare_digest(expected, provided):
         return None
 
+    # A stale logout form (session expired, or already logged out in another
+    # tab) shouldn't show a CSRF error. Redirecting without logging out is
+    # safe: nothing changes, so a forged request gains nothing.
+    if request.path == "/auth/logout":
+        return redirect(url_for("login_page"))
+    if request.path == "/admin/logout":
+        return redirect(url_for("admin_login_page"))
+
     if request.path.startswith("/api/") or request.path == "/auth/firebase-callback":
         return jsonify({"error": "Invalid CSRF token"}), 400
     return "Invalid CSRF token", 400
@@ -1108,6 +1116,13 @@ def firebase_callback() -> Any:
 
 
 @app.get("/auth/logout")
+def user_logout_link() -> Any:
+    # Logging out changes state, so it requires a CSRF-protected POST. A plain
+    # link (old bookmark, or an <img> on another site) just goes home.
+    return redirect(url_for("login_page"))
+
+
+@app.post("/auth/logout")
 def user_logout() -> Any:
     session.clear()
     return render_template("logout.html")
@@ -2037,7 +2052,12 @@ def admin_edit_entry(entry_id: int) -> Any:
     return redirect(url_for("admin_panel"))
 
 
-@app.route("/admin/logout", methods=["GET", "POST"])
+@app.get("/admin/logout")
+def admin_logout_link() -> Any:
+    return redirect(url_for("admin_login_page"))
+
+
+@app.post("/admin/logout")
 def admin_logout() -> Any:
     session.clear()
     resp = redirect(url_for("admin_login_page"))

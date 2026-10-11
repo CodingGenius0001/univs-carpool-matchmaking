@@ -430,6 +430,51 @@ code {
   color: var(--danger) !important;
 }
 
+.menu-logout-form {
+  margin: 0;
+}
+
+/* Buttons inside the hamburger menu look like its links. */
+.hamburger-menu .menu-button {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  color: var(--muted);
+  cursor: pointer;
+  min-height: 0;
+  box-shadow: none;
+  transition: background var(--transition), color var(--transition);
+}
+
+.hamburger-menu .menu-button:hover {
+  color: var(--button);
+  background: var(--surface-accent);
+  box-shadow: none;
+  transform: none;
+}
+
+html:not(.light-mode) .hamburger-menu .menu-button {
+  background: none;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.hamburger-menu .menu-logout:hover {
+  background: var(--danger-bg);
+}
+
+/* The theme toggle lives in the hamburger menu on phones only. */
+.menu-theme-toggle {
+  display: none !important;
+}
+
 .hamburger-menu .mobile-nav-link,
 .hamburger-menu .mobile-party-link {
   display: none;
@@ -1859,6 +1904,7 @@ html:not(.light-mode) .policy-meta {
 html:not(.light-mode) .nav-links a:hover,
 html:not(.light-mode) .my-party-btn:hover,
 html:not(.light-mode) .hamburger-menu a:hover,
+html:not(.light-mode) .hamburger-menu .menu-button:hover,
 html:not(.light-mode) .btn-secondary:hover,
 html:not(.light-mode) .scroll-button:hover {
   color: var(--foreground) !important;
@@ -2329,6 +2375,16 @@ html:not(.light-mode) .theme-toggle {
     height: 3rem;
     right: 0.7rem;
     bottom: 0.7rem;
+  }
+
+  /* On phones the floating button covers content, so pages with a menu
+     show the toggle inside it instead. */
+  .has-menu-theme-toggle .global-theme-toggle {
+    display: none;
+  }
+
+  .menu-theme-toggle {
+    display: block !important;
   }
 
   .site-footer {
