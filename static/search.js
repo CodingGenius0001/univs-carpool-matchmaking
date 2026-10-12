@@ -85,13 +85,6 @@ function formatTime12h(value) {
   return `${((hourNum + 11) % 12) + 1}:${minute} ${suffix}`;
 }
 
-function showResultsNotice(text, tone = 'warning') {
-  document.getElementById('results-notice')?.remove();
-  results.insertAdjacentHTML('afterbegin', `
-    <div id="results-notice" class="message message-${tone} mt-2" role="alert">${escapeHtml(text)}</div>`);
-  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 // Cached user phone for auto-fill
 let cachedUserPhone = '';
 
@@ -126,7 +119,7 @@ function renderResults(data) {
         // Organizers leave from My Carpool, where they can pick the next organizer.
         actionBtn = `<a href="/my-party" class="btn btn-primary btn-sm">Manage My Carpool</a>`;
       } else if (isMember) {
-        actionBtn = `<button data-id="${entryId}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
+        actionBtn = `<button data-id="${entryId}" class="leave-carpool-btn btn btn-danger btn-sm">Leave Carpool</button>
                       <a href="/my-party" class="btn btn-primary btn-sm">View My Carpool</a>`;
       } else if (isFull) {
         actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Carpool Full</button>`;
@@ -271,8 +264,8 @@ function showPhonePrompt(carpoolId, joinBtn) {
           <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${escapeAttr(cachedUserPhone)}" />
         </label>
         <div class="modal-actions mt-2">
-          <button type="submit" class="btn btn-primary">Join Carpool</button>
           <button type="button" class="btn btn-secondary" id="phone-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Join Carpool</button>
         </div>
         <p id="phone-error" class="text-sm mt-1" style="color:var(--danger)"></p>
       </form>
@@ -344,12 +337,12 @@ function showPhonePrompt(carpoolId, joinBtn) {
   });
 }
 
-// Swap the phone prompt for a clear error, right where the user is looking.
-function showJoinError(modal, text) {
+// Fill a modal card with a clear error, right where the user is looking.
+function renderErrorCard(modal, title, text) {
   const card = modal.querySelector('.modal-card');
   card.innerHTML = `
     <div class="join-error-icon" aria-hidden="true">!</div>
-    <h3>Couldn't join this carpool</h3>
+    <h3>${escapeHtml(title)}</h3>
     <p class="join-error-text" role="alert">${escapeHtml(text)}</p>
     <div class="modal-actions mt-2">
       <button type="button" class="btn btn-primary" id="join-error-ok">OK</button>
@@ -359,13 +352,61 @@ function showJoinError(modal, text) {
   ok.focus();
 }
 
+function showJoinError(modal, text) {
+  renderErrorCard(modal, "Couldn't join this carpool", text);
+}
+
+function showErrorPopup(title, text) {
+  document.getElementById('phone-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'phone-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = '<div class="card modal-card" style="max-width:400px"></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  renderErrorCard(modal, title, text);
+}
+
+// Same look as the confirm popups on My Carpool; resolves true on confirm.
+function confirmDanger({ title, message, confirmLabel, cancelLabel = 'Cancel' }) {
+  return new Promise((resolve) => {
+    document.getElementById('phone-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'phone-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="card modal-card" style="max-width:400px">
+        <h3>${escapeHtml(title)}</h3>
+        <p class="modal-copy mt-2">${escapeHtml(message)}</p>
+        <div class="modal-actions mt-2">
+          <button type="button" class="btn btn-secondary" data-answer="no">${escapeHtml(cancelLabel)}</button>
+          <button type="button" class="btn btn-danger" data-answer="yes">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const done = (answer) => { modal.remove(); resolve(answer); };
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) return done(false);
+      const btn = e.target.closest('[data-answer]');
+      if (btn) done(btn.dataset.answer === 'yes');
+    });
+    modal.querySelector('[data-answer="no"]').focus();
+  });
+}
+
 // Leave carpool handler
 document.addEventListener('click', async (e) => {
   const leaveBtn = e.target.closest('.leave-carpool-btn');
   if (!leaveBtn) return;
 
   const id = leaveBtn.dataset.id;
-  if (!window.confirm('Leave this carpool? Leaving still counts toward your limit of 2 joins every 24 hours.')) return;
+  const confirmed = await confirmDanger({
+    title: 'Leave this carpool?',
+    message: 'You will be removed from this carpool. Leaving still counts toward your limit of 2 joins every 24 hours.',
+    confirmLabel: 'Leave carpool',
+    cancelLabel: 'Stay',
+  });
+  if (!confirmed) return;
   leaveBtn.disabled = true;
   leaveBtn.textContent = 'Leaving...';
 
@@ -379,12 +420,13 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => searchForm?.requestSubmit(), 500);
     } else {
       const data = await res.json().catch(() => ({}));
-      showResultsNotice(data.error || 'Could not leave this carpool.');
+      showErrorPopup("Couldn't leave this carpool", data.error || 'Could not leave this carpool.');
       leaveBtn.textContent = 'Leave Carpool';
       leaveBtn.disabled = false;
     }
   } catch {
-    leaveBtn.textContent = 'Error';
-    setTimeout(() => { leaveBtn.textContent = 'Leave Carpool'; leaveBtn.disabled = false; }, 2000);
+    showErrorPopup("Couldn't leave this carpool", 'Network error. Check your connection and try again.');
+    leaveBtn.textContent = 'Leave Carpool';
+    leaveBtn.disabled = false;
   }
 });
