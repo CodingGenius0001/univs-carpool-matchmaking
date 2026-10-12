@@ -69,8 +69,8 @@
             <textarea id="edit-notes" rows="3" maxlength="500"></textarea>
           </label>
           <div class="modal-actions mt-2">
-            <button type="submit" class="btn btn-primary">Save Changes</button>
             <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
           </div>
           <p id="edit-message" class="text-sm mt-1"></p>
         </form>
@@ -88,8 +88,8 @@
             <select id="transfer-select" style="width:100%;padding:0.5rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:0.25rem;"></select>
           </label>
           <div class="modal-actions mt-2">
-            <button type="submit" class="btn btn-primary">Transfer &amp; Leave</button>
             <button type="button" class="btn btn-secondary" id="transfer-cancel">Cancel</button>
+            <button type="submit" class="btn btn-danger">Transfer &amp; Leave</button>
           </div>
           <p id="transfer-message" class="text-sm mt-1"></p>
         </form>
@@ -287,7 +287,7 @@
                   </a>`
                 : '';
               const removeBtn = isCreator && !isCreatorMember
-                ? `<button class="remove-member-btn btn btn-sm" data-carpool="${escapeAttr(c.id)}" data-email="${escapeAttr(m.user_email)}" title="Remove member" style="background:var(--danger-bg);color:var(--danger);border:1px solid rgba(248,113,113,0.2);min-height:2.15rem;padding:0 0.8rem;font-size:0.78rem;">Remove</button>`
+                ? `<button class="remove-member-btn btn btn-danger btn-sm" data-carpool="${escapeAttr(c.id)}" data-email="${escapeAttr(m.user_email)}" title="Remove member">Remove</button>`
                 : '';
               return `
                 <li class="member-item">
@@ -306,6 +306,8 @@
                 data-time="${escapeAttr(c.planned_departure_time || '')}"
                 data-notes="${escapeAttr(c.notes || '')}"
                 data-seats="${escapeAttr(c.seats_available || 3)}">Edit Details</button>
+            ` : '';
+            const disbandAction = isCreator ? `
               <button data-id="${escapeAttr(c.id)}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
             ` : '';
 
@@ -343,8 +345,9 @@
                 </div>
                 <div class="carpool-actions">
                   <button data-id="${escapeAttr(c.id)}" data-title="${escapeAttr(`${Trip.headline(c)} · ${c.flight_code}`)}" class="share-carpool-btn btn btn-primary btn-sm">Share Invite Link</button>
-                  <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
+                  <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-danger btn-sm">Leave Carpool</button>
+                  ${disbandAction}
                 </div>
               </section>`;
           }).join('');

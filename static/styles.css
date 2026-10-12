@@ -1315,6 +1315,30 @@ select {
   border: 1px solid rgb(var(--danger-rgb) / 0.18);
 }
 
+.join-error-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 999px;
+  background: var(--danger-bg);
+  border: 1px solid rgb(var(--danger-rgb) / 0.35);
+  color: var(--danger);
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.join-error-text {
+  margin-top: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: var(--danger-bg);
+  border: 1px solid rgb(var(--danger-rgb) / 0.25);
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
 .message-warning {
   background: rgb(var(--signal-rgb) / 0.14);
   color: var(--warning);
@@ -2304,6 +2328,8 @@ html:not(.light-mode) .theme-toggle {
   .button-row,
   .carpool-actions,
   .result-actions,
+  /* Cancel first in the markup, so the main action ends up at the bottom,
+     nearest the thumb, the same as the carpool card buttons. */
   .modal-actions {
     flex-direction: column;
     align-items: stretch;
