@@ -304,9 +304,11 @@ function showPhonePrompt(carpoolId, joinBtn) {
       return;
     }
 
+    const submitBtn = modal.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Joining...';
     joinBtn.disabled = true;
     joinBtn.textContent = 'Joining...';
-    modal.remove();
 
     try {
       const res = await fetch(`/api/carpools/${carpoolId}/join`, {
@@ -319,6 +321,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
       });
       const data = await res.json();
       if (res.ok) {
+        modal.remove();
         cachedUserPhone = phone;
         joinBtn.textContent = 'Joined!';
         joinBtn.className = 'btn btn-secondary btn-sm';
@@ -329,15 +332,31 @@ function showPhonePrompt(carpoolId, joinBtn) {
         const mobileLink = document.getElementById('mobile-my-party-link');
         if (mobileLink) mobileLink.style.display = '';
       } else {
-        showResultsNotice(data.error || 'Could not join this carpool.');
+        showJoinError(modal, data.error || 'Could not join this carpool.');
         joinBtn.textContent = 'Join Carpool';
         joinBtn.disabled = false;
       }
     } catch {
-      joinBtn.textContent = 'Error';
-      setTimeout(() => { joinBtn.textContent = 'Join Carpool'; joinBtn.disabled = false; }, 2000);
+      showJoinError(modal, 'Network error. Check your connection and try again.');
+      joinBtn.textContent = 'Join Carpool';
+      joinBtn.disabled = false;
     }
   });
+}
+
+// Swap the phone prompt for a clear error, right where the user is looking.
+function showJoinError(modal, text) {
+  const card = modal.querySelector('.modal-card');
+  card.innerHTML = `
+    <div class="join-error-icon" aria-hidden="true">!</div>
+    <h3>Couldn't join this carpool</h3>
+    <p class="join-error-text" role="alert">${escapeHtml(text)}</p>
+    <div class="modal-actions mt-2">
+      <button type="button" class="btn btn-primary" id="join-error-ok">OK</button>
+    </div>`;
+  const ok = card.querySelector('#join-error-ok');
+  ok.addEventListener('click', () => modal.remove());
+  ok.focus();
 }
 
 // Leave carpool handler
