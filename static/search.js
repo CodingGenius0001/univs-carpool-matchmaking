@@ -46,10 +46,6 @@ searchForm?.querySelectorAll('input[name="direction"]').forEach((radio) => {
 });
 applyDirectionText();
 
-function tripBadge(r) {
-  const from = r.direction === 'from_airport';
-  return `<span class="trip-badge">${from ? '🛬 From' : '🛫 To'} ${escapeHtml(r.airport_code)}</span>`;
-}
 
 function buildAddUrl() {
   const params = new URLSearchParams();
@@ -137,10 +133,16 @@ function renderResults(data) {
       }
 
       return `
-        <article class="result">
+        <article class="result trip-card ${Trip.tripClass(r)}">
+          <span class="trip-stripe" aria-hidden="true"></span>
           <div class="result-header">
             <div>
-              <div class="result-name">${escapeHtml(creatorName)} ${tripBadge(r)}</div>
+              <div class="result-name">${escapeHtml(Trip.headline(r))}</div>
+              <p class="trip-subline">
+                <span class="trip-badge ${Trip.tripClass(r)}">${escapeHtml(Trip.directionLabel(r))}</span>
+                ${Trip.countdown(r.requested_flight_date) ? `<span class="trip-countdown">${escapeHtml(Trip.countdown(r.requested_flight_date))}</span>` : ''}
+                <span>Organized by ${escapeHtml(creatorName)}</span>
+              </p>
               ${reasons ? `<div class="match-reasons">${reasons}</div>` : ''}
             </div>
             ${r.match_score > 0 ? `<span class="result-badge ${scoreClass}">${escapeHtml(r.match_score)}% match</span>` : ''}

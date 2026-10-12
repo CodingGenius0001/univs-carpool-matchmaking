@@ -160,7 +160,7 @@
                 <td>{{ e.id }}</td>
                 <td>{{ e.first_name }}{% if e.last_initial %} {{ e.last_initial }}.{% endif %}</td>
                 <td><strong>{{ e.flight_code }}</strong></td>
-                <td><span class="dash-pill dash-pill-{{ c.direction }}">{{ '🛬 ' if c.direction == 'from_airport' else '🛫 ' }}{{ c.trip }}</span></td>
+                <td><span class="trip-badge {{ 'trip-from' if c.direction == 'from_airport' else 'trip-to' }}">{{ '🛬 ' if c.direction == 'from_airport' else '🛫 ' }}{{ c.trip }}</span></td>
                 <td>{{ c.date }}</td>
                 <td>{{ c.leave_time }}</td>
                 <td class="num">{{ c.members|length }} / {{ c.seats }}</td>
@@ -268,7 +268,7 @@
               <tr>
                 <td>{{ h.id }}</td>
                 <td><strong>{{ h.flight_code }}</strong></td>
-                <td>{{ '🛬 ' if h.direction == 'from_airport' else '🛫 ' }}{{ h.trip }}</td>
+                <td><span class="trip-badge {{ 'trip-from' if h.direction == 'from_airport' else 'trip-to' }}">{{ '🛬 ' if h.direction == 'from_airport' else '🛫 ' }}{{ h.trip }}</span></td>
                 <td>{{ h.date }}</td>
                 <td class="num">{{ h.peak }}</td>
                 <td class="num">{{ h.seats }}</td>

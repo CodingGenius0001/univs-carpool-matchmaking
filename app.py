@@ -933,6 +933,40 @@ def _trip_label(row: dict[str, Any]) -> str:
     return f"{word} {row.get('airport_code', '')}".strip()
 
 
+def _stored_date(stored: Any) -> Any:
+    try:
+        return datetime.strptime(str(stored or ""), "%m-%d-%Y").date()
+    except ValueError:
+        return None
+
+
+def _friendly_date(stored: Any) -> str:
+    """'10-23-2026' -> 'Fri, Oct 23'."""
+    d = _stored_date(stored)
+    return f"{d.strftime('%a, %b')} {d.day}" if d else _display_date(stored)
+
+
+def _countdown(stored: Any) -> str:
+    """'Today', 'Tomorrow', 'In 5 days' relative to today on campus (Pacific)."""
+    d = _stored_date(stored)
+    if not d:
+        return ""
+    n = (d - datetime.now(ZoneInfo("America/Los_Angeles")).date()).days
+    if n == 0:
+        return "Today"
+    if n == 1:
+        return "Tomorrow"
+    if n == -1:
+        return "Yesterday"
+    return "Past" if n < 0 else f"In {n} days"
+
+
+def _trip_headline(row: dict[str, Any]) -> str:
+    """'🛫 To ONT · Fri, Oct 23'."""
+    arrow = "🛬 From" if _direction(row) == "from_airport" else "🛫 To"
+    return f"{arrow} {row.get('airport_code', '')} · {_friendly_date(row.get('requested_flight_date'))}"
+
+
 def _display_date(stored: Any) -> str:
     """Stored dates are MM-DD-YYYY; show them US-style as MM/DD/YYYY."""
     return str(stored or "").replace("-", "/")
@@ -1756,6 +1790,8 @@ def invite_page(token: str) -> Any:
         "airport_code": entry.get("airport_code", ""),
         "airport_name": entry.get("airport_name", ""),
         "direction": _direction(entry),
+        "headline": _trip_headline(entry),
+        "countdown": _countdown(entry.get("requested_flight_date")),
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
         "notes": entry.get("notes", ""),

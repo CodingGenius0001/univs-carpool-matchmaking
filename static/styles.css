@@ -3150,3 +3150,127 @@ h2 {
     padding: 0.45rem 0.5rem;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Trip identity: color by direction (same blue/orange as the admin chart),
+   used on My Carpool, search results, invite pages and the admin tables.
+   Color is never the only cue: every place also shows the icon and text.
+   --------------------------------------------------------------------------- */
+:root {
+  --trip-to: #3987e5;
+  --trip-from: #d95926;
+  --trip-to-bg: rgb(57 135 229 / 0.18);
+  --trip-from-bg: rgb(217 89 38 / 0.2);
+}
+
+.light-mode {
+  --trip-to: #2a78d6;
+  --trip-from: #eb6834;
+  --trip-to-bg: rgb(42 120 214 / 0.12);
+  --trip-from-bg: rgb(235 104 52 / 0.14);
+}
+
+.trip-to { --trip-color: var(--trip-to); --trip-bg: var(--trip-to-bg); }
+.trip-from { --trip-color: var(--trip-from); --trip-bg: var(--trip-from-bg); }
+
+.trip-card {
+  position: relative;
+}
+
+/* Colored stripe down the left edge of the card (clipped by its radius). */
+.trip-stripe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  background: var(--trip-color);
+  pointer-events: none;
+}
+
+.trip-badge.trip-to,
+.trip-badge.trip-from {
+  background: var(--trip-bg);
+  box-shadow: inset 0 0 0 1px var(--trip-color);
+}
+
+.trip-subline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.trip-countdown {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+html:not(.light-mode) .trip-countdown {
+  border-color: rgba(236, 240, 242, 0.16);
+}
+
+/* "Your carpools" switcher at the top of My Carpool. */
+.trip-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.trip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.trip-chip:hover {
+  background: var(--trip-bg);
+  border-color: var(--trip-color);
+}
+
+.trip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--trip-color);
+  flex: 0 0 auto;
+}
+
+/* Land jumped-to cards below the page header. */
+.trip-card[id] {
+  scroll-margin-top: 1rem;
+}
+
+.result.trip-card {
+  padding-left: calc(1.25rem + 6px);
+}
+
+@media (max-width: 560px) {
+  .trip-switcher {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+  }
+}
