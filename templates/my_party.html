@@ -323,7 +323,7 @@
                     <p class="trip-subline">
                       <span class="trip-badge ${Trip.tripClass(c)}">${escapeHtml(Trip.directionLabel(c))}</span>
                       ${Trip.countdown(c.requested_flight_date) ? `<span class="trip-countdown">${escapeHtml(Trip.countdown(c.requested_flight_date))}</span>` : ''}
-                      <span>${escapeHtml(c.flight_code)} · Organized by ${escapeHtml(creatorName)}</span>
+                      <span>Organized by ${escapeHtml(creatorName)}</span>
                     </p>
                   </div>
                   <span class="result-badge score-high">${escapeHtml(members.length)} member${members.length !== 1 ? 's' : ''}</span>

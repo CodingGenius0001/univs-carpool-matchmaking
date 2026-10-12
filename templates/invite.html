@@ -63,7 +63,7 @@
             <p class="trip-subline">
               <span class="trip-badge {{ 'trip-from' if carpool.direction == 'from_airport' else 'trip-to' }}">{{ 'Airport → Campus' if carpool.direction == 'from_airport' else 'Campus → Airport' }}</span>
               {% if carpool.countdown %}<span class="trip-countdown">{{ carpool.countdown }}</span>{% endif %}
-              <span>{{ carpool.flight_code }} · Organized by {{ carpool.organizer }}</span>
+              <span>Organized by {{ carpool.organizer }}</span>
             </p>
           </div>
           <span class="result-badge score-high">{{ carpool.member_count }} member{{ '' if carpool.member_count == 1 else 's' }}</span>
