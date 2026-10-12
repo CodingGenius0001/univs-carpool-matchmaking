@@ -1181,7 +1181,14 @@ def _cleanup_expired_entries() -> None:
 
 @app.get("/")
 def landing() -> Any:
-    return render_template("welcome.html")
+    base = _public_base_url()
+    og = {
+        "title": "Campus2Air: share rides to and from the airport",
+        "description": "UCR students: find classmates on the same flight or heading the same way, and split the ride.",
+        "url": f"{base}/",
+        "image": f"{base}{url_for('static', filename='og-image.jpg')}",
+    }
+    return render_template("welcome.html", og=og)
 
 
 @app.get("/manifest.webmanifest")
@@ -1787,21 +1794,82 @@ def carpool_share_link(carpool_id: int) -> Any:
     return jsonify({"path": url_for("invite_page", token=token)})
 
 
+def _public_base_url() -> str:
+    """Absolute site URL for link previews (crawlers need absolute URLs)."""
+    if PUBLIC_APP_URL:
+        return PUBLIC_APP_URL
+    proto = request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip()
+    scheme = "https" if proto == "https" or os.getenv("VERCEL") else request.scheme
+    return f"{scheme}://{request.host}"
+
+
+def _invite_preview(entry: dict[str, Any] | None, member_count: int = 0) -> dict[str, str]:
+    """Title/description for the link preview shown in WhatsApp, Messages, etc.
+
+    Shown to anyone who has the link, signed in or not, so it contains trip
+    details only: no names, emails, phone numbers, notes or flight numbers.
+    """
+    base = _public_base_url()
+    meta = {"url": f"{base}{request.path}", "image": f"{base}{url_for('static', filename='og-image.jpg')}"}
+    if not entry:
+        meta.update(title="This carpool is no longer available",
+                    description="It may have been disbanded or already departed. Find another ride on Campus2Air.")
+        return meta
+    airport = entry.get("airport_code", "")
+    d = _stored_date(entry.get("requested_flight_date"))
+    date_text = f"{d.strftime('%a, %b')} {d.day}, {d.year}" if d else _display_date(entry.get("requested_flight_date"))
+    from_airport = _direction(entry) == "from_airport"
+    route = f"{airport} → Campus" if from_airport else f"Campus → {airport}"
+    time_text = _display_time(entry.get("planned_departure_time"))
+    seats = int(entry.get("seats_available") or 0)
+    left = max(0, seats - member_count)
+    parts = []
+    if time_text:
+        parts.append(f"Meets at {airport} at {time_text}" if from_airport else f"Leaves campus at {time_text}")
+    parts.append(f"{left} of {seats} seats left" if left else "Currently full")
+    parts.append("UCR students: sign in with your @ucr.edu account to see details and join.")
+    meta.update(title=f"{'🛬' if from_airport else '🛫'} {route} carpool · {date_text}",
+                description=" · ".join(parts))
+    return meta
+
+
 @app.get("/c/<token>")
 def invite_page(token: str) -> Any:
     """Shared invite link: summary of a carpool and an offer to join it."""
     if not SHARE_TOKEN_PATTERN.match(token):
-        return render_template("invite.html", carpool=None, **_user_context()), 404
-    if not _require_user_login():
-        # Come back here after signing in.
-        session["post_login_next"] = request.path
-        return redirect(url_for("login_page"))
+        return render_template("invite.html", carpool=None, og=_invite_preview(None), **_user_context()), 404
 
     _cleanup_expired_entries()
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE share_token = {p}", (token,))
+
+    if not _require_user_login():
+        # Link-preview crawlers (WhatsApp, Messages, iMessage, Slack...) and
+        # logged-out visitors get a public preview page with Open Graph tags
+        # instead of a redirect, so the shared link shows the trip. They're
+        # brought back here after signing in.
+        session["post_login_next"] = request.path
+        if not rows:
+            return render_template("invite_preview.html", carpool=None, og=_invite_preview(None)), 404
+        entry = rows[0]
+        count_rows = db.query(f"SELECT COUNT(*) AS c FROM party_members WHERE carpool_id = {p}", (entry["id"],))
+        member_count = int(count_rows[0]["c"]) if count_rows else 0
+        seats = int(entry.get("seats_available") or 0)
+        preview = {
+            "headline": _trip_headline(entry),
+            "direction": _direction(entry),
+            "countdown": _countdown(entry.get("requested_flight_date")),
+            "date": _display_date(entry.get("requested_flight_date")),
+            "time": _display_time(entry.get("planned_departure_time")) or "—",
+            "airport_code": entry.get("airport_code", ""),
+            "seats_total": seats,
+            "seats_left": max(0, seats - member_count),
+            "member_count": member_count,
+        }
+        return render_template("invite_preview.html", carpool=preview, og=_invite_preview(entry, member_count))
+
     if not rows:
-        return render_template("invite.html", carpool=None, **_user_context()), 404
+        return render_template("invite.html", carpool=None, og=_invite_preview(None), **_user_context()), 404
 
     entry = rows[0]
     email = session.get("user_email", "")
@@ -1837,6 +1905,7 @@ def invite_page(token: str) -> Any:
     return render_template(
         "invite.html",
         carpool=carpool,
+        og=_invite_preview(entry, len(members)),
         user_phone=(profile[0].get("phone") if profile else "") or "",
         **_user_context(),
     )
