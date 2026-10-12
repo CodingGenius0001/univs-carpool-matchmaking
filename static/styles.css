@@ -1056,6 +1056,7 @@ select {
   min-width: 8.5rem;
 }
 
+.modal-actions .btn[hidden],
 .wizard-actions .btn[hidden] {
   display: none !important;
 }

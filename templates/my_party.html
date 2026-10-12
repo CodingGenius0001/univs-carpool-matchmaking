@@ -301,16 +301,11 @@
             }).join('');
 
             const fromAirport = c.direction === 'from_airport';
-            const returnParams = new URLSearchParams({
-              direction: fromAirport ? 'to_airport' : 'from_airport',
-              airport_code: c.airport_code || '',
-            });
             const creatorActions = isCreator ? `
               <button data-id="${escapeAttr(c.id)}" class="edit-carpool-btn btn btn-secondary btn-sm"
                 data-time="${escapeAttr(c.planned_departure_time || '')}"
                 data-notes="${escapeAttr(c.notes || '')}"
                 data-seats="${escapeAttr(c.seats_available || 3)}">Edit Details</button>
-              <a href="/create-a-carpool?${escapeAttr(returnParams.toString())}" class="btn btn-secondary btn-sm">${fromAirport ? 'Plan Trip to Airport' : 'Plan Return Trip'}</a>
               <button data-id="${escapeAttr(c.id)}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
             ` : '';
 

@@ -2450,6 +2450,20 @@ def dismiss_notification(notif_id: int) -> Any:
     return jsonify({"ok": True})
 
 
+@app.post("/api/notifications/dismiss-all")
+def dismiss_all_notifications() -> Any:
+    """Dismiss every unread notification for the current user."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    db.execute(
+        f"UPDATE notifications SET dismissed = 1 WHERE user_email = {p} AND dismissed = 0",
+        (email,),
+    )
+    return jsonify({"ok": True})
+
+
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
