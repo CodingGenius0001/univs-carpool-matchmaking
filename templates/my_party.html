@@ -289,25 +289,34 @@
                 </li>`;
             }).join('');
 
+            const fromAirport = c.direction === 'from_airport';
+            const returnParams = new URLSearchParams({
+              direction: fromAirport ? 'to_airport' : 'from_airport',
+              airport_code: c.airport_code || '',
+            });
             const creatorActions = isCreator ? `
               <button data-id="${escapeAttr(c.id)}" class="edit-carpool-btn btn btn-secondary btn-sm"
                 data-time="${escapeAttr(c.planned_departure_time || '')}"
                 data-notes="${escapeAttr(c.notes || '')}"
                 data-seats="${escapeAttr(c.seats_available || 3)}">Edit Details</button>
+              <a href="/create-a-carpool?${escapeAttr(returnParams.toString())}" class="btn btn-secondary btn-sm">${fromAirport ? 'Plan Trip to Airport' : 'Plan Return Trip'}</a>
               <button data-id="${escapeAttr(c.id)}" class="disband-carpool-btn btn btn-danger btn-sm">Disband Carpool</button>
             ` : '';
 
             return `
               <section class="card carpool-card">
                 <div class="carpool-header">
-                  <h2>${escapeHtml(creatorName)}'s Carpool</h2>
+                  <div>
+                    <h2>${escapeHtml(creatorName)}'s Carpool</h2>
+                    <span class="trip-badge">${fromAirport ? '🛬 Airport → Campus' : '🛫 Campus → Airport'}</span>
+                  </div>
                   <span class="result-badge score-high">${escapeHtml(members.length)} member${members.length !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="result-info">
                   <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
-                  <span><span class="label">Airport</span>${escapeHtml(c.airport_code)}</span>
+                  <span><span class="label">${fromAirport ? 'Arrival Airport' : 'Departure Airport'}</span>${escapeHtml(c.airport_code)}</span>
                   <span><span class="label">Date</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
-                  <span><span class="label">Leave Time</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
+                  <span><span class="label">${fromAirport ? 'Meet at Airport' : 'Leave Campus'}</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
                   <span><span class="label">Notes</span>${(() => {
                     const n = c.notes || '';
                     if (!n) return 'None';

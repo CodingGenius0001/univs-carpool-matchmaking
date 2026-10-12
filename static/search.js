@@ -28,8 +28,32 @@ searchFlight?.addEventListener('input', () => {
   searchFlight.value = searchFlight.value.toUpperCase().replace(/\s+/g, '');
 });
 
+function selectedDirection() {
+  return searchForm?.querySelector('input[name="direction"]:checked')?.value || 'to_airport';
+}
+
+function applyDirectionText() {
+  const dir = selectedDirection() === 'from_airport' ? 'from' : 'to';
+  searchForm?.querySelectorAll('[data-to]').forEach((el) => { el.textContent = el.dataset[dir]; });
+}
+
+searchForm?.querySelectorAll('input[name="direction"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    applyDirectionText();
+    // Re-run an existing search so results always match the chosen direction.
+    if (results.children.length) searchForm.requestSubmit();
+  });
+});
+applyDirectionText();
+
+function tripBadge(r) {
+  const from = r.direction === 'from_airport';
+  return `<span class="trip-badge">${from ? '🛬 From' : '🛫 To'} ${escapeHtml(r.airport_code)}</span>`;
+}
+
 function buildAddUrl() {
   const params = new URLSearchParams();
+  params.set('direction', selectedDirection());
   const fc = searchForm?.querySelector('[name="flight_code"]')?.value;
   const ac = searchForm?.querySelector('[name="airport_code"]')?.value;
   const dd = searchForm?.querySelector('[name="departure_date"]')?.value;
@@ -116,7 +140,7 @@ function renderResults(data) {
         <article class="result">
           <div class="result-header">
             <div>
-              <div class="result-name">${escapeHtml(creatorName)}</div>
+              <div class="result-name">${escapeHtml(creatorName)} ${tripBadge(r)}</div>
               ${reasons ? `<div class="match-reasons">${reasons}</div>` : ''}
             </div>
             ${r.match_score > 0 ? `<span class="result-badge ${scoreClass}">${escapeHtml(r.match_score)}% match</span>` : ''}
@@ -135,7 +159,7 @@ function renderResults(data) {
               ${escapeHtml(String(r.requested_flight_date || r.flight_date_utc || '\u2014').replace(/-/g, '/'))}
             </span>
             <span>
-              <span class="label">Leaves</span>
+              <span class="label">${r.direction === 'from_airport' ? 'Meet at airport' : 'Leave campus'}</span>
               ${escapeHtml(formatTime12h(r.planned_departure_time))}
             </span>
             <span>
@@ -173,7 +197,7 @@ searchForm?.addEventListener('submit', async (e) => {
   if (!fc && !ac && !dd && !pt) {
     results.innerHTML = `
       <div class="message message-warning mt-2">
-        At least 1 search field is required. Please enter a flight code, airport code, departure date, or leave time to search.
+        At least 1 search field is required. Please enter a flight code, airport code, date, or time to search.
       </div>`;
     return;
   }

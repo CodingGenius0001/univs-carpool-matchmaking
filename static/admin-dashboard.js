@@ -182,7 +182,12 @@
     const total = series.reduce((s, d) => s + d.value, 0);
     plot.replaceChildren();
     if (!total) {
-      plot.innerHTML = '<p class="text-muted text-sm dash-empty">No carpools have finished in this range yet.</p>';
+      const empty = document.createElement('p');
+      empty.className = 'text-muted text-sm dash-empty';
+      empty.textContent = plot.closest('.dash-chart')?.dataset.key === 'outcomes'
+        ? 'No carpools have finished in this range yet.'
+        : 'No carpools in this range yet.';
+      plot.replaceChildren(empty);
       return;
     }
     const width = Math.max(260, plot.clientWidth);

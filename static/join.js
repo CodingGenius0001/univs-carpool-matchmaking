@@ -20,6 +20,26 @@ const steps = Array.from(document.querySelectorAll('.wizard-step'));
 const urlParams = new URLSearchParams(window.location.search);
 
 let currentStep = 0;
+const stepIndex = (key) => steps.findIndex((step) => step.dataset.key === key);
+const currentKey = () => steps[currentStep]?.dataset.key;
+
+function selectedDirection() {
+  return form?.querySelector('input[name="direction"]:checked')?.value || 'to_airport';
+}
+
+// Swap wording between "Campus -> Airport" and "Airport -> Campus".
+function applyDirectionText() {
+  const dir = selectedDirection() === 'from_airport' ? 'from' : 'to';
+  form?.querySelectorAll('[data-to]').forEach((el) => {
+    el.textContent = el.dataset[dir];
+  });
+  form?.querySelectorAll('[data-to-placeholder]').forEach((el) => {
+    el.placeholder = el.dataset[`${dir}Placeholder`];
+  });
+  form?.querySelectorAll('.direction-option').forEach((opt) => {
+    opt.classList.toggle('is-selected', opt.querySelector('input').checked);
+  });
+}
 let airlineActiveIdx = -1;
 let airlineResults = [];
 
@@ -82,8 +102,13 @@ function escapeHtml(value) {
 
 function updateReview() {
   if (!review) return;
+  const fromAirport = selectedDirection() === 'from_airport';
   review.innerHTML = `
     <div class="wizard-review-grid">
+      <div class="wizard-review-item wizard-review-item-wide">
+        <span class="label">Trip</span>
+        <strong>${fromAirport ? '🛬 Airport → Campus' : '🛫 Campus → Airport'}</strong>
+      </div>
       <div class="wizard-review-item">
         <span class="label">Phone</span>
         <strong>${escapeHtml(phoneInput?.value || 'Not set')}</strong>
@@ -97,15 +122,15 @@ function updateReview() {
         <strong>${escapeHtml(airlineNameInput?.value || 'Not set')}</strong>
       </div>
       <div class="wizard-review-item">
-        <span class="label">Departure date</span>
+        <span class="label">${fromAirport ? 'Landing date' : 'Flight date'}</span>
         <strong>${escapeHtml(formatDisplayDate(departureDateInput?.value || ''))}</strong>
       </div>
       <div class="wizard-review-item">
-        <span class="label">Departure airport</span>
+        <span class="label">${fromAirport ? 'Arrival airport' : 'Departure airport'}</span>
         <strong>${escapeHtml(airportCodeInput?.value || 'Not set')}</strong>
       </div>
       <div class="wizard-review-item">
-        <span class="label">Leave time</span>
+        <span class="label">${fromAirport ? 'Meet at airport' : 'Leave campus'}</span>
         <strong>${escapeHtml(formatDisplayTime(plannedDepartureInput?.value || ''))}</strong>
       </div>
       <div class="wizard-review-item">
@@ -159,7 +184,7 @@ function showStep(stepIndex) {
 function validateDateInput() {
   const val = departureDateInput?.value;
   if (!val) {
-    setMessage('Please enter your departure date as MM/DD/YYYY (or pick it from the calendar).', true);
+    setMessage('Please enter the date as MM/DD/YYYY (or pick it from the calendar).', true);
     departureDateInput?.focus();
     return false;
   }
@@ -170,7 +195,7 @@ function validateDateInput() {
 
   if (selected < today) {
     departureDateInput.value = '';
-    setMessage('Departure date cannot be in the past.', true);
+    setMessage('The date cannot be in the past.', true);
     departureDateInput.focus();
     return false;
   }
@@ -182,7 +207,13 @@ function validateDateInput() {
 function validateCurrentStep() {
   clearMessage();
 
-  if (currentStep === 0) {
+  const key = currentKey();
+
+  if (key === 'direction') {
+    return true;
+  }
+
+  if (key === 'phone') {
     const phonePattern = /^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$/;
     if (!phonePattern.test(phoneInput?.value || '')) {
       setMessage('Please enter a valid phone number in format +1 (XXX) XXX XXXX.', true);
@@ -192,7 +223,7 @@ function validateCurrentStep() {
     return true;
   }
 
-  if (currentStep === 1) {
+  if (key === 'flight') {
     const flightCode = String(flightCodeInput?.value || '').toUpperCase().replace(/\s+/g, '');
     flightCodeInput.value = flightCode;
     if (!flightCode) {
@@ -208,7 +239,7 @@ function validateCurrentStep() {
     return true;
   }
 
-  if (currentStep === 2) {
+  if (key === 'when') {
     if (!validateDateInput()) {
       return false;
     }
@@ -225,7 +256,7 @@ function validateCurrentStep() {
     return true;
   }
 
-  if (currentStep === 3) {
+  if (key === 'ride') {
     const seats = Number(seatsInput?.value || 4);
     if (!Number.isInteger(seats) || seats < 1 || seats > 7) {
       setMessage('Total seats must be a whole number between 1 and 7.', true);
@@ -233,12 +264,12 @@ function validateCurrentStep() {
       return false;
     }
     if (!plannedDepartureInput?.value) {
-      setMessage('Please enter a planned leave time.', true);
+      setMessage(selectedDirection() === 'from_airport' ? 'Please enter when to meet at the airport.' : 'Please enter when you will leave campus.', true);
       plannedDepartureInput?.focus();
       return false;
     }
     if (!/^\d{2}:\d{2}$/.test(plannedDepartureInput.value)) {
-      setMessage('Planned leave time must use HH:MM format.', true);
+      setMessage('Time must use HH:MM format.', true);
       plannedDepartureInput?.focus();
       return false;
     }
@@ -317,6 +348,11 @@ async function hydrateUserProfile() {
 }
 
 function applyUrlPrefill() {
+  const dirParam = urlParams.get('direction');
+  if (dirParam === 'to_airport' || dirParam === 'from_airport') {
+    const radio = form?.querySelector(`input[name="direction"][value="${dirParam}"]`);
+    if (radio) radio.checked = true;
+  }
   if (urlParams.get('flight_code') && flightCodeInput) {
     flightCodeInput.value = urlParams.get('flight_code');
   }
@@ -340,7 +376,7 @@ async function submitCarpool() {
   }
 
   if (!validateDateInput()) {
-    showStep(2);
+    showStep(stepIndex('when'));
     return;
   }
 
@@ -486,7 +522,7 @@ flightCodeInput?.addEventListener('input', async () => {
 
 flightCodeInput?.addEventListener('keydown', (e) => {
   if (!airlineDropdown?.classList.contains('open') || !airlineResults.length) {
-    if (e.key === 'Enter' && currentStep === 1) {
+    if (e.key === 'Enter' && currentKey() === 'flight') {
       e.preventDefault();
       if (validateCurrentStep()) {
         showStep(currentStep + 1);
@@ -563,6 +599,11 @@ form?.addEventListener('submit', async (e) => {
   await submitCarpool();
 });
 
+form?.querySelectorAll('input[name="direction"]').forEach((radio) => {
+  radio.addEventListener('change', applyDirectionText);
+});
+
 hydrateUserProfile();
 applyUrlPrefill();
+applyDirectionText();
 updateWizardUi();

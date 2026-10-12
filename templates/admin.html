@@ -127,7 +127,11 @@
           <figcaption><h3>Top departure airports</h3><p class="text-muted text-sm">Carpools created in range</p></figcaption>
           <div class="dash-plot"></div>
         </figure>
-        <figure class="dash-chart card dash-chart-wide" data-chart="stack" data-key="outcomes">
+        <figure class="dash-chart card" data-chart="stack" data-key="directions">
+          <figcaption><h3>Trip direction</h3><p class="text-muted text-sm">Carpools created in range</p></figcaption>
+          <div class="dash-plot"></div>
+        </figure>
+        <figure class="dash-chart card" data-chart="stack" data-key="outcomes">
           <figcaption><h3>What happened to finished carpools</h3><p class="text-muted text-sm">Carpools that closed in range</p></figcaption>
           <div class="dash-plot"></div>
         </figure>
@@ -145,7 +149,7 @@
           <table class="dash-table">
             <thead>
               <tr>
-                <th>ID</th><th>Organizer</th><th>Flight</th><th>Airport</th><th>Date</th><th>Leaves</th>
+                <th>ID</th><th>Organizer</th><th>Flight</th><th>Trip</th><th>Date</th><th>Time</th>
                 <th class="num">Riders</th><th>Created</th><th></th>
               </tr>
             </thead>
@@ -156,7 +160,7 @@
                 <td>{{ e.id }}</td>
                 <td>{{ e.first_name }}{% if e.last_initial %} {{ e.last_initial }}.{% endif %}</td>
                 <td><strong>{{ e.flight_code }}</strong></td>
-                <td>{{ e.airport_code }}</td>
+                <td><span class="dash-pill dash-pill-{{ c.direction }}">{{ '🛬 ' if c.direction == 'from_airport' else '🛫 ' }}{{ c.trip }}</span></td>
                 <td>{{ c.date }}</td>
                 <td>{{ c.leave_time }}</td>
                 <td class="num">{{ c.members|length }} / {{ c.seats }}</td>
@@ -257,14 +261,14 @@
         <div class="dash-table-wrap">
           <table class="dash-table" id="past-table">
             <thead>
-              <tr><th>ID</th><th>Flight</th><th>Airport</th><th>Date</th><th class="num">Riders (peak)</th><th class="num">Seats</th><th>Outcome</th><th>Created</th><th>Closed</th></tr>
+              <tr><th>ID</th><th>Flight</th><th>Trip</th><th>Date</th><th class="num">Riders (peak)</th><th class="num">Seats</th><th>Outcome</th><th>Created</th><th>Closed</th></tr>
             </thead>
             <tbody>
               {% for h in dash.past %}
               <tr>
                 <td>{{ h.id }}</td>
                 <td><strong>{{ h.flight_code }}</strong></td>
-                <td>{{ h.airport_code }}</td>
+                <td>{{ '🛬 ' if h.direction == 'from_airport' else '🛫 ' }}{{ h.trip }}</td>
                 <td>{{ h.date }}</td>
                 <td class="num">{{ h.peak }}</td>
                 <td class="num">{{ h.seats }}</td>
