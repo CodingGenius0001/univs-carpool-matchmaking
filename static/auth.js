@@ -328,16 +328,9 @@ async function bootstrapAuth() {
     handleAuthError(err);
   }
 
-  if (!hasLoggedOutMarker() && hasTermsAgreed() && auth.currentUser) {
-    try {
-      setAuthBusy('Finishing sign-in...');
-      await finishServerLogin(auth.currentUser);
-      return;
-    } catch (err) {
-      handleAuthError(err);
-    }
-  }
-
+  // A lingering Google session is never used to sign in on page load: the
+  // user has to tick the Terms box and click Sign in each time. Only a
+  // redirect sign-in they started that way is finished here.
   if (hadRedirectFlow) {
     setAuthBusy('Finishing sign-in...');
     try {
