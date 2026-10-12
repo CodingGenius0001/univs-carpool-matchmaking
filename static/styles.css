@@ -2775,6 +2775,10 @@ html:not(.light-mode) .theme-toggle {
   pointer-events: none;
 }
 
+.dash-tooltip[hidden] {
+  display: none;
+}
+
 .dash-tooltip strong {
   color: var(--foreground);
   font-size: 0.95rem;
@@ -3089,43 +3093,40 @@ h2 {
   white-space: nowrap;
 }
 
-/* Direction switch on Find a Carpool */
-.direction-switch {
-  display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
+/* Trip direction field on Find a Carpool: the first field of the search grid,
+   tinted blue / orange like the trip cards. */
+.search-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
-.direction-switch label {
+.select-wrap {
   position: relative;
-  margin: 0;
-  padding: 0.45rem 1rem;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  cursor: pointer;
+  display: block;
 }
 
-.direction-switch input {
+.select-wrap::after {
+  content: "";
   position: absolute;
-  opacity: 0;
+  right: 1.1rem;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-70%) rotate(45deg);
   pointer-events: none;
 }
 
-.direction-switch label:has(input:checked) {
-  background: var(--surface-accent);
-  color: var(--foreground);
+select.direction-select {
+  padding-right: 2.6rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.direction-switch label:focus-within {
-  box-shadow: 0 0 0 3px rgb(var(--button-rgb) / 0.2);
+/* !important to beat the dark theme's input border override. */
+html select.direction-select.trip-to,
+html select.direction-select.trip-from {
+  border-left: 5px solid var(--trip-color) !important;
 }
 
 @media (max-width: 560px) {
@@ -3133,15 +3134,6 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .direction-switch {
-    display: flex;
-  }
-
-  .direction-switch label {
-    flex: 1;
-    text-align: center;
-    padding: 0.45rem 0.5rem;
-  }
 }
 
 /* ---------------------------------------------------------------------------

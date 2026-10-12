@@ -48,18 +48,36 @@
     tooltip.style.top = `${Math.max(8, y - tooltip.offsetHeight - 12)}px`;
   }
 
+  let hoverMark = null;
+
   function hideTip() {
     tooltip.hidden = true;
+    hoverMark?.classList.remove('is-hover');
+    hoverMark = null;
   }
+
+  // The tooltip is position: fixed, so it would stay put while the page
+  // scrolls out from under it. Hide it on any scroll or resize.
+  window.addEventListener('scroll', hideTip, { capture: true, passive: true });
+  window.addEventListener('resize', hideTip);
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('svg')) hideTip(); });
 
   function bindHover(target, value, label, mark) {
     target.setAttribute('tabindex', '0');
     target.setAttribute('aria-label', `${label}: ${value}`);
-    const on = (e) => { mark?.classList.add('is-hover'); showTip(e, value, label); };
-    const off = () => { mark?.classList.remove('is-hover'); hideTip(); };
+    const on = (e) => {
+      if (hoverMark && hoverMark !== mark) hoverMark.classList.remove('is-hover');
+      hoverMark = mark || null;
+      mark?.classList.add('is-hover');
+      showTip(e, value, label);
+    };
+    const off = () => hideTip();
     target.addEventListener('pointermove', on);
     target.addEventListener('pointerleave', off);
-    target.addEventListener('focus', (e) => {
+    // Keyboard focus only: a mouse click also focuses the bar, which would
+    // otherwise leave the tooltip up after the pointer moves away.
+    target.addEventListener('focus', () => {
+      if (!target.matches(':focus-visible')) return;
       const r = target.getBoundingClientRect();
       on({ target, clientX: r.left + r.width / 2, clientY: r.top });
     });
