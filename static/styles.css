@@ -2983,13 +2983,6 @@ html:not(.light-mode) .dash-table th {
   }
 }
 
-/* Very narrow phones (e.g. iPhone SE): "My Carpool" is also in the menu. */
-@media (max-width: 370px) {
-  .site-header .my-party-btn {
-    display: none !important;
-  }
-}
-
 /* Avoid a lone word on the last line of big headings. */
 h1,
 h2 {
@@ -3272,5 +3265,16 @@ html:not(.light-mode) .trip-countdown {
     padding-bottom: 0.25rem;
     margin-inline: -0.25rem;
     padding-inline: 0.25rem;
+  }
+}
+
+/* Phones: show the short "C2A" logo to free up room in the header. */
+@media (max-width: 560px) {
+  .site-logo .logo-full {
+    display: none;
+  }
+
+  .site-logo .logo-short {
+    display: inline;
   }
 }
