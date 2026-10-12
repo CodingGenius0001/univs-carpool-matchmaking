@@ -228,7 +228,7 @@
         <div class="dash-table-wrap">
           <table class="dash-table" id="students-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th>Terms accepted</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
             </thead>
             <tbody>
               {% for s in dash.students %}
@@ -238,11 +238,12 @@
                 <td>{{ s.phone or '—' }}</td>
                 <td>{{ s.signed_up }}</td>
                 <td>{{ s.last_login }}</td>
+                <td>{{ s.terms }}</td>
                 <td class="num">{{ s.active_carpools }}</td>
                 <td class="num">{{ s.joins }}</td>
               </tr>
               {% else %}
-              <tr><td colspan="7" class="text-muted">No students yet.</td></tr>
+              <tr><td colspan="8" class="text-muted">No students yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>

@@ -128,13 +128,21 @@ function hasLoggedOutMarker() {
   return false;
 }
 
+// The version of the Terms shown on this page. Agreement is remembered per
+// version, so a new version requires ticking the box again.
+const TERMS_VERSION = termsCheckbox?.dataset.termsVersion || '';
+
 function markTermsAgreed() {
-  try { localStorage.setItem(TERMS_AGREED_KEY, '1'); } catch (_) {}
+  try { localStorage.setItem(TERMS_AGREED_KEY, TERMS_VERSION); } catch (_) {}
 }
 
 function hasTermsAgreed() {
-  try { return localStorage.getItem(TERMS_AGREED_KEY) === '1'; } catch (_) {}
+  try { return !!TERMS_VERSION && localStorage.getItem(TERMS_AGREED_KEY) === TERMS_VERSION; } catch (_) {}
   return false;
+}
+
+function agreedTermsVersion() {
+  return termsCheckbox?.checked || hasTermsAgreed() ? TERMS_VERSION : '';
 }
 
 function ensureAuthPersistence() {
@@ -197,12 +205,18 @@ serverLoginPromise = (async () => {
       'Content-Type': 'application/json',
       'X-CSRF-Token': csrfToken,
     },
-    body: JSON.stringify({ idToken, csrf_token: csrfToken })
+    body: JSON.stringify({ idToken, csrf_token: csrfToken, termsVersion: agreedTermsVersion() })
   });
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     await auth.signOut();
+    if (res.status === 409 && data.terms_required) {
+      // The Terms changed since this browser last agreed: ask again.
+      try { localStorage.removeItem(TERMS_AGREED_KEY); } catch (_) {}
+      if (termsCheckbox) termsCheckbox.checked = false;
+      throw new Error(data.error);
+    }
     if (res.status === 403) {
       window.location.href = '/login?error=ucr_only';
       return;

@@ -107,6 +107,13 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+
+# Terms of Service & EULA (templates/_terms_body.html). Bump the version for
+# any material change: everyone is asked to agree again at their next sign-in,
+# and the version each user accepted is recorded in the users table.
+TERMS_VERSION = "4.0"
+TERMS_EFFECTIVE = "October 12, 2026"
+LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip()
 # Which way the ride goes. Carpools created before this existed are campus -> airport.
 DIRECTIONS = ("to_airport", "from_airport")
 DEFAULT_DIRECTION = "to_airport"
@@ -220,7 +227,12 @@ def _request_csrf_token() -> str:
 
 @app.context_processor
 def inject_template_helpers() -> dict[str, Any]:
-    return {"csrf_token": _get_csrf_token}
+    return {
+        "csrf_token": _get_csrf_token,
+        "terms_version": TERMS_VERSION,
+        "terms_effective": TERMS_EFFECTIVE,
+        "legal_contact_email": LEGAL_CONTACT_EMAIL,
+    }
 
 
 @app.before_request
@@ -795,6 +807,10 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpool_history LIKE 'direction'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction VARCHAR(16) NOT NULL DEFAULT 'to_airport'")
+                for col in ("terms_version", "terms_accepted_at"):
+                    cur.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                    if not cur.fetchone():
+                        cur.execute(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(64) NOT NULL DEFAULT ''")
                 cur.execute("SHOW COLUMNS FROM users LIKE 'last_login_at'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE users ADD COLUMN last_login_at VARCHAR(64) NOT NULL DEFAULT ''")
@@ -817,8 +833,10 @@ class DBAdapter:
                 if "direction" not in [row[1] for row in cur.fetchall()]:
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction TEXT NOT NULL DEFAULT 'to_airport'")
                 cur.execute("PRAGMA table_info(users)")
-                if "last_login_at" not in [row[1] for row in cur.fetchall()]:
-                    cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
+                user_cols = [row[1] for row in cur.fetchall()]
+                for col in ("last_login_at", "terms_version", "terms_accepted_at"):
+                    if col not in user_cols:
+                        cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -1333,6 +1351,13 @@ def firebase_callback() -> Any:
 
     if not firebase_id_token:
         return jsonify({"error": "Missing Firebase ID token"}), 400
+    # Clickwrap: signing in requires agreeing to the current Terms version.
+    if str(data.get("termsVersion", "")) != TERMS_VERSION:
+        return jsonify({
+            "error": "Please review and agree to the updated Terms of Service to continue.",
+            "terms_required": True,
+            "terms_version": TERMS_VERSION,
+        }), 409
 
     try:
         claims = _verify_firebase_id_token(firebase_id_token)
@@ -1372,14 +1397,21 @@ def firebase_callback() -> Any:
         existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
         if not existing:
             db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, "", now_iso, now_iso),
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at) "
+                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso),
             )
             _log_event("signup", email)
         else:
             db.execute(
                 f"UPDATE users SET first_name = {p}, last_initial = {p}, last_login_at = {p} WHERE user_email = {p}",
                 (first_name, last_initial, now_iso, email),
+            )
+            # Record acceptance only when the version changes, so the date
+            # shows when this version was first agreed to.
+            db.execute(
+                f"UPDATE users SET terms_version = {p}, terms_accepted_at = {p} WHERE user_email = {p} AND terms_version != {p}",
+                (TERMS_VERSION, now_iso, email, TERMS_VERSION),
             )
         _log_event("login", email)
     except Exception:
@@ -2545,6 +2577,7 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
          "signed_up": _fmt_local(u.get("created_at")),
          "last_login": _fmt_local(u.get("last_login_at")) if u.get("last_login_at") else "—",
          "active_carpools": carpools_per_user.get(u["user_email"], 0),
+         "terms": (f"v{u.get('terms_version')} · {_fmt_local(u.get('terms_accepted_at'))}" if u.get("terms_version") else "—"),
          "joins": joins_per_user.get(u["user_email"], 0)}
         for u in users
     ]

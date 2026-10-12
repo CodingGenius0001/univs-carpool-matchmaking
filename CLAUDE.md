@@ -29,6 +29,7 @@ There are no tests or linting configured in this project.
 - `FLASK_DEBUG` — enables the Werkzeug debugger for `python app.py` (default on; binds to 127.0.0.1 only)
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (preferred) or `ADMIN_PASSWORD` — admin panel is disabled unless one of these is set
 - `FIREBASE_PROJECT_ID` — Firebase project used to verify ID tokens
+- `LEGAL_CONTACT_EMAIL` — address shown in the Terms for legal notices and arbitration opt-outs (falls back to the GitHub repository link)
 - `ALLOW_SQLITE_FALLBACK` — if MySQL is unreachable, fall back to SQLite (default: on locally, off on Vercel, where requests fail with 503 instead of writing to ephemeral `/tmp`)
 - MySQL: `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_PORT`, `MYSQL_SSL`
 
@@ -71,4 +72,5 @@ There are no tests or linting configured in this project.
 - Phone format enforced as `+1 (XXX) XXX XXXX`
 - Dates are shown and entered US-style (MM/DD/YYYY). Date fields use `<input type="date" data-us-date>` enhanced by `static/date-input.js` (a MM/DD/YYYY text box + calendar button; the hidden native input keeps the YYYY-MM-DD value), because native date inputs follow the browser's region format
 - Invite links: `/c/<share_token>` shows a carpool summary and a join prompt. Tokens are random, created on first `GET /api/carpools/<id>/share-link` (members only) and never included in search/member API responses. Logged-out visitors are sent to login and returned to the invite via `session["post_login_next"]` (only `/c/...` paths are allowed)
+- Terms of Service & EULA: text lives in `templates/_terms_body.html` (shown on `/eula`); `docs/campus2air-tos.pdf` is generated from that page (print to PDF), so regenerate it after edits. `TERMS_VERSION` / `TERMS_EFFECTIVE` in `app.py`: sign-in (`/auth/firebase-callback`) is refused with 409 unless the client sends the current `termsVersion` (the login checkbox), and `users.terms_version` / `terms_accepted_at` record what each user accepted. Bump the version for material changes so everyone re-accepts
 - API endpoints under `/api/`, pages at root paths, admin under `/admin/`

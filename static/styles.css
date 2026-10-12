@@ -3278,3 +3278,63 @@ html:not(.light-mode) .trip-countdown {
     display: inline;
   }
 }
+
+/* Terms of Service page */
+.terms-actions {
+  margin: 0.25rem 0 1.25rem;
+}
+
+.terms-summary {
+  margin: 1rem 0 1.5rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--button);
+  border-radius: 16px;
+  background: var(--surface-accent);
+}
+
+.terms-summary h3 {
+  margin-top: 0;
+}
+
+.terms-body h3 {
+  scroll-margin-top: 1rem;
+}
+
+.terms-caps {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.terms-body blockquote {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--border);
+  font-style: italic;
+}
+
+/* Printing / PDF export: just the document. */
+@media print {
+  .site-header,
+  .site-footer,
+  .global-theme-toggle,
+  .eula-close-btn,
+  .terms-actions {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .card {
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .terms-body h3 {
+    break-after: avoid;
+  }
+}
