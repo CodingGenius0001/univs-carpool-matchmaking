@@ -64,7 +64,7 @@ There are no tests or linting configured in this project.
 
 **Key patterns**:
 - Entries auto-expire at 23:59 UTC the day after the departure date; `_cleanup_expired_entries()` runs at the start of the create/search/details endpoints
-- Join limit: a user can join at most `JOIN_LIMIT_COUNT` (2) carpools created by others per rolling 24h (`join_log`); leaving does not refund a join
+- Join limit: a user can join at most `JOIN_LIMIT_COUNT` (2) carpools created by others per rolling 24h (`join_log`); leaving does not refund a join. The admin Students table shows each student's count and a Reset button (`POST /admin/reset-join-limit`, clears their `join_log` rows)
 - Trip direction: `carpools.direction` is `to_airport` (campus → airport, the default and what older rows are) or `from_airport` (airport → campus). For `from_airport`, `airport_code` is the arrival airport, the date is the landing date and `planned_departure_time` is when to meet at the airport. Search treats `direction` as a hard filter; UI wording switches via `data-to` / `data-from` attributes; `_trip_label()` gives "to LAX" / "from LAX" for messages
 - Trip identity: carpools are headed by their trip ("🛫 To ONT · Fri, Oct 23") and color-coded by direction (`.trip-to` blue / `.trip-from` orange, CSS vars `--trip-to` / `--trip-from`, a `.trip-stripe` on cards). Client helpers in `static/trip.js` (`Trip.headline`, `Trip.countdown`, `Trip.compare`); server equivalents `_trip_headline`, `_friendly_date`, `_countdown` (Pacific time) for the invite page. My Carpool sorts soonest first and shows a chip switcher when the user is in 2+ carpools
 - Search: leave time is a hard filter (±`LEAVE_TIME_WINDOW_MINUTES`, 120); other fields add to the match score

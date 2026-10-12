@@ -2987,6 +2987,18 @@ html:not(.light-mode) .dash-table th {
   font-weight: 600;
 }
 
+.dash-join-limit {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  white-space: nowrap;
+}
+
+.dash-limit-blocked {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .dash-danger {
   border-color: var(--danger-bg);
 }

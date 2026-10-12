@@ -315,7 +315,10 @@
       pending = () => form.submit();
       document.getElementById('confirm-title').textContent = form.dataset.confirmTitle || 'Confirm action';
       document.getElementById('confirm-text').textContent = form.dataset.confirmMessage || 'Are you sure?';
-      document.getElementById('confirm-confirm').textContent = form.dataset.confirmLabel || 'Continue';
+      const confirmBtn = document.getElementById('confirm-confirm');
+      confirmBtn.textContent = form.dataset.confirmLabel || 'Continue';
+      // Red unless the form says the action is not destructive.
+      confirmBtn.className = form.dataset.confirmTone === 'primary' ? 'btn btn-primary' : 'btn btn-danger';
       confirmModal.style.display = 'flex';
     });
   });
