@@ -28,21 +28,23 @@ searchFlight?.addEventListener('input', () => {
   searchFlight.value = searchFlight.value.toUpperCase().replace(/\s+/g, '');
 });
 
+const directionSelect = document.getElementById('search-direction');
+
 function selectedDirection() {
-  return searchForm?.querySelector('input[name="direction"]:checked')?.value || 'to_airport';
+  return directionSelect?.value === 'from_airport' ? 'from_airport' : 'to_airport';
 }
 
 function applyDirectionText() {
-  const dir = selectedDirection() === 'from_airport' ? 'from' : 'to';
-  searchForm?.querySelectorAll('[data-to]').forEach((el) => { el.textContent = el.dataset[dir]; });
+  const from = selectedDirection() === 'from_airport';
+  searchForm?.querySelectorAll('[data-to]').forEach((el) => { el.textContent = el.dataset[from ? 'from' : 'to']; });
+  directionSelect?.classList.toggle('trip-from', from);
+  directionSelect?.classList.toggle('trip-to', !from);
 }
 
-searchForm?.querySelectorAll('input[name="direction"]').forEach((radio) => {
-  radio.addEventListener('change', () => {
-    applyDirectionText();
-    // Re-run an existing search so results always match the chosen direction.
-    if (results.children.length) searchForm.requestSubmit();
-  });
+directionSelect?.addEventListener('change', () => {
+  applyDirectionText();
+  // Re-run an existing search so results always match the chosen direction.
+  if (results.children.length) searchForm.requestSubmit();
 });
 applyDirectionText();
 

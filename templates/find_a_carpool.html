@@ -44,14 +44,18 @@
     <main class="container">
       <section class="card">
         <h2>Find Available Carpools</h2>
-        <p class="card-subtitle">Pick your trip, then search by flight code, airport, date, or time. At least one field is required. Adding a time shows only carpools within 2 hours of it.</p>
+        <p class="card-subtitle">Choose your trip, then search by flight code, airport, date, or time. Fill in at least one of those. Adding a time shows only carpools within 2 hours of it.</p>
 
         <form id="search-form">
-          <div class="direction-switch" role="radiogroup" aria-label="Trip direction">
-            <label><input type="radio" name="direction" value="to_airport" checked /> 🛫 To airport</label>
-            <label><input type="radio" name="direction" value="from_airport" /> 🛬 From airport</label>
-          </div>
-          <div class="grid">
+          <div class="grid search-grid">
+            <label>Trip
+              <span class="select-wrap">
+                <select name="direction" id="search-direction" class="direction-select trip-to">
+                  <option value="to_airport" selected>🛫 Campus → Airport</option>
+                  <option value="from_airport">🛬 Airport → Campus</option>
+                </select>
+              </span>
+            </label>
             <label>Flight Code
               <input name="flight_code" placeholder="e.g. UA1375" maxlength="6" />
             </label>
