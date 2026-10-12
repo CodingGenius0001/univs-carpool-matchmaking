@@ -69,6 +69,7 @@
         <div id="notif-popup-list"></div>
         <div class="modal-actions mt-2">
           <button type="button" class="btn btn-secondary" id="notif-popup-close">Close</button>
+          <button type="button" class="btn btn-primary" id="notif-dismiss-all" hidden>Dismiss All</button>
         </div>
       </div>
     </div>`;
@@ -78,9 +79,11 @@
   const bellDot = document.getElementById('notif-bell-dot');
   const popup = document.getElementById('notif-popup');
   const list = document.getElementById('notif-popup-list');
+  const dismissAllBtn = document.getElementById('notif-dismiss-all');
   let unreadNotifications = [];
 
   function renderList() {
+    dismissAllBtn.hidden = unreadNotifications.length < 2;
     if (!unreadNotifications.length) {
       list.innerHTML = `
         <div class="message" style="margin-bottom:0;">
@@ -142,6 +145,22 @@
       renderList();
       updateBellState();
     } catch {}
+  });
+
+  dismissAllBtn.addEventListener('click', async () => {
+    dismissAllBtn.disabled = true;
+    try {
+      const res = await fetch('/api/notifications/dismiss-all', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken },
+      });
+      if (res.ok) {
+        unreadNotifications = [];
+        renderList();
+        updateBellState();
+      }
+    } catch {}
+    dismissAllBtn.disabled = false;
   });
 
   async function checkNotifications() {
