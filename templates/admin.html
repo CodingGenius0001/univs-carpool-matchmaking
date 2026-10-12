@@ -228,7 +228,7 @@
         <div class="dash-table-wrap">
           <table class="dash-table" id="students-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th>Terms accepted</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th>Terms accepted</th><th class="num">In carpools</th><th class="num">Joins</th><th>Join limit (24h)</th></tr>
             </thead>
             <tbody>
               {% for s in dash.students %}
@@ -241,9 +241,26 @@
                 <td>{{ s.terms }}</td>
                 <td class="num">{{ s.active_carpools }}</td>
                 <td class="num">{{ s.joins }}</td>
+                <td>
+                  <div class="dash-join-limit">
+                    <span class="{{ 'dash-limit-blocked' if s.join_limit.blocked else '' }}">
+                      {{ s.join_limit.used }} / {{ s.join_limit.limit }}{% if s.join_limit.blocked %} · blocked until {{ s.join_limit.resets }}{% endif %}
+                    </span>
+                    {% if s.join_limit.used %}
+                    <form method="post" action="/admin/reset-join-limit" class="confirmable-form"
+                      data-confirm-title="Reset join limit?"
+                      data-confirm-message="{{ s.name }} will be able to join {{ s.join_limit.limit }} more carpools right away. Their current carpools are not changed."
+                      data-confirm-label="Reset limit" data-confirm-tone="primary">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                      <input type="hidden" name="email" value="{{ s.email }}" />
+                      <button type="submit" class="btn btn-secondary btn-sm">Reset</button>
+                    </form>
+                    {% endif %}
+                  </div>
+                </td>
               </tr>
               {% else %}
-              <tr><td colspan="8" class="text-muted">No students yet.</td></tr>
+              <tr><td colspan="9" class="text-muted">No students yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>

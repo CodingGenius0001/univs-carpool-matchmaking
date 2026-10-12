@@ -2651,6 +2651,31 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
     carpools_per_user: dict[str, int] = {}
     for m in members:
         carpools_per_user[m["user_email"]] = carpools_per_user.get(m["user_email"], 0) + 1
+    # Joins counting toward the rolling limit right now, per student.
+    now_utc = _now_utc()
+    window_rows = db.query(
+        f"SELECT user_email, joined_at FROM join_log WHERE joined_at > {db.placeholder}",
+        ((now_utc - JOIN_LIMIT_WINDOW).isoformat(),),
+    )
+    window_joins: dict[str, list[datetime]] = {}
+    for r in window_rows:
+        try:
+            joined = datetime.fromisoformat(str(r["joined_at"]))
+        except ValueError:
+            continue
+        window_joins.setdefault(r["user_email"], []).append(joined)
+
+    def join_limit(email: str) -> dict[str, Any]:
+        recent = sorted(window_joins.get(email, []))
+        used = len(recent)
+        blocked = used >= JOIN_LIMIT_COUNT
+        return {
+            "used": used,
+            "limit": JOIN_LIMIT_COUNT,
+            "blocked": blocked,
+            "resets": _fmt_local((recent[0] + JOIN_LIMIT_WINDOW).isoformat()) if blocked else "",
+        }
+
     joins_per_user: dict[str, int] = {}
     for a in activity:
         if a["event"] == "joined":
@@ -2661,7 +2686,8 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
          "last_login": _fmt_local(u.get("last_login_at")) if u.get("last_login_at") else "—",
          "active_carpools": carpools_per_user.get(u["user_email"], 0),
          "terms": (f"v{u.get('terms_version')} · {_fmt_local(u.get('terms_accepted_at'))}" if u.get("terms_version") else "—"),
-         "joins": joins_per_user.get(u["user_email"], 0)}
+         "joins": joins_per_user.get(u["user_email"], 0),
+         "join_limit": join_limit(u["user_email"])}
         for u in users
     ]
 
@@ -2754,6 +2780,17 @@ def admin_delete_all() -> Any:
         return jsonify({"error": "Unauthorized"}), 401
     _clear_all_data()
     return redirect(url_for("admin_panel"))
+
+
+@app.post("/admin/reset-join-limit")
+def admin_reset_join_limit() -> Any:
+    """Clear a student's rolling join count so they can join again right away."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = str(request.form.get("email", "")).strip()
+    if email:
+        db.execute(f"DELETE FROM join_log WHERE user_email = {db.placeholder}", (email,))
+    return redirect(url_for("admin_panel") + "#students")
 
 
 @app.post("/admin/delete/<int:entry_id>")
