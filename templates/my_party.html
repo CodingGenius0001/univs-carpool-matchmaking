@@ -12,7 +12,7 @@
       </head>
   <body>
     <header class="site-header app-header">
-      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <a href="/" class="site-logo" aria-label="Campus2Air home"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -162,6 +162,7 @@
       <p>Campus2Air &mdash; Built for students, by students.</p>
     </footer>
 
+    <script src="{{ url_for('static', filename='trip.js') }}"></script>
     <script>
       const content = document.getElementById('carpool-content');
       const currentUserEmail = {{ user_email|tojson }};
@@ -246,7 +247,8 @@
           const res = await fetch('/api/my-parties');
           const data = await res.json();
 
-          currentParties = data.parties || [];
+          // Soonest trip first.
+          currentParties = (data.parties || []).slice().sort((a, b) => Trip.compare(a.carpool, b.carpool));
           if (!data.parties?.length) {
             content.innerHTML = `
               <section class="card text-center" style="margin-top:3rem;">
@@ -260,7 +262,16 @@
             return;
           }
 
-          content.innerHTML = data.parties.map(p => {
+          // Quick switcher: one chip per carpool, jumping to its card.
+          const switcher = currentParties.length > 1 ? `
+            <nav class="trip-switcher" aria-label="Your carpools">
+              ${currentParties.map((p) => `
+                <a href="#carpool-${escapeAttr(p.carpool.id)}" class="trip-chip ${Trip.tripClass(p.carpool)}">
+                  <span class="trip-dot" aria-hidden="true"></span>${escapeHtml(Trip.headline(p.carpool))}
+                </a>`).join('')}
+            </nav>` : '';
+
+          content.innerHTML = switcher + currentParties.map(p => {
             const c = p.carpool;
             const members = p.members || [];
             const isCreator = p.is_creator;
@@ -304,18 +315,23 @@
             ` : '';
 
             return `
-              <section class="card carpool-card">
+              <section class="card carpool-card trip-card ${Trip.tripClass(c)}" id="carpool-${escapeAttr(c.id)}">
+                <span class="trip-stripe" aria-hidden="true"></span>
                 <div class="carpool-header">
                   <div>
-                    <h2>${escapeHtml(creatorName)}'s Carpool</h2>
-                    <span class="trip-badge">${fromAirport ? '🛬 Airport → Campus' : '🛫 Campus → Airport'}</span>
+                    <h2>${escapeHtml(Trip.headline(c))}</h2>
+                    <p class="trip-subline">
+                      <span class="trip-badge ${Trip.tripClass(c)}">${escapeHtml(Trip.directionLabel(c))}</span>
+                      ${Trip.countdown(c.requested_flight_date) ? `<span class="trip-countdown">${escapeHtml(Trip.countdown(c.requested_flight_date))}</span>` : ''}
+                      <span>Organized by ${escapeHtml(creatorName)}</span>
+                    </p>
                   </div>
                   <span class="result-badge score-high">${escapeHtml(members.length)} member${members.length !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="result-info">
                   <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
                   <span><span class="label">${fromAirport ? 'Arrival Airport' : 'Departure Airport'}</span>${escapeHtml(c.airport_code)}</span>
-                  <span><span class="label">Date</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
+                  <span><span class="label">${fromAirport ? 'Landing Date' : 'Flight Date'}</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
                   <span><span class="label">${fromAirport ? 'Meet at Airport' : 'Leave Campus'}</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
                   <span><span class="label">Notes</span>${(() => {
                     const n = c.notes || '';
@@ -331,7 +347,7 @@
                   </ul>
                 </div>
                 <div class="carpool-actions">
-                  <button data-id="${escapeAttr(c.id)}" data-title="${escapeAttr(`${creatorName}'s carpool for ${c.flight_code}`)}" class="share-carpool-btn btn btn-primary btn-sm">Share Invite Link</button>
+                  <button data-id="${escapeAttr(c.id)}" data-title="${escapeAttr(`${Trip.headline(c)} · ${c.flight_code}`)}" class="share-carpool-btn btn btn-primary btn-sm">Share Invite Link</button>
                   <button data-id="${escapeAttr(c.id)}" class="leave-carpool-btn btn btn-secondary btn-sm">Leave Carpool</button>
                   ${creatorActions}
                 </div>

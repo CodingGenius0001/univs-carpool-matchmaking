@@ -29,6 +29,7 @@ There are no tests or linting configured in this project.
 - `FLASK_DEBUG` — enables the Werkzeug debugger for `python app.py` (default on; binds to 127.0.0.1 only)
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (preferred) or `ADMIN_PASSWORD` — admin panel is disabled unless one of these is set
 - `FIREBASE_PROJECT_ID` — Firebase project used to verify ID tokens
+- `LEGAL_CONTACT_EMAIL` — address shown in the Terms for legal notices and arbitration opt-outs (falls back to the GitHub repository link)
 - `ALLOW_SQLITE_FALLBACK` — if MySQL is unreachable, fall back to SQLite (default: on locally, off on Vercel, where requests fail with 503 instead of writing to ephemeral `/tmp`)
 - MySQL: `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_PORT`, `MYSQL_SSL`
 
@@ -65,9 +66,11 @@ There are no tests or linting configured in this project.
 - Entries auto-expire at 23:59 UTC the day after the departure date; `_cleanup_expired_entries()` runs at the start of the create/search/details endpoints
 - Join limit: a user can join at most `JOIN_LIMIT_COUNT` (2) carpools created by others per rolling 24h (`join_log`); leaving does not refund a join
 - Trip direction: `carpools.direction` is `to_airport` (campus → airport, the default and what older rows are) or `from_airport` (airport → campus). For `from_airport`, `airport_code` is the arrival airport, the date is the landing date and `planned_departure_time` is when to meet at the airport. Search treats `direction` as a hard filter; UI wording switches via `data-to` / `data-from` attributes; `_trip_label()` gives "to LAX" / "from LAX" for messages
+- Trip identity: carpools are headed by their trip ("🛫 To ONT · Fri, Oct 23") and color-coded by direction (`.trip-to` blue / `.trip-from` orange, CSS vars `--trip-to` / `--trip-from`, a `.trip-stripe` on cards). Client helpers in `static/trip.js` (`Trip.headline`, `Trip.countdown`, `Trip.compare`); server equivalents `_trip_headline`, `_friendly_date`, `_countdown` (Pacific time) for the invite page. My Carpool sorts soonest first and shows a chip switcher when the user is in 2+ carpools
 - Search: leave time is a hard filter (±`LEAVE_TIME_WINDOW_MINUTES`, 120); other fields add to the match score
 - Flight codes validated against `^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$`; airport codes must be 3 letters; notes ≤500 chars, removal/disband reasons ≤300; departure date must be today (UTC, minus one day of slack) through one year out
 - Phone format enforced as `+1 (XXX) XXX XXXX`
 - Dates are shown and entered US-style (MM/DD/YYYY). Date fields use `<input type="date" data-us-date>` enhanced by `static/date-input.js` (a MM/DD/YYYY text box + calendar button; the hidden native input keeps the YYYY-MM-DD value), because native date inputs follow the browser's region format
 - Invite links: `/c/<share_token>` shows a carpool summary and a join prompt. Tokens are random, created on first `GET /api/carpools/<id>/share-link` (members only) and never included in search/member API responses. Logged-out visitors are sent to login and returned to the invite via `session["post_login_next"]` (only `/c/...` paths are allowed)
+- Terms of Service & EULA: text lives in `templates/_terms_body.html` (shown on `/eula`); `docs/campus2air-tos.pdf` is generated from that page (print to PDF), so regenerate it after edits. `TERMS_VERSION` / `TERMS_EFFECTIVE` in `app.py`: sign-in (`/auth/firebase-callback`) is refused with 409 unless the client sends the current `termsVersion` (the login checkbox), and `users.terms_version` / `terms_accepted_at` record what each user accepted. Bump the version for material changes so everyone re-accepts
 - API endpoints under `/api/`, pages at root paths, admin under `/admin/`

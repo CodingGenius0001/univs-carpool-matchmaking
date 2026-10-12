@@ -107,6 +107,13 @@ PHONE_PATTERN = re.compile(r"^\+1 \([0-9]{3}\) [0-9]{3} [0-9]{4}$")
 NAME_PATTERN = re.compile(r"^[A-Za-z \-']+$")
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
+
+# Terms of Service & EULA (templates/_terms_body.html). Bump the version for
+# any material change: everyone is asked to agree again at their next sign-in,
+# and the version each user accepted is recorded in the users table.
+TERMS_VERSION = "4.0"
+TERMS_EFFECTIVE = "October 12, 2026"
+LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip()
 # Which way the ride goes. Carpools created before this existed are campus -> airport.
 DIRECTIONS = ("to_airport", "from_airport")
 DEFAULT_DIRECTION = "to_airport"
@@ -220,7 +227,12 @@ def _request_csrf_token() -> str:
 
 @app.context_processor
 def inject_template_helpers() -> dict[str, Any]:
-    return {"csrf_token": _get_csrf_token}
+    return {
+        "csrf_token": _get_csrf_token,
+        "terms_version": TERMS_VERSION,
+        "terms_effective": TERMS_EFFECTIVE,
+        "legal_contact_email": LEGAL_CONTACT_EMAIL,
+    }
 
 
 @app.before_request
@@ -795,6 +807,10 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpool_history LIKE 'direction'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction VARCHAR(16) NOT NULL DEFAULT 'to_airport'")
+                for col in ("terms_version", "terms_accepted_at"):
+                    cur.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                    if not cur.fetchone():
+                        cur.execute(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(64) NOT NULL DEFAULT ''")
                 cur.execute("SHOW COLUMNS FROM users LIKE 'last_login_at'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE users ADD COLUMN last_login_at VARCHAR(64) NOT NULL DEFAULT ''")
@@ -817,8 +833,10 @@ class DBAdapter:
                 if "direction" not in [row[1] for row in cur.fetchall()]:
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction TEXT NOT NULL DEFAULT 'to_airport'")
                 cur.execute("PRAGMA table_info(users)")
-                if "last_login_at" not in [row[1] for row in cur.fetchall()]:
-                    cur.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
+                user_cols = [row[1] for row in cur.fetchall()]
+                for col in ("last_login_at", "terms_version", "terms_accepted_at"):
+                    if col not in user_cols:
+                        cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             conn.commit()
         finally:
             cur.close()
@@ -931,6 +949,40 @@ def _trip_label(row: dict[str, Any]) -> str:
     """'to LAX' or 'from LAX' for messages."""
     word = "from" if _direction(row) == "from_airport" else "to"
     return f"{word} {row.get('airport_code', '')}".strip()
+
+
+def _stored_date(stored: Any) -> Any:
+    try:
+        return datetime.strptime(str(stored or ""), "%m-%d-%Y").date()
+    except ValueError:
+        return None
+
+
+def _friendly_date(stored: Any) -> str:
+    """'10-23-2026' -> 'Fri, Oct 23'."""
+    d = _stored_date(stored)
+    return f"{d.strftime('%a, %b')} {d.day}" if d else _display_date(stored)
+
+
+def _countdown(stored: Any) -> str:
+    """'Today', 'Tomorrow', 'In 5 days' relative to today on campus (Pacific)."""
+    d = _stored_date(stored)
+    if not d:
+        return ""
+    n = (d - datetime.now(ZoneInfo("America/Los_Angeles")).date()).days
+    if n == 0:
+        return "Today"
+    if n == 1:
+        return "Tomorrow"
+    if n == -1:
+        return "Yesterday"
+    return "Past" if n < 0 else f"In {n} days"
+
+
+def _trip_headline(row: dict[str, Any]) -> str:
+    """'🛫 To ONT · Fri, Oct 23'."""
+    arrow = "🛬 From" if _direction(row) == "from_airport" else "🛫 To"
+    return f"{arrow} {row.get('airport_code', '')} · {_friendly_date(row.get('requested_flight_date'))}"
 
 
 def _display_date(stored: Any) -> str:
@@ -1129,7 +1181,14 @@ def _cleanup_expired_entries() -> None:
 
 @app.get("/")
 def landing() -> Any:
-    return render_template("welcome.html")
+    base = _public_base_url()
+    og = {
+        "title": "Campus2Air: share rides to and from the airport",
+        "description": "UCR students: find classmates on the same flight or heading the same way, and split the ride.",
+        "url": f"{base}/",
+        "image": f"{base}{url_for('static', filename='og-image.jpg')}",
+    }
+    return render_template("welcome.html", og=og)
 
 
 @app.get("/manifest.webmanifest")
@@ -1299,6 +1358,13 @@ def firebase_callback() -> Any:
 
     if not firebase_id_token:
         return jsonify({"error": "Missing Firebase ID token"}), 400
+    # Clickwrap: signing in requires agreeing to the current Terms version.
+    if str(data.get("termsVersion", "")) != TERMS_VERSION:
+        return jsonify({
+            "error": "Please review and agree to the updated Terms of Service to continue.",
+            "terms_required": True,
+            "terms_version": TERMS_VERSION,
+        }), 409
 
     try:
         claims = _verify_firebase_id_token(firebase_id_token)
@@ -1338,14 +1404,21 @@ def firebase_callback() -> Any:
         existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
         if not existing:
             db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, "", now_iso, now_iso),
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at) "
+                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso),
             )
             _log_event("signup", email)
         else:
             db.execute(
                 f"UPDATE users SET first_name = {p}, last_initial = {p}, last_login_at = {p} WHERE user_email = {p}",
                 (first_name, last_initial, now_iso, email),
+            )
+            # Record acceptance only when the version changes, so the date
+            # shows when this version was first agreed to.
+            db.execute(
+                f"UPDATE users SET terms_version = {p}, terms_accepted_at = {p} WHERE user_email = {p} AND terms_version != {p}",
+                (TERMS_VERSION, now_iso, email, TERMS_VERSION),
             )
         _log_event("login", email)
     except Exception:
@@ -1721,21 +1794,82 @@ def carpool_share_link(carpool_id: int) -> Any:
     return jsonify({"path": url_for("invite_page", token=token)})
 
 
+def _public_base_url() -> str:
+    """Absolute site URL for link previews (crawlers need absolute URLs)."""
+    if PUBLIC_APP_URL:
+        return PUBLIC_APP_URL
+    proto = request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip()
+    scheme = "https" if proto == "https" or os.getenv("VERCEL") else request.scheme
+    return f"{scheme}://{request.host}"
+
+
+def _invite_preview(entry: dict[str, Any] | None, member_count: int = 0) -> dict[str, str]:
+    """Title/description for the link preview shown in WhatsApp, Messages, etc.
+
+    Shown to anyone who has the link, signed in or not, so it contains trip
+    details only: no names, emails, phone numbers, notes or flight numbers.
+    """
+    base = _public_base_url()
+    meta = {"url": f"{base}{request.path}", "image": f"{base}{url_for('static', filename='og-image.jpg')}"}
+    if not entry:
+        meta.update(title="This carpool is no longer available",
+                    description="It may have been disbanded or already departed. Find another ride on Campus2Air.")
+        return meta
+    airport = entry.get("airport_code", "")
+    d = _stored_date(entry.get("requested_flight_date"))
+    date_text = f"{d.strftime('%a, %b')} {d.day}, {d.year}" if d else _display_date(entry.get("requested_flight_date"))
+    from_airport = _direction(entry) == "from_airport"
+    route = f"{airport} → Campus" if from_airport else f"Campus → {airport}"
+    time_text = _display_time(entry.get("planned_departure_time"))
+    seats = int(entry.get("seats_available") or 0)
+    left = max(0, seats - member_count)
+    parts = []
+    if time_text:
+        parts.append(f"Meets at {airport} at {time_text}" if from_airport else f"Leaves campus at {time_text}")
+    parts.append(f"{left} of {seats} seats left" if left else "Currently full")
+    parts.append("UCR students: sign in with your @ucr.edu account to see details and join.")
+    meta.update(title=f"{'🛬' if from_airport else '🛫'} {route} carpool · {date_text}",
+                description=" · ".join(parts))
+    return meta
+
+
 @app.get("/c/<token>")
 def invite_page(token: str) -> Any:
     """Shared invite link: summary of a carpool and an offer to join it."""
     if not SHARE_TOKEN_PATTERN.match(token):
-        return render_template("invite.html", carpool=None, **_user_context()), 404
-    if not _require_user_login():
-        # Come back here after signing in.
-        session["post_login_next"] = request.path
-        return redirect(url_for("login_page"))
+        return render_template("invite.html", carpool=None, og=_invite_preview(None), **_user_context()), 404
 
     _cleanup_expired_entries()
     p = db.placeholder
     rows = db.query(f"SELECT * FROM carpools WHERE share_token = {p}", (token,))
+
+    if not _require_user_login():
+        # Link-preview crawlers (WhatsApp, Messages, iMessage, Slack...) and
+        # logged-out visitors get a public preview page with Open Graph tags
+        # instead of a redirect, so the shared link shows the trip. They're
+        # brought back here after signing in.
+        session["post_login_next"] = request.path
+        if not rows:
+            return render_template("invite_preview.html", carpool=None, og=_invite_preview(None)), 404
+        entry = rows[0]
+        count_rows = db.query(f"SELECT COUNT(*) AS c FROM party_members WHERE carpool_id = {p}", (entry["id"],))
+        member_count = int(count_rows[0]["c"]) if count_rows else 0
+        seats = int(entry.get("seats_available") or 0)
+        preview = {
+            "headline": _trip_headline(entry),
+            "direction": _direction(entry),
+            "countdown": _countdown(entry.get("requested_flight_date")),
+            "date": _display_date(entry.get("requested_flight_date")),
+            "time": _display_time(entry.get("planned_departure_time")) or "—",
+            "airport_code": entry.get("airport_code", ""),
+            "seats_total": seats,
+            "seats_left": max(0, seats - member_count),
+            "member_count": member_count,
+        }
+        return render_template("invite_preview.html", carpool=preview, og=_invite_preview(entry, member_count))
+
     if not rows:
-        return render_template("invite.html", carpool=None, **_user_context()), 404
+        return render_template("invite.html", carpool=None, og=_invite_preview(None), **_user_context()), 404
 
     entry = rows[0]
     email = session.get("user_email", "")
@@ -1756,6 +1890,8 @@ def invite_page(token: str) -> Any:
         "airport_code": entry.get("airport_code", ""),
         "airport_name": entry.get("airport_name", ""),
         "direction": _direction(entry),
+        "headline": _trip_headline(entry),
+        "countdown": _countdown(entry.get("requested_flight_date")),
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
         "notes": entry.get("notes", ""),
@@ -1769,6 +1905,7 @@ def invite_page(token: str) -> Any:
     return render_template(
         "invite.html",
         carpool=carpool,
+        og=_invite_preview(entry, len(members)),
         user_phone=(profile[0].get("phone") if profile else "") or "",
         **_user_context(),
     )
@@ -2509,6 +2646,7 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
          "signed_up": _fmt_local(u.get("created_at")),
          "last_login": _fmt_local(u.get("last_login_at")) if u.get("last_login_at") else "—",
          "active_carpools": carpools_per_user.get(u["user_email"], 0),
+         "terms": (f"v{u.get('terms_version')} · {_fmt_local(u.get('terms_accepted_at'))}" if u.get("terms_version") else "—"),
          "joins": joins_per_user.get(u["user_email"], 0)}
         for u in users
     ]

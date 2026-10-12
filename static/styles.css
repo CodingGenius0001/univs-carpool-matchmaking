@@ -2983,13 +2983,6 @@ html:not(.light-mode) .dash-table th {
   }
 }
 
-/* Very narrow phones (e.g. iPhone SE): "My Carpool" is also in the menu. */
-@media (max-width: 370px) {
-  .site-header .my-party-btn {
-    display: none !important;
-  }
-}
-
 /* Avoid a lone word on the last line of big headings. */
 h1,
 h2 {
@@ -3148,5 +3141,200 @@ h2 {
     flex: 1;
     text-align: center;
     padding: 0.45rem 0.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Trip identity: color by direction (same blue/orange as the admin chart),
+   used on My Carpool, search results, invite pages and the admin tables.
+   Color is never the only cue: every place also shows the icon and text.
+   --------------------------------------------------------------------------- */
+:root {
+  --trip-to: #3987e5;
+  --trip-from: #d95926;
+  --trip-to-bg: rgb(57 135 229 / 0.18);
+  --trip-from-bg: rgb(217 89 38 / 0.2);
+}
+
+.light-mode {
+  --trip-to: #2a78d6;
+  --trip-from: #eb6834;
+  --trip-to-bg: rgb(42 120 214 / 0.12);
+  --trip-from-bg: rgb(235 104 52 / 0.14);
+}
+
+.trip-to { --trip-color: var(--trip-to); --trip-bg: var(--trip-to-bg); }
+.trip-from { --trip-color: var(--trip-from); --trip-bg: var(--trip-from-bg); }
+
+.trip-card {
+  position: relative;
+}
+
+/* Colored stripe down the left edge of the card (clipped by its radius). */
+.trip-stripe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  background: var(--trip-color);
+  pointer-events: none;
+}
+
+.trip-badge.trip-to,
+.trip-badge.trip-from {
+  background: var(--trip-bg);
+  box-shadow: inset 0 0 0 1px var(--trip-color);
+}
+
+.trip-subline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.trip-countdown {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+html:not(.light-mode) .trip-countdown {
+  border-color: rgba(236, 240, 242, 0.16);
+}
+
+/* "Your carpools" switcher at the top of My Carpool. */
+.trip-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.trip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.trip-chip:hover {
+  background: var(--trip-bg);
+  border-color: var(--trip-color);
+}
+
+.trip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--trip-color);
+  flex: 0 0 auto;
+}
+
+/* Land jumped-to cards below the page header. */
+.trip-card[id] {
+  scroll-margin-top: 1rem;
+}
+
+.result.trip-card {
+  padding-left: calc(1.25rem + 6px);
+}
+
+@media (max-width: 560px) {
+  .trip-switcher {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+  }
+}
+
+/* Phones: show the short "C2A" logo to free up room in the header. */
+@media (max-width: 560px) {
+  .site-logo .logo-full {
+    display: none;
+  }
+
+  .site-logo .logo-short {
+    display: inline;
+  }
+}
+
+/* Terms of Service page */
+.terms-actions {
+  margin: 0.25rem 0 1.25rem;
+}
+
+.terms-summary {
+  margin: 1rem 0 1.5rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--button);
+  border-radius: 16px;
+  background: var(--surface-accent);
+}
+
+.terms-summary h3 {
+  margin-top: 0;
+}
+
+.terms-body h3 {
+  scroll-margin-top: 1rem;
+}
+
+.terms-caps {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.terms-body blockquote {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--border);
+  font-style: italic;
+}
+
+/* Printing / PDF export: just the document. */
+@media print {
+  .site-header,
+  .site-footer,
+  .global-theme-toggle,
+  .eula-close-btn,
+  .terms-actions {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .card {
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .terms-body h3 {
+    break-after: avoid;
   }
 }

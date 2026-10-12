@@ -1,0 +1,17 @@
+{#- Link-preview tags (Open Graph / Twitter) read by WhatsApp, Messages,
+    iMessage, Slack, Discord, etc. Pass `og` = {title, description, url, image}. -#}
+{% if og %}
+<meta property="og:site_name" content="Campus2Air" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="{{ og.title }}" />
+<meta property="og:description" content="{{ og.description }}" />
+<meta property="og:url" content="{{ og.url }}" />
+<meta property="og:image" content="{{ og.image }}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Campus2Air: shared rides to and from the airport for UCR students" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ og.title }}" />
+<meta name="twitter:description" content="{{ og.description }}" />
+<meta name="twitter:image" content="{{ og.image }}" />
+{% endif %}

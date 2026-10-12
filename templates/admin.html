@@ -10,7 +10,7 @@
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <a href="/" class="site-logo" aria-label="Campus2Air home"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -160,7 +160,7 @@
                 <td>{{ e.id }}</td>
                 <td>{{ e.first_name }}{% if e.last_initial %} {{ e.last_initial }}.{% endif %}</td>
                 <td><strong>{{ e.flight_code }}</strong></td>
-                <td><span class="dash-pill dash-pill-{{ c.direction }}">{{ '🛬 ' if c.direction == 'from_airport' else '🛫 ' }}{{ c.trip }}</span></td>
+                <td><span class="trip-badge {{ 'trip-from' if c.direction == 'from_airport' else 'trip-to' }}">{{ '🛬 ' if c.direction == 'from_airport' else '🛫 ' }}{{ c.trip }}</span></td>
                 <td>{{ c.date }}</td>
                 <td>{{ c.leave_time }}</td>
                 <td class="num">{{ c.members|length }} / {{ c.seats }}</td>
@@ -228,7 +228,7 @@
         <div class="dash-table-wrap">
           <table class="dash-table" id="students-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed up</th><th>Last login</th><th>Terms accepted</th><th class="num">In carpools</th><th class="num">Joins</th></tr>
             </thead>
             <tbody>
               {% for s in dash.students %}
@@ -238,11 +238,12 @@
                 <td>{{ s.phone or '—' }}</td>
                 <td>{{ s.signed_up }}</td>
                 <td>{{ s.last_login }}</td>
+                <td>{{ s.terms }}</td>
                 <td class="num">{{ s.active_carpools }}</td>
                 <td class="num">{{ s.joins }}</td>
               </tr>
               {% else %}
-              <tr><td colspan="7" class="text-muted">No students yet.</td></tr>
+              <tr><td colspan="8" class="text-muted">No students yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -268,7 +269,7 @@
               <tr>
                 <td>{{ h.id }}</td>
                 <td><strong>{{ h.flight_code }}</strong></td>
-                <td>{{ '🛬 ' if h.direction == 'from_airport' else '🛫 ' }}{{ h.trip }}</td>
+                <td><span class="trip-badge {{ 'trip-from' if h.direction == 'from_airport' else 'trip-to' }}">{{ '🛬 ' if h.direction == 'from_airport' else '🛫 ' }}{{ h.trip }}</span></td>
                 <td>{{ h.date }}</td>
                 <td class="num">{{ h.peak }}</td>
                 <td class="num">{{ h.seats }}</td>

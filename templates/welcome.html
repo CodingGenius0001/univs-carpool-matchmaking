@@ -8,11 +8,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
+    {% include "_og.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <a href="/" class="site-logo" aria-label="Campus2Air home"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/" class="active">Home</a>
       </nav>

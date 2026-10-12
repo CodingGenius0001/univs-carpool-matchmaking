@@ -3,14 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>{% if carpool %}Join {{ carpool.organizer }}'s Carpool{% else %}Carpool not found{% endif %} - Campus2Air</title>
+    <title>{% if carpool %}Join {{ carpool.organizer }}'s carpool {{ 'from' if carpool.direction == 'from_airport' else 'to' }} {{ carpool.airport_code }}{% else %}Carpool not found{% endif %} - Campus2Air</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
     {% include "_pwa_head.html" %}
+    {% include "_og.html" %}
     <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
   </head>
   <body>
     <header class="site-header app-header">
-      <a href="/" class="site-logo"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+      <a href="/" class="site-logo" aria-label="Campus2Air home"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
       <nav class="nav-links">
         <a href="/start-now">Home</a>
         <a href="/find-a-carpool">Find a Carpool</a>
@@ -54,12 +55,17 @@
         </div>
       </section>
       {% else %}
-      <section class="card carpool-card invite-card">
+      <section class="card carpool-card invite-card trip-card {{ 'trip-from' if carpool.direction == 'from_airport' else 'trip-to' }}">
+        <span class="trip-stripe" aria-hidden="true"></span>
         <p class="invite-kicker">You've been invited to a carpool</p>
         <div class="carpool-header">
           <div>
-            <h2>{{ carpool.organizer }}'s Carpool</h2>
-            <span class="trip-badge">{% if carpool.direction == 'from_airport' %}🛬 Airport → Campus{% else %}🛫 Campus → Airport{% endif %}</span>
+            <h2>{{ carpool.headline }}</h2>
+            <p class="trip-subline">
+              <span class="trip-badge {{ 'trip-from' if carpool.direction == 'from_airport' else 'trip-to' }}">{{ 'Airport → Campus' if carpool.direction == 'from_airport' else 'Campus → Airport' }}</span>
+              {% if carpool.countdown %}<span class="trip-countdown">{{ carpool.countdown }}</span>{% endif %}
+              <span>Organized by {{ carpool.organizer }}</span>
+            </p>
           </div>
           <span class="result-badge score-high">{{ carpool.member_count }} member{{ '' if carpool.member_count == 1 else 's' }}</span>
         </div>

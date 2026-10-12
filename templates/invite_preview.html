@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>{{ og.title }} - Campus2Air</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    {% include "_pwa_head.html" %}
+    {% include "_og.html" %}
+    <script>if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light-mode');}</script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="site-logo" aria-label="Campus2Air home"><span class="logo-full">Campus2Air</span><span class="logo-short">C2A</span></a>
+    </header>
+
+    <main class="container">
+      {% if not carpool %}
+      <section class="card text-center home-actions">
+        <h2>This carpool isn't available</h2>
+        <p class="card-subtitle">It may have been disbanded or already departed.</p>
+        <div class="invite-actions" style="justify-content:center;">
+          <a href="/login" class="btn btn-primary">Find Another Ride</a>
+        </div>
+      </section>
+      {% else %}
+      {% set from_airport = carpool.direction == 'from_airport' %}
+      <section class="card carpool-card invite-card trip-card {{ 'trip-from' if from_airport else 'trip-to' }}">
+        <span class="trip-stripe" aria-hidden="true"></span>
+        <p class="invite-kicker">You've been invited to a carpool</p>
+        <h2>{{ carpool.headline }}</h2>
+        <p class="trip-subline">
+          <span class="trip-badge {{ 'trip-from' if from_airport else 'trip-to' }}">{{ 'Airport → Campus' if from_airport else 'Campus → Airport' }}</span>
+          {% if carpool.countdown %}<span class="trip-countdown">{{ carpool.countdown }}</span>{% endif %}
+        </p>
+
+        <div class="result-info">
+          <span><span class="label">{{ 'Arrival Airport' if from_airport else 'Departure Airport' }}</span>{{ carpool.airport_code }}</span>
+          <span><span class="label">{{ 'Landing Date' if from_airport else 'Flight Date' }}</span>{{ carpool.date }}</span>
+          <span><span class="label">{{ 'Meet at Airport' if from_airport else 'Leave Campus' }}</span>{{ carpool.time }}</span>
+          <span><span class="label">Seats Left</span>{% if carpool.seats_left > 0 %}{{ carpool.seats_left }} of {{ carpool.seats_total }}{% else %}Full{% endif %}</span>
+        </div>
+
+        <div class="message mt-2">Sign in with your @ucr.edu account to see who's going and join. You'll come right back here.</div>
+        <div class="invite-actions">
+          <a href="/login" class="btn btn-primary">Sign In to View &amp; Join</a>
+        </div>
+      </section>
+      {% endif %}
+    </main>
+
+    <footer class="site-footer">
+      <p>Campus2Air &mdash; Built for students, by students.</p>
+    </footer>
+    <script src="{{ url_for('static', filename='theme-global.js') }}"></script>
+  </body>
+</html>
