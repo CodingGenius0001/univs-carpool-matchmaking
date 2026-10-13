@@ -3436,3 +3436,38 @@ html .field-invalid.field-invalid input:focus {
     line-height: 1.15;
   }
 }
+
+/* "Who can see your information" table in the Privacy Policy. */
+.policy-table-wrap {
+  margin: 0.8rem 0 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.policy-table {
+  min-width: 34rem;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.policy-table th,
+.policy-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.policy-table th {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.policy-table td:first-child {
+  font-weight: 600;
+  color: var(--foreground);
+}

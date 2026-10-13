@@ -21,9 +21,14 @@ your reply in that mailbox; it is your record that you handled it.
 
 ## 1. Confirm who is asking
 
-Only act on a request about an account when it comes from that account's
-`@ucr.edu` address, or when you have replied to that address and the person
-confirmed from it. Never act on a request that only names someone else.
+Act on a request about an account only when it comes from that account's
+`@ucr.edu` address, or when the person can no longer use it: then reply to
+the address they wrote from, ask them to confirm details only the account
+holder would know (for example their carpool's date and airport), and use
+your judgment. Never act on a request that only names someone else.
+Requests and legal notices count as received when they arrive in the
+inbox; aim to answer within 45 days (the policy allows telling them you
+need up to 45 more).
 
 ## 2. Deletion request
 
@@ -71,6 +76,8 @@ again.
 removes them from their carpools (carpools they organize are closed and the
 riders are told). Lift it from **Suspended accounts** at the bottom of the
 Students section. Use it only if you want to; nothing promises it.
+Suspension records are deleted automatically after 3 years. If a suspended
+person emails asking for a review, reply and either lift it or say why not.
 
 ## 6. Terms versions
 

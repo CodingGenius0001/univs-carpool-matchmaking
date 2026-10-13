@@ -139,6 +139,7 @@ MAX_DAYS_AHEAD = 366
 # rolling window. Leaving does not refund a join, so join/leave loops are capped.
 NOTIFICATION_RETENTION = timedelta(days=90)
 INACTIVE_ACCOUNT_RETENTION = timedelta(days=365)
+SUSPENSION_RETENTION = timedelta(days=3 * 365)
 MAX_BAN_REASON_LENGTH = 300
 JOIN_LIMIT_COUNT = 2
 JOIN_LIMIT_WINDOW = timedelta(hours=24)
@@ -1143,6 +1144,18 @@ def _member_email(carpool_id: int, data: dict[str, Any], id_key: str, email_key:
     return str(data.get(email_key, "")).strip().lower()
 
 
+def _mask_flight(code: str) -> str:
+    """'UA1375' -> 'UA ••••': the airline shows, the number doesn't."""
+    code = str(code or "")
+    return f"{code[:2]} ••••" if code else ""
+
+
+def _visible_flights(flights: list[str], reveal: str = "") -> list[str]:
+    """Flights as a non-member sees them: masked, except the exact flight
+    they searched for (spaces/case already removed by _clean_flight_code)."""
+    return [f if reveal and f == reveal else _mask_flight(f) for f in flights]
+
+
 MAX_CARPOOL_FLIGHTS = 10
 
 
@@ -1281,7 +1294,8 @@ def _delete_carpool_party(carpool_id: int) -> None:
 
 def _remove_user_from_carpools(email: str, reason: str) -> None:
     """Take a user out of every carpool (for a ban or a deletion request).
-    Carpools they organize are closed and the other riders are told why."""
+    Carpools they organize are closed; the other riders are told it was
+    closed, never why. `reason` goes to the admin activity log only."""
     p = db.placeholder
     for m in db.query(f"SELECT carpool_id FROM party_members WHERE user_email = {p}", (email,)):
         rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (m["carpool_id"],))
@@ -1297,10 +1311,10 @@ def _remove_user_from_carpools(email: str, reason: str) -> None:
                 notify_user(
                     o["user_email"],
                     f"The carpool for {carpool.get('flight_code', '')} ({_trip_label(carpool)}) on "
-                    f"{_display_date(carpool.get('requested_flight_date', ''))} was closed by Campus2Air. {reason}",
+                    f"{_display_date(carpool.get('requested_flight_date', ''))} was closed by Campus2Air.",
                 )
             _history_close(carpool, "admin_deleted")
-            _log_event("admin_deleted", "", carpool["id"], reason)
+            _log_event("admin_deleted", "", carpool["id"], reason or "account removed")
             _delete_carpool_party(carpool["id"])
         else:
             db.execute(f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}", (carpool["id"], email))
@@ -1310,7 +1324,7 @@ def _delete_user_data(email: str) -> None:
     """Delete a user's account data (deletion requests and inactive accounts).
     Suspensions are kept; see the Privacy Policy."""
     p = db.placeholder
-    _remove_user_from_carpools(email, "The organizer's account was deleted.")
+    _remove_user_from_carpools(email, "")
     db.execute(f"DELETE FROM notifications WHERE user_email = {p}", (email,))
     db.execute(f"DELETE FROM join_log WHERE user_email = {p}", (email,))
     db.execute(f"DELETE FROM activity_log WHERE user_email = {p}", (email,))
@@ -1408,6 +1422,9 @@ def _cleanup_expired_entries() -> None:
         # 90 days; accounts with no carpools go after a year without sign-in.
         notif_cutoff = (_now_utc() - NOTIFICATION_RETENTION).isoformat()
         db.execute(f"DELETE FROM notifications WHERE created_at < {p}", (notif_cutoff,))
+        # Suspension records: up to 3 years (Privacy Policy §5).
+        ban_cutoff = (_now_utc() - SUSPENSION_RETENTION).isoformat()
+        db.execute(f"DELETE FROM banned_users WHERE banned_at < {p}", (ban_cutoff,))
         inactive_cutoff = (_now_utc() - INACTIVE_ACCOUNT_RETENTION).isoformat()
         stale = db.query(
             f"SELECT user_email FROM users WHERE "
@@ -2000,7 +2017,13 @@ def search_carpools() -> Any:
             score = round((matched_fields / total_criteria) * 100) if total_criteria > 0 else 0
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
-            public_row["flights"] = flights_by_carpool.get(entry["id"], [])
+            all_flights = flights_by_carpool.get(entry["id"], [])
+            if entry["id"] in user_memberships:
+                public_row["flights"] = all_flights
+            else:
+                # Non-members only see the flight they searched for.
+                public_row["flights"] = _visible_flights(all_flights, flight_code)
+                public_row["flight_code"] = _visible_flights([entry["flight_code"]], flight_code)[0]
             public_row["match_reasons"] = reasons
             cid = entry["id"]
             mc = member_counts.get(cid, 0)
@@ -2174,7 +2197,7 @@ def invite_page(token: str) -> Any:
     carpool = {
         "id": entry["id"],
         "organizer": organizer,
-        "flight_code": flight_code,
+        "flight_code": flight_code if any(m["email"] == email for m in members) else _mask_flight(flight_code),
         "airline": airline,
         "airport_code": entry.get("airport_code", ""),
         "airport_name": entry.get("airport_name", ""),
@@ -2183,7 +2206,10 @@ def invite_page(token: str) -> Any:
         "countdown": _countdown(entry.get("requested_flight_date")),
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
-        "flights": _flights_for([entry]).get(entry["id"], []),
+        # Members see every flight; others see "UA ••••" (Privacy Policy §3).
+        "flights": (_flights_for([entry]).get(entry["id"], [])
+                    if any(m["email"] == email for m in members)
+                    else _visible_flights(_flights_for([entry]).get(entry["id"], []))),
         # Notes are for members only (Privacy Policy §3).
         "notes": entry.get("notes", "") if any(m["email"] == email for m in members) else "",
         "members": [{"name": m["name"], "is_organizer": m["email"] == entry.get("creator_email")} for m in members],
@@ -3153,7 +3179,7 @@ def admin_ban_user() -> Any:
                 f"INSERT INTO banned_users (user_email, reason, banned_at) VALUES ({p}, {p}, {p})",
                 (email, reason, _now_utc().isoformat()),
             )
-        _remove_user_from_carpools(email, "The organizer's account was suspended.")
+        _remove_user_from_carpools(email, "")
         _log_event("banned", email, 0, reason)
     return redirect(url_for("admin_panel") + "#students")
 
