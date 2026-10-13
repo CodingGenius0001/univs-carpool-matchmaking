@@ -107,6 +107,46 @@
       </div>
     </div>
 
+    <!-- Report Member Modal -->
+    <div id="report-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card" style="max-width:440px">
+        <h3 id="report-title">Report a member</h3>
+        <p class="message message-error text-sm"><strong>In danger right now? Call 911.</strong> Campus2Air is not an emergency service.</p>
+        <p class="text-muted text-sm mt-1">Reports go privately to the Campus2Air admins, not to the person you report. Tell us what happened, when, and anything else that helps.</p>
+        <form id="report-form" novalidate>
+          <input type="hidden" id="report-carpool-id" />
+          <input type="hidden" id="report-member-id" />
+          <label class="mt-2">What happened?
+            <textarea id="report-reason" maxlength="1000" required placeholder="For example: harassing messages, unsafe driving, asked for money beyond the shared cost..."></textarea>
+          </label>
+          <p id="report-message" class="text-sm mt-1" role="alert"></p>
+          <div class="modal-actions mt-2">
+            <button type="button" class="btn btn-secondary" id="report-cancel">Cancel</button>
+            <button type="submit" class="btn btn-danger">Send Report</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Flight Modal -->
+    <div id="flight-modal" class="modal-overlay" style="display:none">
+      <div class="card modal-card" style="max-width:400px">
+        <h3>Add your flight</h3>
+        <p class="text-muted text-sm">It's added to the carpool's flight list so everyone can track arrivals. It isn't shown next to your name.</p>
+        <form id="flight-form" novalidate>
+          <input type="hidden" id="flight-carpool-id" />
+          <label class="mt-2">Flight Number
+            <input type="text" id="flight-input" placeholder="e.g. UA1375" maxlength="8" autocapitalize="characters" autocomplete="off" required />
+          </label>
+          <p id="flight-message" class="text-sm mt-1" style="color:var(--danger)" role="alert"></p>
+          <div class="modal-actions mt-2">
+            <button type="button" class="btn btn-secondary" id="flight-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add Flight</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Disband Carpool Modal -->
     <div id="disband-modal" class="modal-overlay" style="display:none">
       <div class="card modal-card">
@@ -133,7 +173,7 @@
         <p class="text-muted text-sm">This member will be removed immediately and they will see the reason you provide.</p>
         <form id="remove-member-form">
           <input type="hidden" id="remove-member-carpool-id" />
-          <input type="hidden" id="remove-member-email" />
+          <input type="hidden" id="remove-member-id" />
           <label class="mt-2">Reason for removal
             <textarea id="remove-member-reason" rows="3" required maxlength="300" placeholder="e.g. The carpool is full, timing changed, route no longer matches..."></textarea>
           </label>
@@ -165,7 +205,6 @@
     <script src="{{ url_for('static', filename='trip.js') }}"></script>
     <script>
       const content = document.getElementById('carpool-content');
-      const currentUserEmail = {{ user_email|tojson }};
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
       let currentParties = [];
       let confirmResolver = null;
@@ -193,7 +232,7 @@
         if (member?.first_name) {
           return `${member.first_name} ${member.last_initial ? `${member.last_initial}.` : ''}`.trim();
         }
-        return String(member?.user_email || '').split('@')[0];
+        return 'Member';
       }
 
       function carpoolDisplayName(carpool) {
@@ -279,7 +318,7 @@
 
             const membersList = members.map((m) => {
               const displayName = memberDisplayName(m);
-              const isCreatorMember = m.user_email === c.creator_email;
+              const isCreatorMember = !!m.is_organizer;
               const phoneHref = safePhoneHref(m.phone);
               const phoneBtn = phoneHref
                 ? `<a href="tel:${escapeAttr(phoneHref)}" class="phone-btn" title="Call ${escapeAttr(displayName)} at ${escapeAttr(m.phone)}" aria-label="Call ${escapeAttr(displayName)}">
@@ -287,11 +326,14 @@
                   </a>`
                 : '';
               const removeBtn = isCreator && !isCreatorMember
-                ? `<button class="remove-member-btn btn btn-danger btn-sm" data-carpool="${escapeAttr(c.id)}" data-email="${escapeAttr(m.user_email)}" title="Remove member">Remove</button>`
+                ? `<button class="remove-member-btn btn btn-danger btn-sm" data-carpool="${escapeAttr(c.id)}" data-member="${escapeAttr(m.member_id)}" title="Remove member">Remove</button>`
                 : '';
               return `
                 <li class="member-item">
-                  <span class="member-name">${escapeHtml(displayName)}</span>
+                  <span class="member-name-wrap">
+                    <span class="member-name">${escapeHtml(displayName)}</span>
+                    ${m.is_me ? '' : `<button type="button" class="report-member-btn link-button link-button-muted" data-carpool="${escapeAttr(c.id)}" data-member="${escapeAttr(m.member_id)}" data-name="${escapeAttr(displayName)}">Report</button>`}
+                  </span>
                   ${isCreatorMember ? '<span class="member-badge">Creator</span>' : ''}
                   <span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;">
                     ${phoneBtn}
@@ -318,7 +360,6 @@
                   <div>
                     <h2>${escapeHtml(Trip.headline(c))}</h2>
                     <p class="trip-subline">
-                      <span class="trip-badge ${Trip.tripClass(c)}">${escapeHtml(Trip.directionLabel(c))}</span>
                       ${Trip.countdown(c.requested_flight_date) ? `<span class="trip-countdown">${escapeHtml(Trip.countdown(c.requested_flight_date))}</span>` : ''}
                       <span>Organized by ${escapeHtml(creatorName)}</span>
                     </p>
@@ -326,7 +367,7 @@
                   <span class="result-badge score-high">${escapeHtml(members.length)} member${members.length !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="result-info">
-                  <span><span class="label">Flight</span><strong>${escapeHtml(c.flight_code)}</strong></span>
+                  <span><span class="label">${(c.flights || []).length > 1 ? 'Flights' : 'Flight'}</span><strong>${escapeHtml((c.flights && c.flights.length ? c.flights : [c.flight_code]).join(' · '))}</strong><button type="button" class="add-flight-btn link-button" data-id="${escapeAttr(c.id)}">+ Add flight</button></span>
                   <span><span class="label">${fromAirport ? 'Arrival Airport' : 'Departure Airport'}</span>${escapeHtml(c.airport_code)}</span>
                   <span><span class="label">${fromAirport ? 'Landing Date' : 'Flight Date'}</span>${escapeHtml(String(c.requested_flight_date || c.flight_date_utc || '\u2014').replace(/-/g, '/'))}</span>
                   <span><span class="label">${fromAirport ? 'Meet at Airport' : 'Leave Campus'}</span>${escapeHtml(formatTime12h(c.planned_departure_time))}</span>
@@ -365,14 +406,14 @@
         const id = parseInt(btn.dataset.id);
         const party = currentParties.find(p => p.carpool?.id === id);
         const isCreator = party?.is_creator;
-        const otherMembers = (party?.members || []).filter(m => m.user_email !== currentUserEmail);
+        const otherMembers = (party?.members || []).filter(m => !m.is_me);
 
         if (isCreator && otherMembers.length > 0) {
           // Show transfer ownership modal
           const select = document.getElementById('transfer-select');
           select.innerHTML = otherMembers.map(m => {
             const name = memberDisplayName(m);
-            return `<option value="${escapeAttr(m.user_email)}">${escapeHtml(name)}</option>`;
+            return `<option value="${escapeAttr(m.member_id)}">${escapeHtml(name)}</option>`;
           }).join('');
           document.getElementById('transfer-carpool-id').value = id;
           document.getElementById('transfer-message').textContent = '';
@@ -472,7 +513,7 @@
               'Content-Type': 'application/json',
               'X-CSRF-Token': csrfToken,
             },
-            body: JSON.stringify({ new_owner_email: newOwner })
+            body: JSON.stringify({ new_owner_member_id: newOwner })
           });
           const data = await res.json();
           if (res.ok) {
@@ -504,6 +545,105 @@
         document.getElementById('notes-popup-modal').style.display = '';
       });
 
+      // Report a member to the admins.
+      const reportModal = document.getElementById('report-modal');
+      const reportReason = document.getElementById('report-reason');
+      const reportMessage = document.getElementById('report-message');
+      const reportForm = document.getElementById('report-form');
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.report-member-btn');
+        if (!btn) return;
+        document.getElementById('report-carpool-id').value = btn.dataset.carpool;
+        document.getElementById('report-member-id').value = btn.dataset.member;
+        document.getElementById('report-title').textContent = `Report ${btn.dataset.name}`;
+        reportReason.value = '';
+        reportMessage.textContent = '';
+        reportForm.hidden = false;
+        reportModal.style.display = '';
+        reportReason.focus();
+      });
+      document.getElementById('report-cancel').addEventListener('click', () => { reportModal.style.display = 'none'; });
+      reportModal.addEventListener('click', (e) => { if (e.target === reportModal) reportModal.style.display = 'none'; });
+      reportForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const reason = reportReason.value.trim();
+        if (!reason) {
+          reportMessage.style.color = 'var(--danger)';
+          reportMessage.textContent = 'Please describe what happened.';
+          reportReason.focus();
+          return;
+        }
+        const submitBtn = reportForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        try {
+          const res = await fetch(`/api/carpools/${document.getElementById('report-carpool-id').value}/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ member_id: document.getElementById('report-member-id').value, reason }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            reportMessage.style.color = 'var(--success)';
+            reportMessage.textContent = 'Thank you. Your report was sent to the Campus2Air admins.';
+            setTimeout(() => { reportModal.style.display = 'none'; }, 1800);
+          } else {
+            reportMessage.style.color = 'var(--danger)';
+            reportMessage.textContent = data.error || 'Could not send the report.';
+          }
+        } catch {
+          reportMessage.style.color = 'var(--danger)';
+          reportMessage.textContent = 'Network error. Please try again.';
+        }
+        submitBtn.disabled = false;
+      });
+
+      // Add a flight to the carpool's list.
+      const flightModal = document.getElementById('flight-modal');
+      const flightInput = document.getElementById('flight-input');
+      const flightMessage = document.getElementById('flight-message');
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.add-flight-btn');
+        if (!btn) return;
+        document.getElementById('flight-carpool-id').value = btn.dataset.id;
+        flightInput.value = '';
+        flightMessage.textContent = '';
+        flightModal.style.display = '';
+        flightInput.focus();
+      });
+      flightInput.addEventListener('input', () => {
+        flightInput.value = flightInput.value.toUpperCase().replace(/\s+/g, '');
+      });
+      document.getElementById('flight-cancel').addEventListener('click', () => { flightModal.style.display = 'none'; });
+      flightModal.addEventListener('click', (e) => { if (e.target === flightModal) flightModal.style.display = 'none'; });
+      document.getElementById('flight-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const code = flightInput.value.trim();
+        if (!/^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/.test(code)) {
+          flightMessage.textContent = 'Flight number should look like UA1375.';
+          flightInput.focus();
+          return;
+        }
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        try {
+          const res = await fetch(`/api/carpools/${document.getElementById('flight-carpool-id').value}/flights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ flight_code: code }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            flightModal.style.display = 'none';
+            loadParties();
+          } else {
+            flightMessage.textContent = data.error || 'Could not add the flight.';
+          }
+        } catch {
+          flightMessage.textContent = 'Network error. Please try again.';
+        }
+        submitBtn.disabled = false;
+      });
+
       document.getElementById('notes-popup-close').addEventListener('click', () => {
         document.getElementById('notes-popup-modal').style.display = 'none';
       });
@@ -513,7 +653,7 @@
         const btn = e.target.closest('.remove-member-btn');
         if (!btn) return;
         document.getElementById('remove-member-carpool-id').value = btn.dataset.carpool;
-        document.getElementById('remove-member-email').value = btn.dataset.email;
+        document.getElementById('remove-member-id').value = btn.dataset.member;
         document.getElementById('remove-member-reason').value = '';
         document.getElementById('remove-member-message').textContent = '';
         document.getElementById('remove-member-modal').style.display = '';
@@ -526,7 +666,7 @@
       document.getElementById('remove-member-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const carpoolId = document.getElementById('remove-member-carpool-id').value;
-        const email = document.getElementById('remove-member-email').value;
+        const memberId = document.getElementById('remove-member-id').value;
         const reason = document.getElementById('remove-member-reason').value.trim();
         const msgEl = document.getElementById('remove-member-message');
         if (!reason) {
@@ -544,7 +684,7 @@
               'Content-Type': 'application/json',
               'X-CSRF-Token': csrfToken,
             },
-            body: JSON.stringify({ email, reason })
+            body: JSON.stringify({ member_id: memberId, reason })
           });
           if (res.ok) {
             msgEl.textContent = 'Member removed.';

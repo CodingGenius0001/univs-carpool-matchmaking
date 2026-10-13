@@ -119,9 +119,11 @@ AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
 # Terms of Service & EULA (templates/_terms_body.html). Bump the version for
 # any material change: everyone is asked to agree again at their next sign-in,
 # and the version each user accepted is recorded in the users table.
-TERMS_VERSION = "4.0"
-TERMS_EFFECTIVE = "October 12, 2026"
-LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip()
+TERMS_VERSION = "4.1"
+TERMS_EFFECTIVE = "October 13, 2026"
+# Where legal notices, opt-outs and privacy requests go (shown in the Terms
+# and Privacy Policy). Never a public repository.
+LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip() or "campus2air-legal@proton.me"
 # Which way the ride goes. Carpools created before this existed are campus -> airport.
 DIRECTIONS = ("to_airport", "from_airport")
 DEFAULT_DIRECTION = "to_airport"
@@ -133,6 +135,10 @@ MAX_REASON_LENGTH = 300
 MAX_DAYS_AHEAD = 366
 # Anti-abuse: how many carpools (created by someone else) a user may join in a
 # rolling window. Leaving does not refund a join, so join/leave loops are capped.
+NOTIFICATION_RETENTION = timedelta(days=90)
+INACTIVE_ACCOUNT_RETENTION = timedelta(days=365)
+MAX_REPORT_LENGTH = 1000
+REPORTS_PER_DAY = 10
 JOIN_LIMIT_COUNT = 2
 JOIN_LIMIT_WINDOW = timedelta(hours=24)
 # Search treats leave times within this many minutes of each other as a match.
@@ -244,6 +250,31 @@ def inject_template_helpers() -> dict[str, Any]:
         "terms_effective": TERMS_EFFECTIVE,
         "legal_contact_email": LEGAL_CONTACT_EMAIL,
     }
+
+
+BANNED_MESSAGE = (
+    "This account has been suspended from Campus2Air. "
+    f"If you think this is a mistake, email {LEGAL_CONTACT_EMAIL}."
+)
+
+
+@app.before_request
+def block_banned_users() -> Any:
+    """A banned student's existing session stops working immediately."""
+    email = session.get("user_email")
+    if not email or request.path.startswith("/static/"):
+        return None
+    try:
+        banned = _is_banned(email)
+    except Exception:
+        return None
+    if not banned:
+        return None
+    for key in USER_SESSION_KEYS:
+        session.pop(key, None)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": BANNED_MESSAGE}), 403
+    return redirect(url_for("login_page", error="suspended"))
 
 
 @app.before_request
@@ -731,6 +762,87 @@ class DBAdapter:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_join_log_user ON join_log (user_email, joined_at)")
 
+        # Flight numbers of a carpool's riders, collected when they join. Stored
+        # per carpool only (no user column) so a flight is never tied to a person.
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS carpool_flights (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    carpool_id INT NOT NULL,
+                    flight_code VARCHAR(16) NOT NULL,
+                    added_at VARCHAR(64) NOT NULL,
+                    UNIQUE KEY uq_carpool_flight (carpool_id, flight_code)
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS carpool_flights (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    carpool_id INTEGER NOT NULL,
+                    flight_code TEXT NOT NULL,
+                    added_at TEXT NOT NULL,
+                    UNIQUE (carpool_id, flight_code)
+                )
+                """
+            )
+
+        # Safety reports between users (the complaint log) and banned accounts.
+        # Reports are kept after a user deletion request: they are needed to
+        # handle safety and legal issues.
+        if use_mysql:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    reporter_email VARCHAR(255) NOT NULL,
+                    reported_email VARCHAR(255) NOT NULL,
+                    carpool_id INT NOT NULL DEFAULT 0,
+                    reason TEXT NOT NULL,
+                    created_at VARCHAR(64) NOT NULL,
+                    status VARCHAR(16) NOT NULL DEFAULT 'open',
+                    admin_note TEXT,
+                    resolved_at VARCHAR(64) NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS banned_users (
+                    user_email VARCHAR(255) PRIMARY KEY,
+                    reason TEXT,
+                    banned_at VARCHAR(64) NOT NULL
+                )
+                """
+            )
+        else:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reporter_email TEXT NOT NULL,
+                    reported_email TEXT NOT NULL,
+                    carpool_id INTEGER NOT NULL DEFAULT 0,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    admin_note TEXT,
+                    resolved_at TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS banned_users (
+                    user_email TEXT PRIMARY KEY,
+                    reason TEXT,
+                    banned_at TEXT NOT NULL
+                )
+                """
+            )
+
         # Analytics. Carpools are deleted after departure, so a small record of
         # each one is kept here for the admin dashboard (no phones or notes).
         if use_mysql:
@@ -961,10 +1073,15 @@ def _direction(row: dict[str, Any]) -> str:
     return value if value in DIRECTIONS else DEFAULT_DIRECTION
 
 
+CAMPUS_NAME = "UCR"
+
+
 def _trip_label(row: dict[str, Any]) -> str:
-    """'to LAX' or 'from LAX' for messages."""
-    word = "from" if _direction(row) == "from_airport" else "to"
-    return f"{word} {row.get('airport_code', '')}".strip()
+    """'UCR → LAX' or 'LAX → UCR' for headings and messages."""
+    airport = str(row.get("airport_code") or "").strip() or "Airport"
+    if _direction(row) == "from_airport":
+        return f"{airport} → {CAMPUS_NAME}"
+    return f"{CAMPUS_NAME} → {airport}"
 
 
 def _stored_date(stored: Any) -> Any:
@@ -996,9 +1113,8 @@ def _countdown(stored: Any) -> str:
 
 
 def _trip_headline(row: dict[str, Any]) -> str:
-    """'🛫 To ONT · Fri, Oct 23'."""
-    arrow = "🛬 From" if _direction(row) == "from_airport" else "🛫 To"
-    return f"{arrow} {row.get('airport_code', '')} · {_friendly_date(row.get('requested_flight_date'))}"
+    """'UCR → ONT · Fri, Oct 23'."""
+    return f"{_trip_label(row)} · {_friendly_date(row.get('requested_flight_date'))}"
 
 
 def _display_date(stored: Any) -> str:
@@ -1029,13 +1145,87 @@ def _resolve_airport(code: str) -> tuple[str, str]:
 
 def _serialize_entry(row: dict[str, Any], view: str = "public") -> dict[str, Any]:
     data = dict(row)
-    hidden_fields = {"expires_at", "created_at", "fetched_from", "status", "share_token"}
+    hidden_fields = {"expires_at", "created_at", "fetched_from", "status", "share_token", "creator_email"}
     if view == "public":
-        hidden_fields.update({"phone", "creator_email", "notes"})
+        hidden_fields.update({"phone", "notes"})
     for field in hidden_fields:
         data.pop(field, None)
     data["direction"] = _direction(row)
     return data
+
+
+def _member_email(carpool_id: int, data: dict[str, Any], id_key: str, email_key: str) -> str:
+    """Resolve the member a request names. Pages send the party_members id
+    (emails are not shared with other members); `email_key` is accepted for
+    older cached pages."""
+    p = db.placeholder
+    raw_id = data.get(id_key)
+    if raw_id not in (None, ""):
+        try:
+            member_id = int(raw_id)
+        except (TypeError, ValueError):
+            return ""
+        rows = db.query(
+            f"SELECT user_email FROM party_members WHERE id = {p} AND carpool_id = {p}", (member_id, carpool_id)
+        )
+        return rows[0]["user_email"] if rows else ""
+    return str(data.get(email_key, "")).strip().lower()
+
+
+MAX_CARPOOL_FLIGHTS = 10
+
+
+def _flights_for(carpools: list[dict[str, Any]]) -> dict[int, list[str]]:
+    """Every flight in each carpool: the organizer's first, then riders' in the
+    order they were added, without duplicates. One query for all carpools."""
+    out: dict[int, list[str]] = {}
+    for c in carpools:
+        own = str(c.get("flight_code") or "").strip()
+        out[c["id"]] = [own] if own else []
+    if not out:
+        return out
+    ids = list(out)
+    marks = ", ".join([db.placeholder] * len(ids))
+    try:
+        rows = db.query(
+            f"SELECT carpool_id, flight_code FROM carpool_flights WHERE carpool_id IN ({marks}) ORDER BY added_at, id",
+            tuple(ids),
+        )
+    except Exception as exc:
+        app.logger.warning("Could not load carpool flights: %s", exc)
+        return out
+    for r in rows:
+        flights = out.get(r["carpool_id"])
+        if flights is not None and r["flight_code"] not in flights:
+            flights.append(r["flight_code"])
+    return out
+
+
+def _add_carpool_flight(carpool: dict[str, Any], flight_code: str) -> None:
+    """Add a rider's flight to the carpool (not to the rider). No-op if known."""
+    if not flight_code or flight_code in _flights_for([carpool]).get(carpool["id"], []):
+        return
+    p = db.placeholder
+    count = db.query(f"SELECT COUNT(*) AS n FROM carpool_flights WHERE carpool_id = {p}", (carpool["id"],))
+    if count and int(count[0]["n"]) >= MAX_CARPOOL_FLIGHTS:
+        return
+    try:
+        db.execute(
+            f"INSERT INTO carpool_flights (carpool_id, flight_code, added_at) VALUES ({p}, {p}, {p})",
+            (carpool["id"], flight_code, _now_utc().isoformat()),
+        )
+    except Exception as exc:  # duplicate from a simultaneous join
+        app.logger.info("Flight not added to carpool %s: %s", carpool["id"], exc)
+
+
+def _parse_optional_flight(value: Any) -> tuple[str, str | None]:
+    """(flight_code, error). Empty input is fine: the flight is optional."""
+    code = _clean_flight_code(str(value or ""))
+    if not code:
+        return "", None
+    if not FLIGHT_CODE_PATTERN.match(code):
+        return "", "Flight number should look like UA1375."
+    return code, None
 
 
 def _parse_seat_count(value: Any) -> int | None:
@@ -1056,6 +1246,13 @@ def _normalize_departure_time(value: Any) -> str | None:
         return datetime.strptime(raw, "%H:%M").strftime("%H:%M")
     except ValueError:
         return None
+
+
+def _short_name(raw_name: str, email: str = "") -> str:
+    """'Keshav Pillarisetti' -> 'Keshav P.'. Other users only ever see a
+    first name and last initial."""
+    first_name, last_initial = _derive_user_name_parts(raw_name, email)
+    return f"{first_name} {last_initial}." if last_initial else (first_name or "A member")
 
 
 def _derive_user_name_parts(raw_name: str, fallback_email: str = "") -> tuple[str, str]:
@@ -1106,14 +1303,65 @@ def _save_user_phone(email: str, phone: str) -> None:
 
 def _delete_carpool_party(carpool_id: int) -> None:
     p = db.placeholder
+    db.execute(f"DELETE FROM carpool_flights WHERE carpool_id = {p}", (carpool_id,))
     db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (carpool_id,))
     db.execute(f"DELETE FROM carpools WHERE id = {p}", (carpool_id,))
 
 
+def _remove_user_from_carpools(email: str, reason: str) -> None:
+    """Take a user out of every carpool (for a ban or a deletion request).
+    Carpools they organize are closed and the other riders are told why."""
+    p = db.placeholder
+    for m in db.query(f"SELECT carpool_id FROM party_members WHERE user_email = {p}", (email,)):
+        rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (m["carpool_id"],))
+        if not rows:
+            continue
+        carpool = rows[0]
+        if carpool.get("creator_email") == email:
+            others = db.query(
+                f"SELECT user_email FROM party_members WHERE carpool_id = {p} AND user_email != {p}",
+                (carpool["id"], email),
+            )
+            for o in others:
+                notify_user(
+                    o["user_email"],
+                    f"The carpool for {carpool.get('flight_code', '')} ({_trip_label(carpool)}) on "
+                    f"{_display_date(carpool.get('requested_flight_date', ''))} was closed by Campus2Air. {reason}",
+                )
+            _history_close(carpool, "admin_deleted")
+            _log_event("admin_deleted", "", carpool["id"], reason)
+            _delete_carpool_party(carpool["id"])
+        else:
+            db.execute(f"DELETE FROM party_members WHERE carpool_id = {p} AND user_email = {p}", (carpool["id"], email))
+
+
+def _delete_user_data(email: str) -> None:
+    """Delete a user's account data (deletion requests and inactive accounts).
+    Safety reports and bans are kept; see the Privacy Policy."""
+    p = db.placeholder
+    _remove_user_from_carpools(email, "The organizer's account was deleted.")
+    db.execute(f"DELETE FROM notifications WHERE user_email = {p}", (email,))
+    db.execute(f"DELETE FROM join_log WHERE user_email = {p}", (email,))
+    db.execute(f"DELETE FROM activity_log WHERE user_email = {p}", (email,))
+    # Other people's events can mention them ("by x@ucr.edu", "from x@ucr.edu").
+    db.execute(f"UPDATE activity_log SET detail = '' WHERE detail LIKE {p}", (f"%{email}%",))
+    db.execute(f"DELETE FROM users WHERE user_email = {p}", (email,))
+
+
+def _is_banned(email: str) -> bool:
+    if not email:
+        return False
+    p = db.placeholder
+    return bool(db.query(f"SELECT user_email FROM banned_users WHERE user_email = {p}", (email,)))
+
+
 def _clear_all_data() -> None:
+    db.execute("DELETE FROM reports")
+    db.execute("DELETE FROM banned_users")
     db.execute("DELETE FROM activity_log")
     db.execute("DELETE FROM carpool_history")
     db.execute("DELETE FROM join_log")
+    db.execute("DELETE FROM carpool_flights")
     db.execute("DELETE FROM party_members")
     db.execute("DELETE FROM notifications")
     db.execute("DELETE FROM users")
@@ -1179,12 +1427,27 @@ def _cleanup_expired_entries() -> None:
                 _history_close(row, "departed")
                 _log_event("departed", "", row["id"], f"{row.get('flight_code', '')} {row.get('airport_code', '')}")
                 db.execute(f"DELETE FROM party_members WHERE carpool_id = {p}", (row["id"],))
+                db.execute(f"DELETE FROM carpool_flights WHERE carpool_id = {p}", (row["id"],))
             db.execute(f"DELETE FROM carpools WHERE expires_at != '' AND expires_at <= {p}", (now_iso,))
         # Join history is only needed for the rolling join limit window.
         join_log_cutoff = (_now_utc() - JOIN_LIMIT_WINDOW * 2).isoformat()
         db.execute(f"DELETE FROM join_log WHERE joined_at < {p}", (join_log_cutoff,))
         activity_cutoff = (_now_utc() - ACTIVITY_RETENTION).isoformat()
         db.execute(f"DELETE FROM activity_log WHERE created_at < {p}", (activity_cutoff,))
+        # Retention promised in the Privacy Policy: notifications go after
+        # 90 days; accounts with no carpools go after a year without sign-in.
+        notif_cutoff = (_now_utc() - NOTIFICATION_RETENTION).isoformat()
+        db.execute(f"DELETE FROM notifications WHERE created_at < {p}", (notif_cutoff,))
+        inactive_cutoff = (_now_utc() - INACTIVE_ACCOUNT_RETENTION).isoformat()
+        stale = db.query(
+            f"SELECT user_email FROM users WHERE "
+            f"(CASE WHEN last_login_at IS NULL OR last_login_at = '' THEN created_at ELSE last_login_at END) < {p}",
+            (inactive_cutoff,),
+        )
+        for row in stale:
+            in_carpool = db.query(f"SELECT id FROM party_members WHERE user_email = {p}", (row["user_email"],))
+            if not in_carpool:
+                _delete_user_data(row["user_email"])
     except DatabaseUnavailable:
         raise
     except Exception as exc:
@@ -1374,12 +1637,18 @@ def firebase_callback() -> Any:
 
     if not firebase_id_token:
         return jsonify({"error": "Missing Firebase ID token"}), 400
-    # Clickwrap: signing in requires agreeing to the current Terms version.
+    # Clickwrap: signing in requires agreeing to the current Terms version
+    # and confirming the user is 18 or older (two separate checkboxes).
     if str(data.get("termsVersion", "")) != TERMS_VERSION:
         return jsonify({
             "error": "Please review and agree to the updated Terms of Service to continue.",
             "terms_required": True,
             "terms_version": TERMS_VERSION,
+        }), 409
+    if data.get("ageConfirmed") is not True:
+        return jsonify({
+            "error": "Please confirm that you are 18 or older to continue.",
+            "age_required": True,
         }), 409
 
     try:
@@ -1402,6 +1671,44 @@ def firebase_callback() -> Any:
         return jsonify({"error": "Email must be verified"}), 403
     if not email.endswith("@ucr.edu"):
         return jsonify({"error": "Only @ucr.edu accounts are allowed"}), 403
+    if _is_banned(email):
+        return jsonify({"error": BANNED_MESSAGE, "banned": True}), 403
+
+    # Record the profile and the Terms acceptance before signing the user in.
+    # If the acceptance can't be saved, the sign-in fails: nobody should be
+    # signed in without a record of what they agreed to.
+    first_name, last_initial = _derive_user_name_parts(name, email)
+    p = db.placeholder
+    now_iso = _now_utc().isoformat()
+    try:
+        existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
+        if not existing:
+            db.execute(
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at) "
+                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso),
+            )
+            is_new = True
+        else:
+            db.execute(
+                f"UPDATE users SET first_name = {p}, last_initial = {p}, last_login_at = {p} WHERE user_email = {p}",
+                (first_name, last_initial, now_iso, email),
+            )
+            # Record acceptance only when the version changes, so the date
+            # shows when this version was first agreed to. (NULL != x is never
+            # true in SQL, so older rows with no version need the IS NULL.)
+            db.execute(
+                f"UPDATE users SET terms_version = {p}, terms_accepted_at = {p} "
+                f"WHERE user_email = {p} AND (terms_version IS NULL OR terms_version != {p})",
+                (TERMS_VERSION, now_iso, email, TERMS_VERSION),
+            )
+            is_new = False
+        saved = db.query(f"SELECT terms_version FROM users WHERE user_email = {p}", (email,))
+        if not saved or saved[0].get("terms_version") != TERMS_VERSION:
+            raise RuntimeError("terms acceptance was not stored")
+    except Exception as exc:
+        app.logger.error("Sign-in refused, could not record Terms acceptance for %s: %s", email, exc)
+        return jsonify({"error": "We couldn't finish signing you in. Please try again in a minute."}), 503
 
     # Remember an invite link the user was sent to before signing in.
     next_path = _safe_next_path(session.get("post_login_next", ""))
@@ -1413,33 +1720,12 @@ def firebase_callback() -> Any:
     session["user_uid"] = uid
     _get_csrf_token()
 
-    # Store/update user profile from Google display name
-    first_name, last_initial = _derive_user_name_parts(name, email)
-    p = db.placeholder
     try:
-        now_iso = _now_utc().isoformat()
-        existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
-        if not existing:
-            db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at) "
-                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso),
-            )
+        if is_new:
             _log_event("signup", email)
-        else:
-            db.execute(
-                f"UPDATE users SET first_name = {p}, last_initial = {p}, last_login_at = {p} WHERE user_email = {p}",
-                (first_name, last_initial, now_iso, email),
-            )
-            # Record acceptance only when the version changes, so the date
-            # shows when this version was first agreed to.
-            db.execute(
-                f"UPDATE users SET terms_version = {p}, terms_accepted_at = {p} WHERE user_email = {p} AND terms_version != {p}",
-                (TERMS_VERSION, now_iso, email, TERMS_VERSION),
-            )
         _log_event("login", email)
-    except Exception:
-        pass
+    except Exception as exc:
+        app.logger.warning("Could not log sign-in for %s: %s", email, exc)
 
     return jsonify({"ok": True, "redirect": next_path or url_for("start_now_page")})
 
@@ -1701,6 +1987,7 @@ def search_carpools() -> Any:
             return None
 
     total_criteria = sum([bool(flight_code), bool(airport_code), bool(flight_date), bool(planned_leave_time)])
+    flights_by_carpool = _flights_for(rows)
 
     results: list[dict[str, Any]] = []
     # Matches skipped only because they go the other way, so the page can
@@ -1713,6 +2000,9 @@ def search_carpools() -> Any:
         if flight_code and entry["flight_code"] == flight_code:
             matched_fields += 1
             reasons.append("Exact flight code match")
+        elif flight_code and flight_code in flights_by_carpool.get(entry["id"], []):
+            matched_fields += 1
+            reasons.append("A rider is on this flight")
         if airport_code and entry["airport_code"] == airport_code:
             matched_fields += 1
             reasons.append("Same airport code")
@@ -1738,6 +2028,7 @@ def search_carpools() -> Any:
             score = round((matched_fields / total_criteria) * 100) if total_criteria > 0 else 0
             public_row = _serialize_entry(entry)
             public_row["match_score"] = score
+            public_row["flights"] = flights_by_carpool.get(entry["id"], [])
             public_row["match_reasons"] = reasons
             cid = entry["id"]
             mc = member_counts.get(cid, 0)
@@ -1845,7 +2136,7 @@ def _invite_preview(entry: dict[str, Any] | None, member_count: int = 0) -> dict
     d = _stored_date(entry.get("requested_flight_date"))
     date_text = f"{d.strftime('%a, %b')} {d.day}, {d.year}" if d else _display_date(entry.get("requested_flight_date"))
     from_airport = _direction(entry) == "from_airport"
-    route = f"{airport} → Campus" if from_airport else f"Campus → {airport}"
+    route = _trip_label(entry)
     time_text = _display_time(entry.get("planned_departure_time"))
     seats = int(entry.get("seats_available") or 0)
     left = max(0, seats - member_count)
@@ -1854,7 +2145,7 @@ def _invite_preview(entry: dict[str, Any] | None, member_count: int = 0) -> dict
         parts.append(f"Meets at {airport} at {time_text}" if from_airport else f"Leaves campus at {time_text}")
     parts.append(f"{left} of {seats} seats left" if left else "Currently full")
     parts.append("UCR students: sign in with your @ucr.edu account to see details and join.")
-    meta.update(title=f"{'🛬' if from_airport else '🛫'} {route} carpool · {date_text}",
+    meta.update(title=f"{route} carpool · {date_text}",
                 description=" · ".join(parts))
     return meta
 
@@ -1920,6 +2211,7 @@ def invite_page(token: str) -> Any:
         "countdown": _countdown(entry.get("requested_flight_date")),
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
+        "flights": _flights_for([entry]).get(entry["id"], []),
         "notes": entry.get("notes", ""),
         "members": [{"name": m["name"], "is_organizer": m["email"] == entry.get("creator_email")} for m in members],
         "member_count": len(members),
@@ -1946,6 +2238,9 @@ def join_party(carpool_id: int) -> Any:
     # Store phone number if provided
     p = db.placeholder
     data = request.get_json(silent=True) or {}
+    join_flight, flight_error = _parse_optional_flight(data.get("flight_code"))
+    if flight_error:
+        return jsonify({"error": flight_error}), 400
     raw_phone = _normalize_phone(data.get("phone", ""))
     if raw_phone and PHONE_PATTERN.match(raw_phone):
         try:
@@ -2045,13 +2340,18 @@ def join_party(carpool_id: int) -> Any:
 
     source = "invite" if data.get("source") == "invite" else "search"
     _log_event("joined", email, carpool_id, f"via {source}")
+    if join_flight and carpool:
+        try:
+            _add_carpool_flight(carpool, join_flight)
+        except Exception as exc:
+            app.logger.warning("Could not save flight for carpool %s: %s", carpool_id, exc)
     try:
         _history_bump_peak(carpool_id)
     except Exception as exc:
         app.logger.warning("Could not update carpool peak size: %s", exc)
 
     # Notify creator and all existing members that someone joined
-    joiner_name = session.get("user_name", email.split("@")[0])
+    joiner_name = _short_name(session.get("user_name", ""), email)
     flight_code = carpool.get("flight_code", "") if carpool else ""
     flight_date = _display_date(carpool.get("requested_flight_date", "")) if carpool else ""
     msg = f"{joiner_name} joined your carpool for {flight_code} ({_trip_label(carpool or {})}) on {flight_date}."
@@ -2105,7 +2405,7 @@ def leave_party(carpool_id: int) -> Any:
         creator_email = carpool.get("creator_email", "")
         flight_code = carpool.get("flight_code", "")
         flight_date = _display_date(carpool.get("requested_flight_date", ""))
-        leaver_name = session.get("user_name", email.split("@")[0])
+        leaver_name = _short_name(session.get("user_name", ""), email)
         if creator_email:
             try:
                 notify_user(creator_email, f"{leaver_name} left your carpool for {flight_code} ({_trip_label(carpool)}) on {flight_date}.")
@@ -2164,9 +2464,9 @@ def transfer_and_leave(carpool_id: int) -> Any:
     if not email:
         return jsonify({"error": "Login required"}), 401
     data = request.get_json(silent=True) or {}
-    new_owner_email = str(data.get("new_owner_email", "")).strip().lower()
+    new_owner_email = _member_email(carpool_id, data, "new_owner_member_id", "new_owner_email")
     if not new_owner_email:
-        return jsonify({"error": "new_owner_email is required"}), 400
+        return jsonify({"error": "Choose a current member to become the organizer"}), 400
     if new_owner_email == email:
         return jsonify({"error": "Choose another member to become the organizer"}), 400
     p = db.placeholder
@@ -2203,6 +2503,62 @@ def transfer_and_leave(carpool_id: int) -> Any:
     return jsonify({"ok": True, "message": "Ownership transferred. You have left the carpool."})
 
 
+@app.post("/api/carpools/<int:carpool_id>/flights")
+def add_carpool_flight(carpool_id: int) -> Any:
+    """A member adds their flight number to the carpool's flight list."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    p = db.placeholder
+    rows = db.query(f"SELECT * FROM carpools WHERE id = {p}", (carpool_id,))
+    if not rows:
+        return jsonify({"error": "Carpool not found"}), 404
+    member = db.query(
+        f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}", (carpool_id, email)
+    )
+    if not member:
+        return jsonify({"error": "Only members can add flights"}), 403
+    data = request.get_json(silent=True) or {}
+    code, error = _parse_optional_flight(data.get("flight_code"))
+    if error or not code:
+        return jsonify({"error": error or "Enter a flight number, like UA1375."}), 400
+    _add_carpool_flight(rows[0], code)
+    return jsonify({"ok": True, "flights": _flights_for(rows).get(carpool_id, [])})
+
+
+@app.post("/api/carpools/<int:carpool_id>/report")
+def report_member(carpool_id: int) -> Any:
+    """A member reports another member of the same carpool to the admins."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Login required"}), 401
+    data = request.get_json(silent=True) or {}
+    reason = str(data.get("reason", "")).strip()
+    if not reason:
+        return jsonify({"error": "Please describe what happened."}), 400
+    if len(reason) > MAX_REPORT_LENGTH:
+        return jsonify({"error": f"Please keep the report under {MAX_REPORT_LENGTH} characters."}), 400
+    p = db.placeholder
+    if not db.query(f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}", (carpool_id, email)):
+        return jsonify({"error": "You can only report members of your own carpools."}), 403
+    reported = _member_email(carpool_id, data, "member_id", "__no_email__")
+    if not reported:
+        return jsonify({"error": "That member is not in this carpool."}), 404
+    if reported == email:
+        return jsonify({"error": "You can't report yourself."}), 400
+    since = (_now_utc() - timedelta(days=1)).isoformat()
+    recent = db.query(f"SELECT COUNT(*) AS n FROM reports WHERE reporter_email = {p} AND created_at > {p}", (email, since))
+    if recent and int(recent[0]["n"]) >= REPORTS_PER_DAY:
+        return jsonify({"error": f"You've sent {REPORTS_PER_DAY} reports today. Email {LEGAL_CONTACT_EMAIL} if you need to add more."}), 429
+    db.execute(
+        f"INSERT INTO reports (reporter_email, reported_email, carpool_id, reason, created_at, status, admin_note, resolved_at) "
+        f"VALUES ({p}, {p}, {p}, {p}, {p}, 'open', '', '')",
+        (email, reported, carpool_id, reason, _now_utc().isoformat()),
+    )
+    _log_event("reported", email, carpool_id, "report filed")
+    return jsonify({"ok": True})
+
+
 @app.get("/api/my-parties")
 def my_parties() -> Any:
     email = session.get("user_email")
@@ -2224,13 +2580,19 @@ def my_parties() -> Any:
             continue
         carpool = rows[0]
         members = db.query(
-            f"SELECT user_email, joined_at FROM party_members WHERE carpool_id = {p} ORDER BY joined_at",
+            f"SELECT id, user_email, joined_at FROM party_members WHERE carpool_id = {p} ORDER BY joined_at",
             (cid,),
         )
-        # Enrich members with name and phone from users table
+        # Enrich members with name and phone from users table. Emails stay on
+        # the server: members are identified to each other by member_id.
         enriched_members = []
         for m in members:
-            member_data = dict(m)
+            member_data = {
+                "member_id": m["id"],
+                "joined_at": m["joined_at"],
+                "is_me": m["user_email"] == email,
+                "is_organizer": m["user_email"] == carpool.get("creator_email"),
+            }
             try:
                 user_rows = db.query(f"SELECT first_name, last_initial, phone FROM users WHERE user_email = {p}", (m["user_email"],))
                 if user_rows:
@@ -2238,16 +2600,18 @@ def my_parties() -> Any:
                     member_data["last_initial"] = user_rows[0]["last_initial"]
                     member_data["phone"] = user_rows[0]["phone"]
                 else:
-                    member_data["first_name"] = m["user_email"].split("@")[0]
+                    member_data["first_name"] = "Member"
                     member_data["last_initial"] = ""
                     member_data["phone"] = ""
             except Exception:
-                member_data["first_name"] = m["user_email"].split("@")[0]
+                member_data["first_name"] = "Member"
                 member_data["last_initial"] = ""
                 member_data["phone"] = ""
             enriched_members.append(member_data)
+        serialized = _serialize_entry(carpool, view="member")
+        serialized["flights"] = _flights_for([carpool]).get(carpool["id"], [])
         parties.append({
-            "carpool": _serialize_entry(carpool, view="member"),
+            "carpool": serialized,
             "members": enriched_members,
             "is_creator": carpool.get("creator_email") == email,
         })
@@ -2295,10 +2659,10 @@ def remove_member(carpool_id: int) -> Any:
     if not email:
         return jsonify({"error": "Login required"}), 401
     data = request.get_json(silent=True) or {}
-    target_email = str(data.get("email", "")).strip().lower()
+    target_email = _member_email(carpool_id, data, "member_id", "email")
     reason = str(data.get("reason", "")).strip()
     if not target_email:
-        return jsonify({"error": "Missing member email"}), 400
+        return jsonify({"error": "That member is not in this carpool"}), 404
     if not reason:
         return jsonify({"error": "A reason for removal is required"}), 400
     if len(reason) > MAX_REASON_LENGTH:
@@ -2537,6 +2901,11 @@ EVENT_LABELS = {
     "shared": "shared an invite link",
     "departed": "Carpool departed",
     "admin_deleted": "Admin deleted a carpool",
+    "reported": "reported a carpool member",
+    "report_resolved": "Admin resolved a report",
+    "banned": "was suspended",
+    "unbanned": "was unsuspended",
+    "user_deleted": "Admin deleted a student's data",
 }
 OUTCOME_LABELS = {
     "departed": "Departed",
@@ -2611,6 +2980,7 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
     for m in members:
         members_by_carpool.setdefault(m["carpool_id"], []).append(m)
     active_carpools = []
+    flights_by_carpool = _flights_for(carpools)
     for c in carpools:
         roster = members_by_carpool.get(c["id"], [])
         seats = int(c.get("seats_available") or 0)
@@ -2618,6 +2988,7 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
             "entry": c,
             "date": _display_date(c.get("requested_flight_date")),
             "trip": _trip_label(c),
+            "flights": flights_by_carpool.get(c["id"], []),
             "direction": _direction(c),
             "leave_time": _display_time(c.get("planned_departure_time")) or "—",
             "created": _fmt_local(c.get("created_at")),
@@ -2702,6 +3073,32 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
             "resets": _fmt_local((recent[0] + JOIN_LIMIT_WINDOW).isoformat()) if blocked else "",
         }
 
+    # Safety reports (the complaint log) and suspended accounts.
+    banned_rows = db.query("SELECT * FROM banned_users ORDER BY banned_at DESC")
+    banned_emails = {b["user_email"] for b in banned_rows}
+    report_rows = db.query("SELECT * FROM reports ORDER BY created_at DESC")
+    reports_against: dict[str, int] = {}
+    for r in report_rows:
+        reports_against[r["reported_email"]] = reports_against.get(r["reported_email"], 0) + 1
+    reports = [
+        {"id": r["id"],
+         "created": _fmt_local(r.get("created_at")),
+         "reporter": person(r["reporter_email"]),
+         "reported": person(r["reported_email"]),
+         "reported_total": reports_against.get(r["reported_email"], 0),
+         "reported_banned": r["reported_email"] in banned_emails,
+         "carpool_id": r.get("carpool_id") or "",
+         "reason": r.get("reason") or "",
+         "open": (r.get("status") or "open") == "open",
+         "note": r.get("admin_note") or "",
+         "resolved": _fmt_local(r.get("resolved_at")) if r.get("resolved_at") else ""}
+        for r in report_rows
+    ]
+    banned = [
+        {**person(b["user_email"]), "reason": b.get("reason") or "", "since": _fmt_local(b.get("banned_at"))}
+        for b in banned_rows
+    ]
+
     joins_per_user: dict[str, int] = {}
     for a in activity:
         if a["event"] == "joined":
@@ -2713,7 +3110,9 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
          "active_carpools": carpools_per_user.get(u["user_email"], 0),
          "terms": (f"v{u.get('terms_version')} · {_fmt_local(u.get('terms_accepted_at'))}" if u.get("terms_version") else "—"),
          "joins": joins_per_user.get(u["user_email"], 0),
-         "join_limit": join_limit(u["user_email"])}
+         "join_limit": join_limit(u["user_email"]),
+         "banned": u["user_email"] in banned_emails,
+         "reports": reports_against.get(u["user_email"], 0)}
         for u in users
     ]
 
@@ -2773,14 +3172,17 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
             "upcoming": upcoming_series,
             "outcomes": outcome_counts,
             "directions": [
-                {"key": "to", "label": "Campus → Airport",
+                {"key": "to", "label": "UCR → Airport",
                  "value": sum(1 for h in created_in_range if _direction(h) == "to_airport")},
-                {"key": "from", "label": "Airport → Campus",
+                {"key": "from", "label": "Airport → UCR",
                  "value": sum(1 for h in created_in_range if _direction(h) == "from_airport")},
             ],
         },
         "active_carpools": active_carpools,
         "students": students,
+        "reports": reports,
+        "open_reports": sum(1 for r in reports if r["open"]),
+        "banned": banned,
         "past": past,
         "feed": feed,
     }
@@ -2816,6 +3218,63 @@ def admin_reset_join_limit() -> Any:
     email = str(request.form.get("email", "")).strip()
     if email:
         db.execute(f"DELETE FROM join_log WHERE user_email = {db.placeholder}", (email,))
+    return redirect(url_for("admin_panel") + "#students")
+
+
+@app.post("/admin/reports/<int:report_id>/resolve")
+def admin_resolve_report(report_id: int) -> Any:
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    note = str(request.form.get("note", "")).strip()[:MAX_REPORT_LENGTH]
+    p = db.placeholder
+    db.execute(
+        f"UPDATE reports SET status = 'resolved', admin_note = {p}, resolved_at = {p} WHERE id = {p}",
+        (note, _now_utc().isoformat(), report_id),
+    )
+    _log_event("report_resolved", "", 0, f"report {report_id}")
+    return redirect(url_for("admin_panel") + "#reports")
+
+
+@app.post("/admin/ban")
+def admin_ban_user() -> Any:
+    """Suspend an account: signs them out, blocks sign-in and removes them
+    from their carpools."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = str(request.form.get("email", "")).strip()
+    reason = str(request.form.get("reason", "")).strip()[:MAX_REPORT_LENGTH]
+    if email:
+        p = db.placeholder
+        if not _is_banned(email):
+            db.execute(
+                f"INSERT INTO banned_users (user_email, reason, banned_at) VALUES ({p}, {p}, {p})",
+                (email, reason, _now_utc().isoformat()),
+            )
+        _remove_user_from_carpools(email, "The organizer's account was suspended.")
+        _log_event("banned", email, 0, reason)
+    return redirect(url_for("admin_panel") + "#reports")
+
+
+@app.post("/admin/unban")
+def admin_unban_user() -> Any:
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = str(request.form.get("email", "")).strip()
+    if email:
+        db.execute(f"DELETE FROM banned_users WHERE user_email = {db.placeholder}", (email,))
+        _log_event("unbanned", email)
+    return redirect(url_for("admin_panel") + "#reports")
+
+
+@app.post("/admin/delete-user")
+def admin_delete_user() -> Any:
+    """Honor a deletion request (see docs/data-requests.md)."""
+    if not _require_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    email = str(request.form.get("email", "")).strip()
+    if email:
+        _delete_user_data(email)
+        _log_event("user_deleted", "", 0, "deletion request")
     return redirect(url_for("admin_panel") + "#students")
 
 
