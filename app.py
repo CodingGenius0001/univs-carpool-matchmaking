@@ -119,7 +119,7 @@ AIRPORT_CODE_PATTERN = re.compile(r"^[A-Z]{3}$")
 # Terms of Service & EULA (templates/_terms_body.html). Bump the version for
 # any material change: everyone is asked to agree again at their next sign-in,
 # and the version each user accepted is recorded in the users table.
-TERMS_VERSION = "4.1"
+TERMS_VERSION = "4.2"
 TERMS_EFFECTIVE = "October 13, 2026"
 # Where legal notices, opt-outs and privacy requests go (shown in the Terms
 # and Privacy Policy). Never a public repository.
@@ -938,7 +938,7 @@ class DBAdapter:
                 cur.execute("SHOW COLUMNS FROM carpool_history LIKE 'direction'")
                 if not cur.fetchone():
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction VARCHAR(16) NOT NULL DEFAULT 'to_airport'")
-                for col in ("terms_version", "terms_accepted_at"):
+                for col in ("terms_version", "terms_accepted_at", "age_confirmed_at"):
                     cur.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
                     if not cur.fetchone():
                         cur.execute(f"ALTER TABLE users ADD COLUMN {col} VARCHAR(64) NOT NULL DEFAULT ''")
@@ -965,7 +965,7 @@ class DBAdapter:
                     cur.execute("ALTER TABLE carpool_history ADD COLUMN direction TEXT NOT NULL DEFAULT 'to_airport'")
                 cur.execute("PRAGMA table_info(users)")
                 user_cols = [row[1] for row in cur.fetchall()]
-                for col in ("last_login_at", "terms_version", "terms_accepted_at"):
+                for col in ("last_login_at", "terms_version", "terms_accepted_at", "age_confirmed_at"):
                     if col not in user_cols:
                         cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             conn.commit()
@@ -1687,9 +1687,9 @@ def firebase_callback() -> Any:
         existing = db.query(f"SELECT user_email FROM users WHERE user_email = {p}", (email,))
         if not existing:
             db.execute(
-                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at) "
-                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
-                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso),
+                f"INSERT INTO users (user_email, first_name, last_initial, phone, created_at, last_login_at, terms_version, terms_accepted_at, age_confirmed_at) "
+                f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})",
+                (email, first_name, last_initial, "", now_iso, now_iso, TERMS_VERSION, now_iso, now_iso),
             )
             is_new = True
         else:
@@ -1705,9 +1705,11 @@ def firebase_callback() -> Any:
                 f"WHERE user_email = {p} AND (terms_version IS NULL OR terms_version != {p})",
                 (TERMS_VERSION, now_iso, email, TERMS_VERSION),
             )
+            # The 18+ confirmation is given at every sign-in; keep the latest.
+            db.execute(f"UPDATE users SET age_confirmed_at = {p} WHERE user_email = {p}", (now_iso, email))
             is_new = False
-        saved = db.query(f"SELECT terms_version FROM users WHERE user_email = {p}", (email,))
-        if not saved or saved[0].get("terms_version") != TERMS_VERSION:
+        saved = db.query(f"SELECT terms_version, age_confirmed_at FROM users WHERE user_email = {p}", (email,))
+        if not saved or saved[0].get("terms_version") != TERMS_VERSION or not saved[0].get("age_confirmed_at"):
             raise RuntimeError("terms acceptance was not stored")
     except Exception as exc:
         app.logger.error("Sign-in refused, could not record Terms acceptance for %s: %s", email, exc)
@@ -2215,7 +2217,8 @@ def invite_page(token: str) -> Any:
         "date": _display_date(entry.get("requested_flight_date", "")),
         "leave_time": _display_time(entry.get("planned_departure_time", "")),
         "flights": _flights_for([entry]).get(entry["id"], []),
-        "notes": entry.get("notes", ""),
+        # Notes are for members only (Privacy Policy §3).
+        "notes": entry.get("notes", "") if any(m["email"] == email for m in members) else "",
         "members": [{"name": m["name"], "is_organizer": m["email"] == entry.get("creator_email")} for m in members],
         "member_count": len(members),
         "seats_total": seats_total,

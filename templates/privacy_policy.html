@@ -80,7 +80,7 @@
             <li>Your UCR Google account email address (<code>@ucr.edu</code> only), collected via Firebase Authentication (Google Sign-In).</li>
             <li>Your name, taken from your Google account when you sign in. We store your first name and last initial.</li>
             <li>Your phone number, which you enter when you create or join a carpool.</li>
-            <li>A record that you confirmed you are 18 or older and agreed to the Terms of Service: the version you agreed to and when. Signing in is not possible without both.</li>
+            <li>A record that you confirmed you are 18 or older and agreed to the Terms of Service: the version you agreed to and when, and when you last confirmed your age. Signing in is not possible without both.</li>
           </ul>
           <h4>Carpool Data</h4>
           <ul>
@@ -146,7 +146,7 @@
           <p>By using Campus2Air, you acknowledge that you are meeting other people at your own discretion and risk. We are a coordination tool, not a vetting service. If someone makes you feel unsafe, use the Report option on My Carpool, and in an emergency call 911.</p>
 
           <h3>7. Data Security and Cookies</h3>
-          <p>We take reasonable technical measures to protect your data, including HTTPS (encrypted connections), secure database access controls, and server-side session management.</p>
+          <p>We take reasonable technical measures to protect your data, including HTTPS (encrypted connections), secure database access controls, and signed session cookies that cannot be altered without detection.</p>
           <p><strong>Cookies.</strong> We use one necessary session cookie, which keeps you signed in for up to 30 days after your last visit and protects your actions from forgery. We do not use advertising, analytics or tracking cookies. Signing out removes your sign-in from that browser. Your browser also stores your light/dark theme choice, and which Terms version you agreed to on that device (so sign-in can finish after Google redirects you), in its local storage.</p>
           <p><strong>Do Not Track.</strong> Some browsers send a &ldquo;Do Not Track&rdquo; (DNT) signal. Because we do not track you across websites or use your data for advertising, we treat all visitors the same and do not change our practices in response to DNT signals.</p>
           <p>No online service is fully immune to security risks. We recommend using a strong, unique password for your UCR Google account, which is your primary credential for this service.</p>
@@ -161,6 +161,7 @@
             <li><strong>Right to opt out:</strong> We do not sell or share personal information for advertising. There is nothing to opt out of.</li>
           </ul>
           <p><strong>How to make a request.</strong> Email us at {% if legal_contact_email %}<a href="mailto:{{ legal_contact_email }}">{{ legal_contact_email }}</a>{% endif %} from your @ucr.edu address. We confirm the request by replying to that address, then respond within 45 days as required by California law. For a deletion, we remove your account, phone number, notifications, join history and activity-log entries, and take you out of your carpools (carpools you organize are closed and the riders are told). We keep safety reports and suspension records, usage summaries that contain no personal information, and anything the law requires us to keep. Please do not post requests or personal information publicly.</p>
+          <p>Safety reports other users filed about you are personal information about you, but we may withhold or summarize them in response to an access request where needed to protect the person who reported or someone else&apos;s safety, as the law permits.</p>
 
           <h3>9. Age Requirement</h3>
           <p>Campus2Air is only for people 18 and older, and you must confirm that you are 18 or older to sign in. We do not knowingly collect personal information from anyone under 18. If you believe someone under 18 is using the service, contact us and we will delete their account.</p>

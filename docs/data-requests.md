@@ -5,6 +5,19 @@ Policy (`LEGAL_CONTACT_EMAIL`, default `legal-campus2air@proton.me`). The
 Privacy Policy promises a response within **45 days**. Keep every request and
 your reply in that mailbox; it is your record that you handled it.
 
+## 0. Routine (do this on a fixed schedule)
+
+- **Every Monday and Thursday**: open `/admin` and clear the Reports section
+  (every open report gets a decision and a note), then read the
+  legal-campus2air@proton.me inbox and answer anything new.
+- **Same day** for anything describing a threat, harassment or a crash:
+  suspend first if in doubt, then investigate.
+- Log each check by marking reports resolved with a note, and by leaving
+  a reply (or "no new mail, <date>") in a Proton folder named `Log`. If you
+  will be away, make sure someone else with admin access covers the schedule.
+- Keep the published address exactly `legal-campus2air@proton.me`: dispute
+  notices, arbitration opt-outs and the 45-day privacy deadline all depend on it.
+
 ## 1. Confirm who is asking
 
 Only act on a request about an account when it comes from that account's
@@ -40,7 +53,9 @@ SELECT * FROM activity_log   WHERE user_email = 'name@ucr.edu';
 SELECT * FROM reports        WHERE reporter_email = 'name@ucr.edu';
 ```
 
-Do not include reports *about* them that would reveal who filed them.
+Reports *about* them are their personal information too, but withhold or
+summarize them when sharing would identify or endanger the person who
+reported (the Privacy Policy says so).
 
 ## 4. Correction request
 
@@ -57,7 +72,7 @@ again.
 ## 5. Safety reports
 
 1. New reports appear at the top of `/admin` ("open safety reports") and in the
-   **Reports** section. Review open reports at least every few days.
+   **Reports** section. Review them on the schedule in section 0.
 2. If someone describes an emergency or a crime, tell them to contact 911 /
    the police. Campus2Air cannot investigate crimes.
 3. Decide, then click **Mark resolved** with a short note of what you did (for

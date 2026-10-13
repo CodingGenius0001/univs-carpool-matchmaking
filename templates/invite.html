@@ -81,7 +81,7 @@
           </span>
         </div>
 
-        {% if carpool.notes %}
+        {% if carpool.notes and carpool.is_member %}
         <div class="invite-notes">
           <span class="label">Notes</span>
           <p>{{ carpool.notes }}</p>
