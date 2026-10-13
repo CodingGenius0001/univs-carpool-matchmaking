@@ -1339,6 +1339,21 @@ select {
   font-size: 0.95rem;
 }
 
+.message-info {
+  background: rgb(var(--button-rgb) / 0.12);
+  color: var(--foreground);
+  border: 1px solid rgb(var(--button-rgb) / 0.35);
+}
+
+.other-direction-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  text-align: left;
+}
+
 .message-warning {
   background: rgb(var(--signal-rgb) / 0.14);
   color: var(--warning);
@@ -3368,4 +3383,12 @@ html:not(.light-mode) .trip-countdown {
   .terms-body h3 {
     break-after: avoid;
   }
+}
+
+/* Field flagged by form validation (e.g. time without a date). Kept at the
+   end and doubled up so it beats the theme's input and focus borders. */
+html .field-invalid.field-invalid input,
+html .field-invalid.field-invalid input:focus {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px rgb(var(--danger-rgb) / 0.22) !important;
 }

@@ -1653,6 +1653,9 @@ def search_carpools() -> Any:
     # Require at least one search field
     if not flight_code and not airport_code and not flight_date_raw and not planned_leave_time:
         return jsonify({"error": "At least 1 search field is required", "count": 0, "results": []}), 400
+    # A leave time only means something on a given day.
+    if planned_leave_time and not flight_date:
+        return jsonify({"error": "Pick a date to search by time.", "count": 0, "results": []}), 400
 
     current_user = session.get("user_email", "")
     p = db.placeholder
@@ -1682,9 +1685,11 @@ def search_carpools() -> Any:
     total_criteria = sum([bool(flight_code), bool(airport_code), bool(flight_date), bool(planned_leave_time)])
 
     results: list[dict[str, Any]] = []
+    # Matches skipped only because they go the other way, so the page can
+    # point out "1 Airport → Campus carpool matches" instead of nothing.
+    other_direction_count = 0
     for entry in rows:
-        if direction and _direction(entry) != direction:
-            continue
+        wrong_direction = bool(direction) and _direction(entry) != direction
         matched_fields = 0
         reasons: list[str] = []
         if flight_code and entry["flight_code"] == flight_code:
@@ -1708,6 +1713,9 @@ def search_carpools() -> Any:
                 continue
             matched_fields += 1
             reasons.append("Leaves within 2 hours")
+        if matched_fields > 0 and wrong_direction:
+            other_direction_count += 1
+            continue
         if matched_fields > 0:
             score = round((matched_fields / total_criteria) * 100) if total_criteria > 0 else 0
             public_row = _serialize_entry(entry)
@@ -1723,7 +1731,7 @@ def search_carpools() -> Any:
             results.append(public_row)
 
     results.sort(key=lambda r: r["match_score"], reverse=True)
-    return jsonify({"count": len(results), "results": results})
+    return jsonify({"count": len(results), "results": results, "other_direction_count": other_direction_count})
 
 
 @app.get("/api/carpools/<int:entry_id>")

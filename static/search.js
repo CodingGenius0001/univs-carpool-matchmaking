@@ -41,6 +41,32 @@ function applyDirectionText() {
   directionSelect?.classList.toggle('trip-to', !from);
 }
 
+results?.addEventListener('click', (e) => {
+  const btn = e.target.closest('#switch-direction-btn');
+  if (!btn || !directionSelect) return;
+  directionSelect.value = btn.dataset.direction;
+  // The change handler re-runs the search.
+  directionSelect.dispatchEvent(new Event('change'));
+});
+
+const dateLabel = searchForm?.querySelector('[name="departure_date"]')?.closest('label');
+
+function showDateError() {
+  dateLabel?.classList.add('field-invalid');
+  results.innerHTML = `
+    <div class="message message-error mt-2" role="alert">
+      Pick a date to search by time. The time finds carpools leaving within 2 hours of it on that day.
+    </div>`;
+  (dateLabel?.querySelector('.us-date-text') || dateLabel?.querySelector('input'))?.focus();
+}
+
+function clearDateError() {
+  dateLabel?.classList.remove('field-invalid');
+}
+
+dateLabel?.addEventListener('input', clearDateError);
+dateLabel?.addEventListener('change', clearDateError);
+
 directionSelect?.addEventListener('change', () => {
   applyDirectionText();
   // Re-run an existing search so results always match the chosen direction.
@@ -191,11 +217,17 @@ searchForm?.addEventListener('submit', async (e) => {
   const ac = searchForm.querySelector('[name="airport_code"]')?.value.trim();
   const dd = searchForm.querySelector('[name="departure_date"]')?.value.trim();
   const pt = searchForm.querySelector('[name="planned_leave_time"]')?.value.trim();
+  clearDateError();
   if (!fc && !ac && !dd && !pt) {
     results.innerHTML = `
-      <div class="message message-warning mt-2">
-        At least 1 search field is required. Please enter a flight code, airport code, date, or time to search.
+      <div class="message message-error mt-2" role="alert">
+        Enter a flight code, airport code, date, or time to search.
       </div>`;
+    return;
+  }
+  // A time window only makes sense on a given day.
+  if (pt && !dd) {
+    showDateError();
     return;
   }
 
@@ -215,16 +247,27 @@ searchForm?.addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (!res.ok) {
-      results.innerHTML = `<div class="message message-warning mt-2">${escapeHtml(data.error || 'Search failed. Please try again.')}</div>`;
+      results.innerHTML = `<div class="message message-error mt-2" role="alert">${escapeHtml(data.error || 'Search failed. Please try again.')}</div>`;
       return;
     }
 
     if (!data.results?.length) {
+      // Nothing this way, but something the other way: say so, since the
+      // Trip field defaults to Campus -> Airport and is easy to overlook.
+      const other = Number(data.other_direction_count) || 0;
+      const otherDir = selectedDirection() === 'from_airport' ? 'to_airport' : 'from_airport';
+      const otherLabel = otherDir === 'from_airport' ? 'Airport → Campus' : 'Campus → Airport';
+      const otherHint = other ? `
+          <div class="message message-info mt-2 other-direction-hint">
+            <span>${other} ${escapeHtml(otherLabel)} carpool${other === 1 ? '' : 's'} match${other === 1 ? 'es' : ''} your search.</span>
+            <button type="button" class="btn btn-primary btn-sm" id="switch-direction-btn" data-direction="${otherDir}">Show ${escapeHtml(otherLabel)}</button>
+          </div>` : '';
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
-          <p>No matching carpools found. Try adjusting your search or create your own carpool!</p>
-          <a href="${escapeAttr(buildAddUrl())}" class="btn btn-primary mt-2">Create a Carpool</a>
+          <p>No ${escapeHtml(Trip.directionLabel({ direction: selectedDirection() }))} carpools match your search.</p>
+          ${otherHint}
+          <a href="${escapeAttr(buildAddUrl())}" class="btn ${other ? 'btn-secondary' : 'btn-primary'} mt-2">Create a Carpool</a>
         </div>`;
       return;
     }
