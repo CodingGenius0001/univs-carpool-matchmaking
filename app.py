@@ -37,7 +37,15 @@ if not _configured_secret_key or _configured_secret_key == "dev-only-change-me":
     if os.getenv("VERCEL"):
         print("[security] FLASK_SECRET_KEY is not set; using a random per-process key. Set it in Vercel.")
 app.secret_key = _configured_secret_key
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+# Students stay signed in for 30 days after their last visit (the cookie is
+# refreshed on every request). Admin access has its own 30-minute limit in
+# _require_admin().
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+# Student and admin logins share one session cookie; each login/logout only
+# touches its own keys so signing in or out of one never ends the other (and
+# never changes the CSRF token that open tabs are using).
+USER_SESSION_KEYS = ("user_email", "user_name", "user_uid", "post_login_next")
+ADMIN_SESSION_KEYS = ("admin_authed", "admin_login_at")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
@@ -206,6 +214,9 @@ def _get_csrf_token() -> str:
     if not token:
         token = secrets.token_urlsafe(32)
         session["csrf_token"] = token
+        # Without this the cookie dies when the browser closes (phones do
+        # that in the background), breaking an open login page's token.
+        session.permanent = True
     return token
 
 
@@ -253,9 +264,14 @@ def protect_csrf() -> Any:
     if request.path == "/admin/logout":
         return redirect(url_for("admin_login_page"))
 
+    # Usually an old tab: the session expired or changed since the page
+    # loaded. Say so plainly instead of "Invalid CSRF token".
+    message = "Your session changed since this page was opened. Refresh the page and try again."
     if request.path.startswith("/api/") or request.path == "/auth/firebase-callback":
-        return jsonify({"error": "Invalid CSRF token"}), 400
-    return "Invalid CSRF token", 400
+        return jsonify({"error": message, "session_expired": True}), 400
+    if request.path.startswith("/admin"):
+        return redirect(url_for("admin_panel" if _require_admin() else "admin_login_page"))
+    return redirect(url_for("login_page"))
 
 
 def _resolve_database_path() -> str:
@@ -1389,7 +1405,8 @@ def firebase_callback() -> Any:
 
     # Remember an invite link the user was sent to before signing in.
     next_path = _safe_next_path(session.get("post_login_next", ""))
-    session.clear()
+    for key in USER_SESSION_KEYS:
+        session.pop(key, None)
     session.permanent = True
     session["user_email"] = email
     session["user_name"] = name
@@ -1436,7 +1453,8 @@ def user_logout_link() -> Any:
 
 @app.post("/auth/logout")
 def user_logout() -> Any:
-    session.clear()
+    for key in USER_SESSION_KEYS:
+        session.pop(key, None)
     return render_template("logout.html")
 
 
@@ -2874,7 +2892,8 @@ def admin_logout_link() -> Any:
 
 @app.post("/admin/logout")
 def admin_logout() -> Any:
-    session.clear()
+    for key in ADMIN_SESSION_KEYS:
+        session.pop(key, None)
     resp = redirect(url_for("admin_login_page"))
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"

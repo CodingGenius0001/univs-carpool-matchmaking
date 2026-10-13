@@ -51,8 +51,8 @@ There are no tests or linting configured in this project.
 **Admin dashboard**: `/admin?days=7|30|90` renders `_admin_dashboard()` (KPIs, per-day series in Pacific time, open carpools with riders, students, past carpools, activity feed). Charts are dependency-free SVG drawn by `static/admin-dashboard.js` from the `dash-data` JSON block
 
 **Authentication**: Two separate auth systems:
-1. **User auth** — Firebase-based (client-side), email stored in session via `/auth/firebase-callback`
-2. **Admin auth** — Werkzeug password hash from env vars, session-based with 30-min expiry
+1. **User auth** — Firebase-based (client-side), email stored in session via `/auth/firebase-callback`. The session cookie lasts 30 days from the last visit (`PERMANENT_SESSION_LIFETIME`)
+2. **Admin auth** — Werkzeug password hash from env vars, session-based with 30-min expiry (checked in `_require_admin`). Both logins share one cookie: login/logout only touch their own keys (`USER_SESSION_KEYS` / `ADMIN_SESSION_KEYS`) and keep the CSRF token, so open tabs keep working. A stale CSRF token gets a "refresh the page" message (API) or a redirect (forms), never a state change
 
 **Flight data**: There is no external flight lookup. Users enter their flight code; the airline name is auto-filled client-side from the `AIRLINE_CODES` prefix map via `/api/airlines/suggest`.
 
