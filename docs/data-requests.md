@@ -1,7 +1,7 @@
 # Handling privacy requests, reports and suspensions
 
 Requests arrive at the legal contact address shown in the Terms and Privacy
-Policy (`LEGAL_CONTACT_EMAIL`, default `campus2air-legal@proton.me`). The
+Policy (`LEGAL_CONTACT_EMAIL`, default `legal-campus2air@proton.me`). The
 Privacy Policy promises a response within **45 days**. Keep every request and
 your reply in that mailbox; it is your record that you handled it.
 

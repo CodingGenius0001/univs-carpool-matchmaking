@@ -123,7 +123,7 @@ TERMS_VERSION = "4.1"
 TERMS_EFFECTIVE = "October 13, 2026"
 # Where legal notices, opt-outs and privacy requests go (shown in the Terms
 # and Privacy Policy). Never a public repository.
-LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip() or "campus2air-legal@proton.me"
+LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip() or "legal-campus2air@proton.me"
 # Which way the ride goes. Carpools created before this existed are campus -> airport.
 DIRECTIONS = ("to_airport", "from_airport")
 DEFAULT_DIRECTION = "to_airport"
