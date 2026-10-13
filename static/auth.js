@@ -18,7 +18,6 @@ googleProvider.setCustomParameters({
 });
 
 const termsCheckbox = document.getElementById('terms-agree');
-const ageCheckbox = document.getElementById('age-confirm');
 const signinBtn = document.getElementById('google-signin-btn');
 const statusEl = document.getElementById('login-status');
 const defaultButtonHtml = signinBtn ? signinBtn.innerHTML : '';
@@ -31,7 +30,7 @@ let serverLoginPromise = null;
 let persistenceReadyPromise = null;
 
 function _bothChecked() {
-  return !!termsCheckbox?.checked && !!ageCheckbox?.checked;
+  return !!termsCheckbox?.checked;
 }
 
 function setStatus(message, className = '') {
@@ -146,10 +145,10 @@ function agreedTermsVersion() {
   return termsCheckbox?.checked || hasTermsAgreed() ? TERMS_VERSION : '';
 }
 
-// The agreement is only remembered (for the Google redirect round trip)
-// after both boxes were ticked, so a remembered agreement includes the age.
+// One checkbox covers both: "I'm 18 or older and agree to the Terms".
+// A remembered agreement (Google redirect round trip) includes the age.
 function ageConfirmed() {
-  return !!ageCheckbox?.checked || hasTermsAgreed();
+  return !!termsCheckbox?.checked || hasTermsAgreed();
 }
 
 function ensureAuthPersistence() {
@@ -222,7 +221,6 @@ serverLoginPromise = (async () => {
       // The Terms changed since this browser last agreed: ask again.
       try { localStorage.removeItem(TERMS_AGREED_KEY); } catch (_) {}
       if (termsCheckbox) termsCheckbox.checked = false;
-      if (ageCheckbox && data.age_required) ageCheckbox.checked = false;
       throw new Error(data.error);
     }
     if (res.status === 403 && data.banned) {
@@ -275,17 +273,10 @@ function shouldFallbackToRedirect(err) {
 termsCheckbox?.addEventListener('change', () => {
   resetButton();
 });
-ageCheckbox?.addEventListener('change', () => {
-  resetButton();
-});
 
 signinBtn?.addEventListener('click', async () => {
-  if (!ageCheckbox?.checked) {
-    setStatus('You must confirm that you are 18 or older to use Campus2Air.');
-    return;
-  }
   if (!termsCheckbox?.checked) {
-    setStatus('You must agree to the Terms of Service, EULA, and Privacy Policy to continue.');
+    setStatus('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.');
     return;
   }
 
