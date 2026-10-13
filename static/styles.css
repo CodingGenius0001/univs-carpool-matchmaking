@@ -1368,6 +1368,12 @@ html .link-button:hover {
   color: var(--muted);
 }
 
+.flight-info {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
 .message-info {
   background: rgb(var(--button-rgb) / 0.12);
   color: var(--foreground);
