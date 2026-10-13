@@ -314,10 +314,10 @@ function showPhonePrompt(carpoolId, joinBtn) {
         <label class="mt-2">Phone Number
           <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${escapeAttr(cachedUserPhone)}" />
         </label>
-        <label class="mt-2"><span>Your Flight Number <span class="label-optional">(optional)</span></span>
+        <div class="message message-info flight-info"><strong>Why add your flight?</strong> Students who search for your flight number will find this carpool, so more people on the same flight can join and split the ride. It goes on the carpool&apos;s flight list, not next to your name.</div>
+        <label><span>Your Flight Number <span class="label-optional">(optional)</span></span>
           <input type="text" id="join-flight" placeholder="e.g. UA1375" maxlength="8" autocapitalize="characters" autocomplete="off" value="${escapeAttr(searchedFlight())}" />
         </label>
-        <p class="text-muted text-sm">Added to the carpool's flight list so everyone can track arrivals. It isn't shown next to your name.</p>
         <div class="modal-actions mt-2">
           <button type="button" class="btn btn-secondary" id="phone-cancel">Cancel</button>
           <button type="submit" class="btn btn-primary">Join Carpool</button>

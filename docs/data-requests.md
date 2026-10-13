@@ -1,15 +1,34 @@
-# Handling privacy requests, reports and suspensions
+# Handling privacy requests and suspensions
 
 Requests arrive at the legal contact address shown in the Terms and Privacy
 Policy (`LEGAL_CONTACT_EMAIL`, default `legal-campus2air@proton.me`). The
 Privacy Policy promises a response within **45 days**. Keep every request and
 your reply in that mailbox; it is your record that you handled it.
 
+## 0. Routine (once a month)
+
+- **Last weekend of each month**: read the legal-campus2air@proton.me inbox
+  and answer anything new. Privacy requests must be answered within 45 days,
+  which a monthly check covers.
+- Campus2Air does not take complaints about other users (the Terms say so),
+  so there is nothing else to review. If someone emails about a dangerous
+  user anyway, point them to 911/the police; you may suspend the account
+  from `/admin` → Students if you choose to, but you don't have to.
+- Keep the published address exactly `legal-campus2air@proton.me`: dispute
+  notices, arbitration opt-outs and the 45-day privacy deadline depend on it.
+  Turning on Proton's phone notifications for that inbox is an easy way not
+  to miss anything.
+
 ## 1. Confirm who is asking
 
-Only act on a request about an account when it comes from that account's
-`@ucr.edu` address, or when you have replied to that address and the person
-confirmed from it. Never act on a request that only names someone else.
+Act on a request about an account only when it comes from that account's
+`@ucr.edu` address, or when the person can no longer use it: then reply to
+the address they wrote from, ask them to confirm details only the account
+holder would know (for example their carpool's date and airport), and use
+your judgment. Never act on a request that only names someone else.
+Requests and legal notices count as received when they arrive in the
+inbox; aim to answer within 45 days (the policy allows telling them you
+need up to 45 more).
 
 ## 2. Deletion request
 
@@ -18,8 +37,8 @@ confirmed from it. Never act on a request that only names someone else.
    history and activity-log entries (and blanks other log entries that mention
    their email), and removes them from their carpools. Carpools they organize
    are closed and the other riders get a notification.
-3. Kept on purpose (and said so in the Privacy Policy): safety reports and
-   suspension records, carpool summaries with no personal data, and anything
+3. Kept on purpose (and said so in the Privacy Policy): any suspension
+   record, carpool summaries with no personal data, and anything
    the law requires.
 4. Reply to the person confirming the deletion and the date.
 
@@ -37,10 +56,7 @@ SELECT * FROM party_members  WHERE user_email = 'name@ucr.edu';
 SELECT * FROM carpools       WHERE creator_email = 'name@ucr.edu';
 SELECT * FROM notifications  WHERE user_email = 'name@ucr.edu';
 SELECT * FROM activity_log   WHERE user_email = 'name@ucr.edu';
-SELECT * FROM reports        WHERE reporter_email = 'name@ucr.edu';
 ```
-
-Do not include reports *about* them that would reveal who filed them.
 
 ## 4. Correction request
 
@@ -54,19 +70,14 @@ UPDATE users SET phone = '+1 (951) 555 1234' WHERE user_email = 'name@ucr.edu';
 Names come from their Google account; ask them to change it there and sign in
 again.
 
-## 5. Safety reports
+## 5. Suspending an account (optional)
 
-1. New reports appear at the top of `/admin` ("open safety reports") and in the
-   **Reports** section. Review open reports at least every few days.
-2. If someone describes an emergency or a crime, tell them to contact 911 /
-   the police. Campus2Air cannot investigate crimes.
-3. Decide, then click **Mark resolved** with a short note of what you did (for
-   example "warned by email", "no action: duplicate", "suspended"). The note is
-   the complaint log; write it as if a judge will read it.
-4. **Suspend** when a report describes harassment, threats, unsafe driving,
-   charging for profit, or when the same person gets repeated reports. A
-   suspended account is signed out, cannot sign in, and is removed from its
-   carpools. Lift it from **Suspended accounts** if it was a mistake.
+`/admin` → Students → **Suspend** signs the person out, blocks sign-in and
+removes them from their carpools (carpools they organize are closed and the
+riders are told). Lift it from **Suspended accounts** at the bottom of the
+Students section. Use it only if you want to; nothing promises it.
+Suspension records are deleted automatically after 3 years. If a suspended
+person emails asking for a review, reply and either lift it or say why not.
 
 ## 6. Terms versions
 

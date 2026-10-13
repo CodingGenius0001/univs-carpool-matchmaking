@@ -81,7 +81,7 @@
           </span>
         </div>
 
-        {% if carpool.notes %}
+        {% if carpool.notes and carpool.is_member %}
         <div class="invite-notes">
           <span class="label">Notes</span>
           <p>{{ carpool.notes }}</p>
@@ -119,10 +119,10 @@
           <label class="mt-2">Your Phone Number
             <input type="tel" id="invite-phone" required placeholder="+1 (909) 555 1234" maxlength="17" inputmode="tel" value="{{ user_phone }}" />
           </label>
-          <label class="mt-2"><span>Your Flight Number <span class="label-optional">(optional)</span></span>
+          <div class="message message-info flight-info"><strong>Why add your flight?</strong> Students who search for your flight number will find this carpool, so more people on the same flight can join and split the ride. It goes on the carpool&apos;s flight list, not next to your name.</div>
+          <label><span>Your Flight Number <span class="label-optional">(optional)</span></span>
             <input type="text" id="invite-flight" placeholder="e.g. UA1375" maxlength="8" autocapitalize="characters" autocomplete="off" />
           </label>
-          <p class="text-muted text-sm">Added to the carpool's flight list so everyone can track arrivals. It isn't shown next to your name.</p>
           <p id="invite-message" class="text-sm mt-1" role="alert"></p>
           <div class="invite-actions">
             <button type="submit" class="btn btn-primary" id="invite-join-btn">Yes, Join Carpool</button>

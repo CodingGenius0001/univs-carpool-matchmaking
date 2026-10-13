@@ -1357,19 +1357,6 @@ html .link-button {
   cursor: pointer;
 }
 
-html .link-button-muted {
-  margin-top: 0.1rem;
-  color: var(--muted) !important;
-  font-size: 0.72rem;
-  font-weight: 500;
-}
-
-.member-name-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
 html .link-button:hover {
   text-decoration: underline;
 }
@@ -1379,6 +1366,12 @@ html .link-button:hover {
   letter-spacing: 0;
   font-weight: 500;
   color: var(--muted);
+}
+
+.flight-info {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .message-info {
@@ -3051,31 +3044,6 @@ html:not(.light-mode) .dash-table th {
   white-space: nowrap;
 }
 
-.dash-report-alert {
-  display: block;
-  margin: 0 0 1rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.dash-table td.dash-report-reason {
-  min-width: 16rem;
-  max-width: 28rem;
-  white-space: pre-wrap;
-}
-
-.dash-report-actions,
-.dash-resolve-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-width: 13rem;
-}
-
-.dash-report-open td:first-child {
-  box-shadow: inset 3px 0 0 var(--danger);
-}
-
 .dash-limit-blocked {
   color: var(--danger);
   font-weight: 600;
@@ -3467,4 +3435,39 @@ html .field-invalid.field-invalid input:focus {
     font-size: 1.65rem;
     line-height: 1.15;
   }
+}
+
+/* "Who can see your information" table in the Privacy Policy. */
+.policy-table-wrap {
+  margin: 0.8rem 0 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.policy-table {
+  min-width: 34rem;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.policy-table th,
+.policy-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.policy-table th {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.policy-table td:first-child {
+  font-weight: 600;
+  color: var(--foreground);
 }
