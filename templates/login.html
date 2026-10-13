@@ -37,6 +37,8 @@
 
           {% if error == "ucr_only" %}
           <div class="login-error">Please sign in with your <strong>@ucr.edu</strong> UCR Student Google Account.</div>
+          {% elif error == "suspended" %}
+          <div class="login-error">This account has been suspended from Campus2Air. If you think this is a mistake, email <a href="mailto:{{ legal_contact_email }}">{{ legal_contact_email }}</a>.</div>
           {% elif error == "auth_failed" %}
           <div class="login-error">Authentication failed. Please try again.</div>
           {% endif %}
@@ -52,8 +54,13 @@
           </button>
 
           <label class="eula-checkbox">
+            <input type="checkbox" id="age-confirm" />
+            <span>I confirm that I am 18 years of age or older.</span>
+          </label>
+
+          <label class="eula-checkbox">
             <input type="checkbox" id="terms-agree" data-terms-version="{{ terms_version }}" />
-            <span>I am 18 or older and agree to the <a href="/eula" target="_blank">Terms of Service &amp; EULA</a> (v{{ terms_version }}), including the assumption of risk, release of liability and individual arbitration agreement, and the <a href="/privacy" target="_blank">Privacy Policy</a>. I understand Campus2Air only matches students and is not responsible for any ride.</span>
+            <span>I agree to the <a href="/eula" target="_blank">Terms of Service &amp; EULA</a> (v{{ terms_version }}), including the assumption of risk, release of liability and individual arbitration agreement, and the <a href="/privacy" target="_blank">Privacy Policy</a>. I understand Campus2Air only matches students and is not responsible for any ride.</span>
           </label>
 
           <p id="login-status" style="margin-top: 1rem; font-size: 0.85rem;"></p>

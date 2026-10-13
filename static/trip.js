@@ -1,6 +1,7 @@
 // Shared helpers for showing a carpool's trip at a glance:
-// "🛫 To ONT · Fri, Oct 23" plus a "Tomorrow" / "In 5 days" countdown.
+// "UCR → ONT · Fri, Oct 23" plus a "Tomorrow" / "In 5 days" countdown.
 (function () {
+  const CAMPUS = 'UCR';
   const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -37,13 +38,18 @@
     return c?.direction === 'from_airport';
   }
 
-  // Plain text; callers escape before inserting into HTML.
+  // 'UCR → ONT' / 'ONT → UCR'. Plain text; callers escape before inserting into HTML.
+  function route(c) {
+    const airport = c?.airport_code || 'Airport';
+    return isFrom(c) ? `${airport} → ${CAMPUS}` : `${CAMPUS} → ${airport}`;
+  }
+
   function headline(c) {
-    return `${isFrom(c) ? '🛬 From' : '🛫 To'} ${c?.airport_code || ''} · ${friendlyDate(c?.requested_flight_date)}`;
+    return `${route(c)} · ${friendlyDate(c?.requested_flight_date)}`;
   }
 
   function directionLabel(c) {
-    return isFrom(c) ? 'Airport → Campus' : 'Campus → Airport';
+    return isFrom(c) ? `Airport → ${CAMPUS}` : `${CAMPUS} → Airport`;
   }
 
   function tripClass(c) {
@@ -59,5 +65,5 @@
     return String(a?.planned_departure_time || '').localeCompare(String(b?.planned_departure_time || ''));
   }
 
-  window.Trip = { parseDate, friendlyDate, daysUntil, countdown, headline, directionLabel, tripClass, isFrom, compare };
+  window.Trip = { CAMPUS, route, parseDate, friendlyDate, daysUntil, countdown, headline, directionLabel, tripClass, isFrom, compare };
 })();

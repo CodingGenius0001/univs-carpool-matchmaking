@@ -41,6 +41,32 @@ function applyDirectionText() {
   directionSelect?.classList.toggle('trip-to', !from);
 }
 
+results?.addEventListener('click', (e) => {
+  const btn = e.target.closest('#switch-direction-btn');
+  if (!btn || !directionSelect) return;
+  directionSelect.value = btn.dataset.direction;
+  // The change handler re-runs the search.
+  directionSelect.dispatchEvent(new Event('change'));
+});
+
+const dateLabel = searchForm?.querySelector('[name="departure_date"]')?.closest('label');
+
+function showDateError() {
+  dateLabel?.classList.add('field-invalid');
+  results.innerHTML = `
+    <div class="message message-error mt-2" role="alert">
+      Pick a date to search by time. The time finds carpools leaving within 2 hours of it on that day.
+    </div>`;
+  (dateLabel?.querySelector('.us-date-text') || dateLabel?.querySelector('input'))?.focus();
+}
+
+function clearDateError() {
+  dateLabel?.classList.remove('field-invalid');
+}
+
+dateLabel?.addEventListener('input', clearDateError);
+dateLabel?.addEventListener('change', clearDateError);
+
 directionSelect?.addEventListener('change', () => {
   applyDirectionText();
   // Re-run an existing search so results always match the chosen direction.
@@ -134,7 +160,6 @@ function renderResults(data) {
             <div>
               <div class="result-name">${escapeHtml(Trip.headline(r))}</div>
               <p class="trip-subline">
-                <span class="trip-badge ${Trip.tripClass(r)}">${escapeHtml(Trip.directionLabel(r))}</span>
                 ${Trip.countdown(r.requested_flight_date) ? `<span class="trip-countdown">${escapeHtml(Trip.countdown(r.requested_flight_date))}</span>` : ''}
                 <span>Organized by ${escapeHtml(creatorName)}</span>
               </p>
@@ -144,8 +169,8 @@ function renderResults(data) {
           </div>
           <div class="result-info">
             <span>
-              <span class="label">Flight</span>
-              <strong>${escapeHtml(r.flight_code)}</strong>
+              <span class="label">${(r.flights || []).length > 1 ? 'Flights' : 'Flight'}</span>
+              <strong>${escapeHtml((r.flights && r.flights.length ? r.flights : [r.flight_code]).join(' · '))}</strong>
             </span>
             <span>
               <span class="label">Airport</span>
@@ -191,11 +216,17 @@ searchForm?.addEventListener('submit', async (e) => {
   const ac = searchForm.querySelector('[name="airport_code"]')?.value.trim();
   const dd = searchForm.querySelector('[name="departure_date"]')?.value.trim();
   const pt = searchForm.querySelector('[name="planned_leave_time"]')?.value.trim();
+  clearDateError();
   if (!fc && !ac && !dd && !pt) {
     results.innerHTML = `
-      <div class="message message-warning mt-2">
-        At least 1 search field is required. Please enter a flight code, airport code, date, or time to search.
+      <div class="message message-error mt-2" role="alert">
+        Enter a flight code, airport code, date, or time to search.
       </div>`;
+    return;
+  }
+  // A time window only makes sense on a given day.
+  if (pt && !dd) {
+    showDateError();
     return;
   }
 
@@ -215,16 +246,27 @@ searchForm?.addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (!res.ok) {
-      results.innerHTML = `<div class="message message-warning mt-2">${escapeHtml(data.error || 'Search failed. Please try again.')}</div>`;
+      results.innerHTML = `<div class="message message-error mt-2" role="alert">${escapeHtml(data.error || 'Search failed. Please try again.')}</div>`;
       return;
     }
 
     if (!data.results?.length) {
+      // Nothing this way, but something the other way: say so, since the
+      // Trip field defaults to Campus -> Airport and is easy to overlook.
+      const other = Number(data.other_direction_count) || 0;
+      const otherDir = selectedDirection() === 'from_airport' ? 'to_airport' : 'from_airport';
+      const otherLabel = Trip.directionLabel({ direction: otherDir });
+      const otherHint = other ? `
+          <div class="message message-info mt-2 other-direction-hint">
+            <span>${other} ${escapeHtml(otherLabel)} carpool${other === 1 ? '' : 's'} match${other === 1 ? 'es' : ''} your search.</span>
+            <button type="button" class="btn btn-primary btn-sm" id="switch-direction-btn" data-direction="${otherDir}">Show ${escapeHtml(otherLabel)}</button>
+          </div>` : '';
       results.innerHTML = `
         <div class="empty-state mt-3">
           <div class="icon">0</div>
-          <p>No matching carpools found. Try adjusting your search or create your own carpool!</p>
-          <a href="${escapeAttr(buildAddUrl())}" class="btn btn-primary mt-2">Create a Carpool</a>
+          <p>No ${escapeHtml(Trip.directionLabel({ direction: selectedDirection() }))} carpools match your search.</p>
+          ${otherHint}
+          <a href="${escapeAttr(buildAddUrl())}" class="btn ${other ? 'btn-secondary' : 'btn-primary'} mt-2">Create a Carpool</a>
         </div>`;
       return;
     }
@@ -248,6 +290,14 @@ document.addEventListener('click', async (e) => {
   showPhonePrompt(id, joinBtn);
 });
 
+const FLIGHT_PATTERN = /^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/;
+
+// The flight the student searched for, to pre-fill the join prompt.
+function searchedFlight() {
+  const value = (searchForm?.querySelector('[name="flight_code"]')?.value || '').toUpperCase().replace(/\s+/g, '');
+  return FLIGHT_PATTERN.test(value) ? value : '';
+}
+
 function showPhonePrompt(carpoolId, joinBtn) {
   // Remove existing modal if any
   document.getElementById('phone-modal')?.remove();
@@ -257,12 +307,16 @@ function showPhonePrompt(carpoolId, joinBtn) {
   modal.className = 'modal-overlay';
   modal.innerHTML = `
     <div class="card modal-card" style="max-width:400px">
-      <h3>Enter Your Phone Number</h3>
+      <h3>Join this carpool</h3>
       <p class="text-muted text-sm">Your phone number helps carpool members coordinate. It will be saved for future use.</p>
       <form id="phone-join-form">
         <label class="mt-2">Phone Number
           <input type="tel" id="join-phone" required placeholder="+1 (909) 555 1234" maxlength="17" value="${escapeAttr(cachedUserPhone)}" />
         </label>
+        <label class="mt-2"><span>Your Flight Number <span class="label-optional">(optional)</span></span>
+          <input type="text" id="join-flight" placeholder="e.g. UA1375" maxlength="8" autocapitalize="characters" autocomplete="off" value="${escapeAttr(searchedFlight())}" />
+        </label>
+        <p class="text-muted text-sm">Added to the carpool's flight list so everyone can track arrivals. It isn't shown next to your name.</p>
         <div class="modal-actions mt-2">
           <button type="button" class="btn btn-secondary" id="phone-cancel">Cancel</button>
           <button type="submit" class="btn btn-primary">Join Carpool</button>
@@ -275,6 +329,10 @@ function showPhonePrompt(carpoolId, joinBtn) {
   const phoneInput = document.getElementById('join-phone');
   phoneInput.addEventListener('input', () => {
     phoneInput.value = formatPhone(phoneInput.value);
+  });
+  const flightInput = document.getElementById('join-flight');
+  flightInput.addEventListener('input', () => {
+    flightInput.value = flightInput.value.toUpperCase().replace(/\s+/g, '');
   });
 
   // Focus input
@@ -296,6 +354,12 @@ function showPhonePrompt(carpoolId, joinBtn) {
       document.getElementById('phone-error').textContent = 'Please enter a valid phone number in format +1 (XXX) XXX XXXX';
       return;
     }
+    const flight = flightInput.value.trim();
+    if (flight && !FLIGHT_PATTERN.test(flight)) {
+      document.getElementById('phone-error').textContent = 'Flight number should look like UA1375, or leave it blank.';
+      flightInput.focus();
+      return;
+    }
 
     const submitBtn = modal.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
@@ -310,7 +374,7 @@ function showPhonePrompt(carpoolId, joinBtn) {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ phone, flight_code: flight })
       });
       const data = await res.json();
       if (res.ok) {
