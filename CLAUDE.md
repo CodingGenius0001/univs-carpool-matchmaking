@@ -30,6 +30,7 @@ There are no tests or linting configured in this project.
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (preferred) or `ADMIN_PASSWORD` — admin panel is disabled unless one of these is set
 - `FIREBASE_PROJECT_ID` — Firebase project used to verify ID tokens
 - `LEGAL_CONTACT_EMAIL` — address shown in the Terms and Privacy Policy for legal notices, arbitration opt-outs and privacy requests (default `legal-campus2air@proton.me`; never point it at a public repository)
+- `FEEDBACK_URL` (constant in `app.py`, exposed to templates as `feedback_url`) — Google Form behind the "Give Feedback" item in every student ☰ menu
 - `ALLOW_SQLITE_FALLBACK` — if MySQL is unreachable, fall back to SQLite (default: on locally, off on Vercel, where requests fail with 503 instead of writing to ephemeral `/tmp`)
 - MySQL: `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_PORT`, `MYSQL_SSL`
 
