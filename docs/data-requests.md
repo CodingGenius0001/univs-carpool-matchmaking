@@ -5,18 +5,23 @@ Policy (`LEGAL_CONTACT_EMAIL`, default `legal-campus2air@proton.me`). The
 Privacy Policy promises a response within **45 days**. Keep every request and
 your reply in that mailbox; it is your record that you handled it.
 
-## 0. Routine (do this on a fixed schedule)
+## 0. Routine (once a month)
 
-- **Every Monday and Thursday**: open `/admin` and clear the Reports section
-  (every open report gets a decision and a note), then read the
+- **Last weekend of each month**: open `/admin` and clear the Reports section
+  (every open report gets a decision and a short note), then read the
   legal-campus2air@proton.me inbox and answer anything new.
-- **Same day** for anything describing a threat, harassment or a crash:
-  suspend first if in doubt, then investigate.
-- Log each check by marking reports resolved with a note, and by leaving
-  a reply (or "no new mail, <date>") in a Proton folder named `Log`. If you
-  will be away, make sure someone else with admin access covers the schedule.
+- The site tells students that reports are reviewed about once a month and
+  are not monitored in real time, and sends emergencies to 911/police, so a
+  monthly check keeps that promise. Privacy requests must be answered within
+  45 days, which a monthly check also covers.
+- If you happen to see a report sooner (for example the "open safety
+  reports" banner when you visit `/admin`) and it describes a threat or
+  harassment, suspending right away is fine; it can be undone.
+- Your notes on resolved reports are the log; nothing else to keep.
 - Keep the published address exactly `legal-campus2air@proton.me`: dispute
-  notices, arbitration opt-outs and the 45-day privacy deadline all depend on it.
+  notices, arbitration opt-outs and the 45-day privacy deadline depend on it.
+  Turning on Proton's email forwarding or phone notifications for that inbox
+  is an easy way not to miss anything.
 
 ## 1. Confirm who is asking
 
@@ -72,7 +77,7 @@ again.
 ## 5. Safety reports
 
 1. New reports appear at the top of `/admin` ("open safety reports") and in the
-   **Reports** section. Review them on the schedule in section 0.
+   **Reports** section. Review them on the monthly schedule in section 0.
 2. If someone describes an emergency or a crime, tell them to contact 911 /
    the police. Campus2Air cannot investigate crimes.
 3. Decide, then click **Mark resolved** with a short note of what you did (for
