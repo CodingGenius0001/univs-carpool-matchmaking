@@ -107,7 +107,7 @@ function updateReview() {
     <div class="wizard-review-grid">
       <div class="wizard-review-item wizard-review-item-wide">
         <span class="label">Trip</span>
-        <strong>${fromAirport ? '🛬 Airport → Campus' : '🛫 Campus → Airport'}</strong>
+        <strong>${fromAirport ? 'Airport → UCR' : 'UCR → Airport'}</strong>
       </div>
       <div class="wizard-review-item">
         <span class="label">Phone</span>

@@ -30,7 +30,6 @@
         <p class="invite-kicker">You've been invited to a carpool</p>
         <h2>{{ carpool.headline }}</h2>
         <p class="trip-subline">
-          <span class="trip-badge {{ 'trip-from' if from_airport else 'trip-to' }}">{{ 'Airport → Campus' if from_airport else 'Campus → Airport' }}</span>
           {% if carpool.countdown %}<span class="trip-countdown">{{ carpool.countdown }}</span>{% endif %}
         </p>
 
