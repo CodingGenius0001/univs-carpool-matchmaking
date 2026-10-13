@@ -88,10 +88,6 @@
             <li>Flight numbers riders choose to add when joining a carpool. These are stored with the carpool as a list, not with your account, and are not shown next to anyone&apos;s name.</li>
             <li>Records of carpools you have joined or created.</li>
           </ul>
-          <h4>Safety Reports</h4>
-          <ul>
-            <li>Reports you send about another carpool member, reports others send about you, and what the administrators did about them (including any suspension).</li>
-          </ul>
           <h4>Activity and Notifications</h4>
           <ul>
             <li>In-app notifications about your carpools (for example, someone joined or a carpool was disbanded). These are not marketing emails.</li>
@@ -106,7 +102,7 @@
             <li>Your email signs you in and confirms that you have a UCR-issued Google account. It does not confirm that you are currently enrolled, who you are, or that you are safe to travel with.</li>
             <li>Your name and phone number let carpool members recognize and coordinate with each other.</li>
             <li>Your carpool details power search and matching and are shown to other signed-in users.</li>
-            <li>Reports, the activity log and server logs help us investigate abuse and respond to safety problems.</li>
+            <li>The activity log and server logs help us investigate abuse and keep the service working.</li>
           </ul>
           <p>We do not use your data for advertising, marketing, profiling, or any purpose beyond running the carpool service.</p>
 
@@ -116,7 +112,7 @@
             <li><strong>Members of your carpool can also see:</strong> your phone number and the carpool&apos;s notes. Notifications sent to members use only your first name and last initial.</li>
             <li><strong>Your email address is never shown to other users.</strong></li>
             <li><strong>Anyone with an invite link</strong> (and the link previews messaging apps show) can see a short carpool summary without signing in: route, date, time and seats left. It never includes names, phone numbers, notes or flight numbers.</li>
-            <li><strong>Campus2Air administrators can see:</strong> your email, name, phone number, carpools, Terms acceptance, the activity log, and reports, so they can run the service, investigate reports and handle requests. A report you send is not shown to the person you report.</li>
+            <li><strong>Campus2Air administrators can see:</strong> your email, name, phone number, carpools, Terms acceptance and the activity log, so they can run the service, suspend accounts that break the Terms, and handle requests.</li>
           </ul>
           <p>We do not sell, rent, license, or share your personal information with third-party advertisers, data brokers, or any external parties for commercial purposes. We may disclose information if required by law or to protect someone&apos;s safety.</p>
 
@@ -137,13 +133,13 @@
             <li>In-app notifications are deleted after 90 days.</li>
             <li>Your account (email, name, phone number and Terms record) is deleted automatically after 1 year without signing in, if you are not in any carpool. You can ask us to delete it sooner (Section 8).</li>
             <li>After a carpool ends, a summary without names, emails, phone numbers or notes (flight code, airport, date, seat count, group size and whether it departed or was disbanded) is kept for usage statistics.</li>
-            <li>Safety reports and suspension records are kept for as long as needed to keep the service safe and to handle legal claims, including after your account is deleted.</li>
+            <li>If your account is suspended, a record of the suspension is kept for as long as needed to keep the service safe and to handle legal claims, including after your account is deleted.</li>
           </ul>
           <p>You may leave a carpool or disband a carpool you organize at any time.</p>
 
           <h3>6. No Background Checks</h3>
           <p>Campus2Air does not perform background checks, identity verification beyond requiring a UCR-issued Google account, or screening of any kind. Matching is based solely on flight and schedule data.</p>
-          <p>By using Campus2Air, you acknowledge that you are meeting other people at your own discretion and risk. We are a coordination tool, not a vetting service. If someone makes you feel unsafe, use the Report option on My Carpool, and in an emergency call 911.</p>
+          <p>By using Campus2Air, you acknowledge that you are meeting other people at your own discretion and risk. We are a coordination tool, not a vetting service. If someone makes you feel unsafe, stop contact and leave the carpool, and in an emergency call 911. We do not monitor users or handle complaints between users.</p>
 
           <h3>7. Data Security and Cookies</h3>
           <p>We take reasonable technical measures to protect your data, including HTTPS (encrypted connections), secure database access controls, and signed session cookies that cannot be altered without detection.</p>
@@ -160,8 +156,7 @@
             <li><strong>Right to non-discrimination:</strong> We will not treat you differently for exercising any of these rights.</li>
             <li><strong>Right to opt out:</strong> We do not sell or share personal information for advertising. There is nothing to opt out of.</li>
           </ul>
-          <p><strong>How to make a request.</strong> Email us at {% if legal_contact_email %}<a href="mailto:{{ legal_contact_email }}">{{ legal_contact_email }}</a>{% endif %} from your @ucr.edu address. We confirm the request by replying to that address, then respond within 45 days as required by California law. For a deletion, we remove your account, phone number, notifications, join history and activity-log entries, and take you out of your carpools (carpools you organize are closed and the riders are told). We keep safety reports and suspension records, usage summaries that contain no personal information, and anything the law requires us to keep. Please do not post requests or personal information publicly.</p>
-          <p>Safety reports other users filed about you are personal information about you, but we may withhold or summarize them in response to an access request where needed to protect the person who reported or someone else&apos;s safety, as the law permits.</p>
+          <p><strong>How to make a request.</strong> Email us at {% if legal_contact_email %}<a href="mailto:{{ legal_contact_email }}">{{ legal_contact_email }}</a>{% endif %} from your @ucr.edu address. We confirm the request by replying to that address, then respond within 45 days as required by California law. For a deletion, we remove your account, phone number, notifications, join history and activity-log entries, and take you out of your carpools (carpools you organize are closed and the riders are told). We keep any suspension record, usage summaries that contain no personal information, and anything the law requires us to keep. Please do not post requests or personal information publicly.</p>
 
           <h3>9. Age Requirement</h3>
           <p>Campus2Air is only for people 18 and older, and you must confirm that you are 18 or older to sign in. We do not knowingly collect personal information from anyone under 18. If you believe someone under 18 is using the service, contact us and we will delete their account.</p>

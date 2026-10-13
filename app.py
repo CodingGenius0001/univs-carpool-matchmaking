@@ -139,8 +139,7 @@ MAX_DAYS_AHEAD = 366
 # rolling window. Leaving does not refund a join, so join/leave loops are capped.
 NOTIFICATION_RETENTION = timedelta(days=90)
 INACTIVE_ACCOUNT_RETENTION = timedelta(days=365)
-MAX_REPORT_LENGTH = 1000
-REPORTS_PER_DAY = 10
+MAX_BAN_REASON_LENGTH = 300
 JOIN_LIMIT_COUNT = 2
 JOIN_LIMIT_WINDOW = timedelta(hours=24)
 # Search treats leave times within this many minutes of each other as a match.
@@ -792,25 +791,9 @@ class DBAdapter:
                 """
             )
 
-        # Safety reports between users (the complaint log) and banned accounts.
-        # Reports are kept after a user deletion request: they are needed to
-        # handle safety and legal issues.
+        # Suspended accounts (admin-only tool). Kept after a user's data is
+        # deleted so a suspension can't be undone by a deletion request.
         if use_mysql:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS reports (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    reporter_email VARCHAR(255) NOT NULL,
-                    reported_email VARCHAR(255) NOT NULL,
-                    carpool_id INT NOT NULL DEFAULT 0,
-                    reason TEXT NOT NULL,
-                    created_at VARCHAR(64) NOT NULL,
-                    status VARCHAR(16) NOT NULL DEFAULT 'open',
-                    admin_note TEXT,
-                    resolved_at VARCHAR(64) NOT NULL DEFAULT ''
-                )
-                """
-            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS banned_users (
@@ -821,21 +804,6 @@ class DBAdapter:
                 """
             )
         else:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reporter_email TEXT NOT NULL,
-                    reported_email TEXT NOT NULL,
-                    carpool_id INTEGER NOT NULL DEFAULT 0,
-                    reason TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'open',
-                    admin_note TEXT,
-                    resolved_at TEXT NOT NULL DEFAULT ''
-                )
-                """
-            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS banned_users (
@@ -1340,7 +1308,7 @@ def _remove_user_from_carpools(email: str, reason: str) -> None:
 
 def _delete_user_data(email: str) -> None:
     """Delete a user's account data (deletion requests and inactive accounts).
-    Safety reports and bans are kept; see the Privacy Policy."""
+    Suspensions are kept; see the Privacy Policy."""
     p = db.placeholder
     _remove_user_from_carpools(email, "The organizer's account was deleted.")
     db.execute(f"DELETE FROM notifications WHERE user_email = {p}", (email,))
@@ -1359,7 +1327,6 @@ def _is_banned(email: str) -> bool:
 
 
 def _clear_all_data() -> None:
-    db.execute("DELETE FROM reports")
     db.execute("DELETE FROM banned_users")
     db.execute("DELETE FROM activity_log")
     db.execute("DELETE FROM carpool_history")
@@ -2532,39 +2499,6 @@ def add_carpool_flight(carpool_id: int) -> Any:
     return jsonify({"ok": True, "flights": _flights_for(rows).get(carpool_id, [])})
 
 
-@app.post("/api/carpools/<int:carpool_id>/report")
-def report_member(carpool_id: int) -> Any:
-    """A member reports another member of the same carpool to the admins."""
-    email = session.get("user_email")
-    if not email:
-        return jsonify({"error": "Login required"}), 401
-    data = request.get_json(silent=True) or {}
-    reason = str(data.get("reason", "")).strip()
-    if not reason:
-        return jsonify({"error": "Please describe what happened."}), 400
-    if len(reason) > MAX_REPORT_LENGTH:
-        return jsonify({"error": f"Please keep the report under {MAX_REPORT_LENGTH} characters."}), 400
-    p = db.placeholder
-    if not db.query(f"SELECT id FROM party_members WHERE carpool_id = {p} AND user_email = {p}", (carpool_id, email)):
-        return jsonify({"error": "You can only report members of your own carpools."}), 403
-    reported = _member_email(carpool_id, data, "member_id", "__no_email__")
-    if not reported:
-        return jsonify({"error": "That member is not in this carpool."}), 404
-    if reported == email:
-        return jsonify({"error": "You can't report yourself."}), 400
-    since = (_now_utc() - timedelta(days=1)).isoformat()
-    recent = db.query(f"SELECT COUNT(*) AS n FROM reports WHERE reporter_email = {p} AND created_at > {p}", (email, since))
-    if recent and int(recent[0]["n"]) >= REPORTS_PER_DAY:
-        return jsonify({"error": f"You've sent {REPORTS_PER_DAY} reports today. Email {LEGAL_CONTACT_EMAIL} if you need to add more."}), 429
-    db.execute(
-        f"INSERT INTO reports (reporter_email, reported_email, carpool_id, reason, created_at, status, admin_note, resolved_at) "
-        f"VALUES ({p}, {p}, {p}, {p}, {p}, 'open', '', '')",
-        (email, reported, carpool_id, reason, _now_utc().isoformat()),
-    )
-    _log_event("reported", email, carpool_id, "report filed")
-    return jsonify({"ok": True})
-
-
 @app.get("/api/my-parties")
 def my_parties() -> Any:
     email = session.get("user_email")
@@ -2907,8 +2841,6 @@ EVENT_LABELS = {
     "shared": "shared an invite link",
     "departed": "Carpool departed",
     "admin_deleted": "Admin deleted a carpool",
-    "reported": "reported a carpool member",
-    "report_resolved": "Admin resolved a report",
     "banned": "was suspended",
     "unbanned": "was unsuspended",
     "user_deleted": "Admin deleted a student's data",
@@ -3079,27 +3011,9 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
             "resets": _fmt_local((recent[0] + JOIN_LIMIT_WINDOW).isoformat()) if blocked else "",
         }
 
-    # Safety reports (the complaint log) and suspended accounts.
+    # Suspended accounts.
     banned_rows = db.query("SELECT * FROM banned_users ORDER BY banned_at DESC")
     banned_emails = {b["user_email"] for b in banned_rows}
-    report_rows = db.query("SELECT * FROM reports ORDER BY created_at DESC")
-    reports_against: dict[str, int] = {}
-    for r in report_rows:
-        reports_against[r["reported_email"]] = reports_against.get(r["reported_email"], 0) + 1
-    reports = [
-        {"id": r["id"],
-         "created": _fmt_local(r.get("created_at")),
-         "reporter": person(r["reporter_email"]),
-         "reported": person(r["reported_email"]),
-         "reported_total": reports_against.get(r["reported_email"], 0),
-         "reported_banned": r["reported_email"] in banned_emails,
-         "carpool_id": r.get("carpool_id") or "",
-         "reason": r.get("reason") or "",
-         "open": (r.get("status") or "open") == "open",
-         "note": r.get("admin_note") or "",
-         "resolved": _fmt_local(r.get("resolved_at")) if r.get("resolved_at") else ""}
-        for r in report_rows
-    ]
     banned = [
         {**person(b["user_email"]), "reason": b.get("reason") or "", "since": _fmt_local(b.get("banned_at"))}
         for b in banned_rows
@@ -3117,8 +3031,7 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
          "terms": (f"v{u.get('terms_version')} · {_fmt_local(u.get('terms_accepted_at'))}" if u.get("terms_version") else "—"),
          "joins": joins_per_user.get(u["user_email"], 0),
          "join_limit": join_limit(u["user_email"]),
-         "banned": u["user_email"] in banned_emails,
-         "reports": reports_against.get(u["user_email"], 0)}
+         "banned": u["user_email"] in banned_emails}
         for u in users
     ]
 
@@ -3186,8 +3099,6 @@ def _admin_dashboard(days: int) -> dict[str, Any]:
         },
         "active_carpools": active_carpools,
         "students": students,
-        "reports": reports,
-        "open_reports": sum(1 for r in reports if r["open"]),
         "banned": banned,
         "past": past,
         "feed": feed,
@@ -3227,20 +3138,6 @@ def admin_reset_join_limit() -> Any:
     return redirect(url_for("admin_panel") + "#students")
 
 
-@app.post("/admin/reports/<int:report_id>/resolve")
-def admin_resolve_report(report_id: int) -> Any:
-    if not _require_admin():
-        return jsonify({"error": "Unauthorized"}), 401
-    note = str(request.form.get("note", "")).strip()[:MAX_REPORT_LENGTH]
-    p = db.placeholder
-    db.execute(
-        f"UPDATE reports SET status = 'resolved', admin_note = {p}, resolved_at = {p} WHERE id = {p}",
-        (note, _now_utc().isoformat(), report_id),
-    )
-    _log_event("report_resolved", "", 0, f"report {report_id}")
-    return redirect(url_for("admin_panel") + "#reports")
-
-
 @app.post("/admin/ban")
 def admin_ban_user() -> Any:
     """Suspend an account: signs them out, blocks sign-in and removes them
@@ -3248,7 +3145,7 @@ def admin_ban_user() -> Any:
     if not _require_admin():
         return jsonify({"error": "Unauthorized"}), 401
     email = str(request.form.get("email", "")).strip()
-    reason = str(request.form.get("reason", "")).strip()[:MAX_REPORT_LENGTH]
+    reason = str(request.form.get("reason", "")).strip()[:MAX_BAN_REASON_LENGTH]
     if email:
         p = db.placeholder
         if not _is_banned(email):
@@ -3258,7 +3155,7 @@ def admin_ban_user() -> Any:
             )
         _remove_user_from_carpools(email, "The organizer's account was suspended.")
         _log_event("banned", email, 0, reason)
-    return redirect(url_for("admin_panel") + "#reports")
+    return redirect(url_for("admin_panel") + "#students")
 
 
 @app.post("/admin/unban")
@@ -3269,7 +3166,7 @@ def admin_unban_user() -> Any:
     if email:
         db.execute(f"DELETE FROM banned_users WHERE user_email = {db.placeholder}", (email,))
         _log_event("unbanned", email)
-    return redirect(url_for("admin_panel") + "#reports")
+    return redirect(url_for("admin_panel") + "#students")
 
 
 @app.post("/admin/delete-user")

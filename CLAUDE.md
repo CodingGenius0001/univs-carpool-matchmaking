@@ -40,13 +40,13 @@ There are no tests or linting configured in this project.
 
 **Deployment**: Vercel serverless via `api/index.py`, which simply imports `app` from `app.py`. All routes are proxied through `api/index.py` per `vercel.json`.
 
-**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Ten tables:
+**Database**: `DBAdapter` class in `app.py` abstracts over MySQL (TiDB Cloud) and SQLite. If MySQL is unreachable it either falls back to SQLite (`ALLOW_SQLITE_FALLBACK`, local default) or raises `DatabaseUnavailable`, which the error handler turns into a 503 (Vercel default); the next request retries MySQL. Uses `%s` placeholders for MySQL, `?` for SQLite, with dynamic replacement. Nine tables:
 - `carpools` — main ride entries (flight details, contact info, seats, expiration, `share_token` for invite links, `direction`)
 - `party_members` — users who joined a carpool (carpool_id + user_email)
 - `users` — user profile cache (email, first name + last initial, phone, Terms acceptance). Accounts with no carpool and no sign-in for a year are purged (`INACTIVE_ACCOUNT_RETENTION`)
 - `notifications` — dismissible messages (e.g., disband notifications); purged after 90 days (`NOTIFICATION_RETENTION`)
 - `carpool_flights` — riders' flight numbers per carpool (no user column, so a flight is never tied to a person); added on join or via `POST /api/carpools/<id>/flights`; `_flights_for()` returns the organizer's flight first. Search by flight code also matches these
-- `reports` / `banned_users` — safety reports from carpool members (`POST /api/carpools/<id>/report`) and suspended accounts. The admin Reports section is the complaint log (resolve with a note, suspend/unsuspend). Banned users are refused at sign-in and signed out by `block_banned_users`. Kept after a user's data is deleted
+- `banned_users` — suspended accounts (admin-only: Students table → Suspend / Suspended accounts → Unsuspend). Banned users are refused at sign-in and signed out by `block_banned_users`. Kept after a user's data is deleted. There is no user-to-user reporting feature, by design (the Terms say Campus2Air does not take complaints)
 - `join_log` — append-only join history for the rolling join limit (pruned after 48h)
 - `carpool_history` — one row per carpool, kept after the carpool is deleted (flight, airport, date, seats, peak members, outcome: departed/disbanded/abandoned/admin_deleted; no personal data). Written by `_history_open` / `_history_bump_peak` / `_history_close`
 - `activity_log` — admin-dashboard events (`signup`, `login`, `created`, `joined`, `left`, `removed`, `transferred`, `disbanded`, `shared`, `departed`, `admin_deleted`) via `_log_event()`; pruned after 180 days (`ACTIVITY_RETENTION`)

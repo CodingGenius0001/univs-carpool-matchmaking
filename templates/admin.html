@@ -24,7 +24,6 @@
         <div class="hamburger-menu" id="hamburger-menu">
           <a href="#overview">Overview</a>
           <a href="#active">Active carpools</a>
-          <a href="#reports">Reports{% if dash.open_reports %} ({{ dash.open_reports }}){% endif %}</a>
           <a href="#students">Students</a>
           <a href="#past">Past carpools</a>
           <a href="#activity">Activity</a>
@@ -40,11 +39,6 @@
     {% set k = dash.kpis %}
     <main class="container dash">
       <!-- Title + range filter (scopes every number and chart below) -->
-      {% if dash.open_reports %}
-      <a href="#reports" class="message message-error dash-report-alert" role="alert">
-        {{ dash.open_reports }} open safety report{{ '' if dash.open_reports == 1 else 's' }} waiting for review →
-      </a>
-      {% endif %}
       <section class="dash-head" id="overview">
         <div>
           <h1 class="dash-title">Admin Dashboard</h1>
@@ -225,92 +219,6 @@
         {% endif %}
       </section>
 
-      <!-- Reports: the complaint log -->
-      <section class="card dash-section" id="reports">
-        <div class="dash-section-head">
-          <h2>Reports <span class="dash-count">{{ dash.open_reports }} open · {{ dash.reports|length }} total</span></h2>
-        </div>
-        <p class="text-muted text-sm">Students can report a member of their carpool from My Carpool. Every report and what you did about it stays here as the complaint log, including after a student's data is deleted. Suspending an account signs them out, blocks sign-in and removes them from their carpools.</p>
-        {% if not dash.reports %}
-        <p class="text-muted">No reports yet.</p>
-        {% else %}
-        <div class="dash-table-wrap">
-          <table class="dash-table" id="reports-table">
-            <thead>
-              <tr><th>Filed</th><th>Reported</th><th>By</th><th>Carpool</th><th>What happened</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              {% for r in dash.reports %}
-              <tr class="{{ 'dash-report-open' if r.open else '' }}">
-                <td>{{ r.created }}</td>
-                <td>
-                  <strong>{{ r.reported.name }}</strong><br><span class="text-muted text-sm">{{ r.reported.email }}</span>
-                  {% if r.reported_total > 1 %}<br><span class="dash-limit-blocked">{{ r.reported_total }} reports</span>{% endif %}
-                  {% if r.reported_banned %}<br><span class="dash-limit-blocked">Suspended</span>{% endif %}
-                </td>
-                <td>{{ r.reporter.name }}<br><span class="text-muted text-sm">{{ r.reporter.email }}</span></td>
-                <td>{{ r.carpool_id }}</td>
-                <td class="dash-report-reason">{{ r.reason }}</td>
-                <td>{% if r.open %}<strong>Open</strong>{% else %}Resolved {{ r.resolved }}{% if r.note %}<br><span class="text-muted text-sm">{{ r.note }}</span>{% endif %}{% endif %}</td>
-                <td>
-                  <div class="dash-report-actions">
-                    {% if r.open %}
-                    <form method="post" action="/admin/reports/{{ r.id }}/resolve" class="dash-resolve-form">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                      <input type="text" name="note" maxlength="1000" placeholder="What you did (saved to the log)" aria-label="Resolution note" />
-                      <button type="submit" class="btn btn-secondary btn-sm">Mark resolved</button>
-                    </form>
-                    {% endif %}
-                    {% if not r.reported_banned %}
-                    <form method="post" action="/admin/ban" class="confirmable-form"
-                      data-confirm-title="Suspend {{ r.reported.name }}?"
-                      data-confirm-message="They are signed out, can't sign in again, and are removed from their carpools. Carpools they organize are closed and the riders are told why."
-                      data-confirm-label="Suspend account">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                      <input type="hidden" name="email" value="{{ r.reported.email }}" />
-                      <input type="hidden" name="reason" value="Report #{{ r.id }}" />
-                      <button type="submit" class="btn btn-danger btn-sm">Suspend</button>
-                    </form>
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% endif %}
-
-        {% if dash.banned %}
-        <h3 class="mt-2">Suspended accounts</h3>
-        <div class="dash-table-wrap">
-          <table class="dash-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Since</th><th>Reason</th><th></th></tr></thead>
-            <tbody>
-              {% for b in dash.banned %}
-              <tr>
-                <td>{{ b.name }}</td>
-                <td>{{ b.email }}</td>
-                <td>{{ b.since }}</td>
-                <td>{{ b.reason or '—' }}</td>
-                <td>
-                  <form method="post" action="/admin/unban" class="confirmable-form"
-                    data-confirm-title="Lift the suspension?"
-                    data-confirm-message="{{ b.name }} will be able to sign in and use Campus2Air again."
-                    data-confirm-label="Lift suspension" data-confirm-tone="primary">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                    <input type="hidden" name="email" value="{{ b.email }}" />
-                    <button type="submit" class="btn btn-secondary btn-sm">Unsuspend</button>
-                  </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% endif %}
-      </section>
-
       <!-- Students -->
       <section class="card dash-section" id="students">
         <div class="dash-section-head">
@@ -353,10 +261,20 @@
                 <td>
                   <div class="dash-join-limit">
                     {% if s.banned %}<span class="dash-limit-blocked">Suspended</span>{% endif %}
-                    {% if s.reports %}<a href="#reports" class="text-sm">{{ s.reports }} report{{ '' if s.reports == 1 else 's' }}</a>{% endif %}
+                    {% if not s.banned %}
+                    <form method="post" action="/admin/ban" class="confirmable-form"
+                      data-confirm-title="Suspend {{ s.name }}?"
+                      data-confirm-message="They are signed out, can't sign in again, and are removed from their carpools. Carpools they organize are closed and the riders are told why. You can lift it later."
+                      data-confirm-label="Suspend account">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                      <input type="hidden" name="email" value="{{ s.email }}" />
+                      <input type="hidden" name="reason" value="Suspended by admin" />
+                      <button type="submit" class="btn btn-secondary btn-sm">Suspend</button>
+                    </form>
+                    {% endif %}
                     <form method="post" action="/admin/delete-user" class="confirmable-form"
                       data-confirm-title="Delete {{ s.name }}'s data?"
-                      data-confirm-message="Use this for a deletion request. Their profile, phone number, notifications, join history and activity are deleted and they are removed from their carpools (carpools they organize are closed). Reports and suspensions are kept. This can't be undone."
+                      data-confirm-message="Use this for a deletion request. Their profile, phone number, notifications, join history and activity are deleted and they are removed from their carpools (carpools they organize are closed). Suspensions are kept. This can't be undone."
                       data-confirm-label="Delete data">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                       <input type="hidden" name="email" value="{{ s.email }}" />
@@ -371,6 +289,34 @@
             </tbody>
           </table>
         </div>
+        {% if dash.banned %}
+        <h3 class="mt-2">Suspended accounts</h3>
+        <div class="dash-table-wrap">
+          <table class="dash-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Since</th><th>Reason</th><th></th></tr></thead>
+            <tbody>
+              {% for b in dash.banned %}
+              <tr>
+                <td>{{ b.name }}</td>
+                <td>{{ b.email }}</td>
+                <td>{{ b.since }}</td>
+                <td>{{ b.reason or '—' }}</td>
+                <td>
+                  <form method="post" action="/admin/unban" class="confirmable-form"
+                    data-confirm-title="Lift the suspension?"
+                    data-confirm-message="{{ b.name }} will be able to sign in and use Campus2Air again."
+                    data-confirm-label="Lift suspension" data-confirm-tone="primary">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <input type="hidden" name="email" value="{{ b.email }}" />
+                    <button type="submit" class="btn btn-secondary btn-sm">Unsuspend</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
       </section>
 
       <!-- Past carpools -->
