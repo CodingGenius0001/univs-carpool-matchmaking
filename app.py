@@ -124,6 +124,8 @@ TERMS_EFFECTIVE = "October 13, 2026"
 # Where legal notices, opt-outs and privacy requests go (shown in the Terms
 # and Privacy Policy). Never a public repository.
 LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", "").strip() or "legal-campus2air@proton.me"
+# Google Form linked from the ☰ menu ("Give Feedback").
+FEEDBACK_URL = "https://forms.gle/Lv4HinTodaqzJawm8"
 # Which way the ride goes. Carpools created before this existed are campus -> airport.
 DIRECTIONS = ("to_airport", "from_airport")
 DEFAULT_DIRECTION = "to_airport"
@@ -249,6 +251,7 @@ def inject_template_helpers() -> dict[str, Any]:
         "terms_version": TERMS_VERSION,
         "terms_effective": TERMS_EFFECTIVE,
         "legal_contact_email": LEGAL_CONTACT_EMAIL,
+        "feedback_url": FEEDBACK_URL,
     }
 
 

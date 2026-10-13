@@ -255,16 +255,17 @@ searchForm?.addEventListener('submit', async (e) => {
       // Trip field defaults to Campus -> Airport and is easy to overlook.
       const other = Number(data.other_direction_count) || 0;
       const otherDir = selectedDirection() === 'from_airport' ? 'to_airport' : 'from_airport';
-      const otherLabel = Trip.directionLabel({ direction: otherDir });
+      // Spelled out in words here (no arrows): "from UCR to the airport".
+      const inWords = (dir) => (dir === 'from_airport' ? `from the airport to ${Trip.CAMPUS}` : `from ${Trip.CAMPUS} to the airport`);
       const otherHint = other ? `
           <div class="message message-info mt-2 other-direction-hint">
-            <span>${other} ${escapeHtml(otherLabel)} carpool${other === 1 ? '' : 's'} match${other === 1 ? 'es' : ''} your search.</span>
-            <button type="button" class="btn btn-primary btn-sm" id="switch-direction-btn" data-direction="${otherDir}">Show ${escapeHtml(otherLabel)}</button>
+            <span>We didn't find any matches for your search, but we found ${other} carpool${other === 1 ? '' : 's'} going ${escapeHtml(inWords(otherDir))}.</span>
+            <button type="button" class="btn btn-primary btn-sm" id="switch-direction-btn" data-direction="${otherDir}">Show trips ${escapeHtml(inWords(otherDir))}</button>
           </div>` : '';
       results.innerHTML = `
         <div class="empty-state mt-3">
-          <div class="icon">0</div>
-          <p>No ${escapeHtml(Trip.directionLabel({ direction: selectedDirection() }))} carpools match your search.</p>
+          <div class="icon" aria-hidden="true">:(</div>
+          <p>No carpools going ${escapeHtml(inWords(selectedDirection()))} match your search.</p>
           ${otherHint}
           <a href="${escapeAttr(buildAddUrl())}" class="btn ${other ? 'btn-secondary' : 'btn-primary'} mt-2">Create a Carpool</a>
         </div>`;
